@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The app icon (assets/icon.png, 512 px): the three hands, idle pose, cut
 at full size from art_source/hands_sheet_v2.png (the same cut as the unit
-sprites, so the paper hand has its five fingers) on a soft green rounded
+sprites, so the paper hand has its five digits) on a soft green rounded
 square. Paper in the middle at
 the back, rock on the left, scissors on the right.
 
@@ -18,12 +18,19 @@ import cut_hand_sprites as cutter  # noqa: E402
 SIZE = 512
 
 
+# Which idle frame to use: paper's 1st, 3rd and 5th are drawn with an extra
+# finger, its 4th (cleaned up by the cutter's ERASE) has the right five.
+FRAME = [0, 3, 0]
+
+
 def hand(kind: int, height: int) -> Image.Image:
-    """Idle frame 0 of a kind, cropped to the hand and scaled to a height."""
+    """A kind's idle frame, cropped to the hand and scaled to a height."""
     ry0, ry1 = cutter.ROWS[kind]
     y0, y1 = ry0 + cutter.BADGE, ry1 - cutter.ROW_PAD
-    x0, x1 = cutter.cells(cutter.PANELS[0], y0, y1)[0]
+    x0, x1 = cutter.cells(cutter.PANELS[0], y0, y1)[FRAME[kind]]
     rgba, _ = cutter.cut(x0, x1, y0, y1)
+    if (kind, 0, FRAME[kind]) in cutter.ERASE:
+        rgba = cutter.erase(rgba, cutter.ERASE[(kind, 0, FRAME[kind])], x0, y0)
     cell = Image.fromarray(rgba, "RGBA")
     cell = cell.crop(cell.getbbox())
     w = round(cell.width * height / cell.height)

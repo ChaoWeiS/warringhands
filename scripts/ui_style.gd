@@ -7,8 +7,10 @@ const TEXT_COLOR := Color("#4a4560")
 const PHONE_SCALE := 1.35
 const ATLAS := preload("res://assets/units/hands.png")
 const CELL := 192
-## Hand picture inside an atlas cell (frames sit at the bottom of the cell).
-const ICON_INSET := Rect2(40, 60, 112, 114)
+## Each kind's icon: which idle frame, and the hand picture inside that atlas
+## cell. Paper uses its 4th frame: the others are drawn with an extra finger.
+const ICON_FRAME := [0, 3, 0]
+const ICON_INSET := [Rect2(40, 52, 112, 126), Rect2(40, 35, 112, 126), Rect2(40, 52, 112, 126)]
 ## Resource colours: stone, wood, metal.
 const RES_COLORS := [Color("#b9b2cc"), Color("#cf9f74"), Color("#8fd6d0")]
 const RES_ICONS := [
@@ -82,7 +84,8 @@ static func button(color: Color, pressed_color: Color = Color.TRANSPARENT, font_
 static func kind_icon(kind: int) -> AtlasTexture:
 	var icon := AtlasTexture.new()
 	icon.atlas = ATLAS
-	icon.region = Rect2(ICON_INSET.position + Vector2(0, kind * 5 * CELL), ICON_INSET.size)
+	var inset: Rect2 = ICON_INSET[kind]
+	icon.region = Rect2(inset.position + Vector2(ICON_FRAME[kind] * CELL, kind * 5 * CELL), inset.size)
 	return icon
 
 
