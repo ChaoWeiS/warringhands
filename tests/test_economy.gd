@@ -269,6 +269,37 @@ func _run() -> void:
 	check("units can't stand inside buildings", SimScript._dist2(sq, quarry) >= (quarry.radius + SimScript.RADIUS - 5) * (quarry.radius + SimScript.RADIUS - 5))
 	s.queue_free()
 
+	# Another HQ: 150 of every resource, anywhere on the map; you only lose
+	# with your last HQ.
+	s = new_sim()
+	hq0 = s.hq_of(0)
+	var outpost := Vector2.ZERO
+	for d in range(90, 200, 6):
+		for k in 16:
+			var p: Vector2 = ground_of(hq0) + Vector2.from_angle(k * TAU / 16) * d
+			if outpost == Vector2.ZERO and s.can_place("hq", p, 0):
+				outpost = p
+	check("an HQ can go far from your base (%d away)" % roundi(outpost.distance_to(ground_of(hq0))),
+			outpost != Vector2.ZERO and not s.in_build_range(0, roundi(outpost.x * 100), roundi(outpost.y * 100)))
+	check("...costing 150 of every resource", SimScript.cost_of("hq") == [150, 150, 150])
+	s.resources[0] = [150, 150, 140]
+	s.command_build(0, "hq", outpost)
+	s.step_ticks(3)
+	check("...so not without enough metal", s.buildings.size() == 2)
+	s.resources[0] = [200, 200, 200]
+	s.command_build(0, "hq", outpost)
+	s.step_ticks(3)
+	var hqs: Array = s.buildings.filter(func(b): return b.team == 0 and b.btype == "hq")
+	check("a second HQ goes up, paid in stone, wood and metal", hqs.size() == 2 and s.resources[0] == [50, 50, 50]
+			and hqs[1].progress < SimScript.BUILDINGS.hq.build)
+	var lost := {"winner": -1}
+	s.game_over.connect(func(w): lost.winner = w)
+	s._remove_building(hq0)
+	check("losing one HQ while you have another isn't defeat", s.winner == -1 and lost.winner == -1)
+	s._remove_building(hqs[1])
+	check("losing the last one is", s.winner == 1 and lost.winner == 1)
+	s.queue_free()
+
 	# Buildings can be attacked; losing your HQ loses the game.
 	s = new_sim()
 	hq0 = s.hq_of(0)
@@ -341,7 +372,8 @@ func _run() -> void:
 	check("resource counter shows your stock", hud._res_labels[0].text == str(sim.resources[0][0]))
 	sim._pending.clear()
 	hud._build_toggle.button_pressed = true
-	check("Build shows the three factories", hud._build_options.quarry.visible and hud._build_options.forge.visible)
+	check("Build shows the three factories and an HQ", hud._build_options.quarry.visible and hud._build_options.forge.visible
+			and hud._build_options.hq.visible)
 	hud._build_options.quarry.pressed.emit()
 	check("picking one waits for a tap on the ground", hud.armed_build() == "quarry")
 	game._on_tapped(cam, cam.unproject_position(Vector3(my_hq.x / 100.0, 0, my_hq.z / 100.0)))

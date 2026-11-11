@@ -63,6 +63,7 @@
 ## Economy (prototype)
 - Each side has an **HQ**, a town hall (painted art; the red team's has red flag, banners and windows; lose it, lose the game) and starts with **300** stone, wood and metal.
 - **Gathering:** tap a resource spot with units selected. They gather 20 at a time and carry it to the nearest drop-off, then repeat: the HQ takes anything, a finished quarry takes stone, a mill wood, a forge metal. So a factory next to a resource doubles as a drop-off. Own resource is twice as fast (2 s vs 4 s): rocks-stone, papers-wood, scissors-metal. Gatherers don't go looking for fights but fight back if attacked.
+- **More HQs:** Build → HQ costs 150 of every resource, takes 20 s and can go anywhere on the map (no build range), e.g. as a forward base or a drop-off by far resources. You lose when your last HQ falls.
 - **Build range:** new buildings go within 50 map units of one of your own buildings (HQ, factories, even ones still going up), so a base grows outward step by step. While placing, white circles show the allowed area; tapping outside says it's too far.
 - **Factories** (Build button, pick one, tap open ground): Quarry (150 stone, makes rocks), Paper Mill (150 wood, papers), Forge (150 metal, scissors). Drawn with painted art (`assets/env/`, cropped from `art_source/env/` by `tools/prep_env_art.py`) on a patch of the team's colour. 10 s to build; can't train until finished.
 - **Double tap a unit:** selects all your units of that type visible in that pane.
@@ -72,7 +73,7 @@
 - **Building panel:** appears right beside the selected building(s), in the pane you picked them in, and follows them as you pan (bottom centre if they're out of view).
 - **Training:** tap your factory, then the + button: 60 of its resource, 5 s each, up to 5 queued. New units go straight to gathering their own resource (rocks stone, papers wood, scissors metal; nearest spot to the factory) unless a fight is on (one of your units is fighting, or enemies are within 60 of your buildings); then they walk out towards the island centre and wait. The computer opponent decides for its own units.
 - Buildings block walking, push units out, can be attacked (10 per hit) and show HP bars. HQ 2000 HP, factories 800.
-- Destroying the enemy HQ = **Victory**; losing yours = **Defeat** (Play again).
+- Destroying the enemy's last HQ = **Victory**; losing your last = **Defeat** (Play again).
 - Resources have icons (rocks, logs, ingots; `assets/env/icon_*.png`), used in the counter at the top right and on the map.
 - Resource spots (`scripts/resources_view.gd`), each on a tinted patch of ground with a floating badge (resource icon + amount left):
   - **Stone**: rock piles (painted art).

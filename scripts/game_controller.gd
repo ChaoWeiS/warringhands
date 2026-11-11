@@ -80,7 +80,8 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	buildings_view.show_build_range(PLAYER_TEAM, hud.armed_build() != "")
+	# Range circles while placing (an HQ can go anywhere).
+	buildings_view.show_build_range(PLAYER_TEAM, hud.armed_build() != "" and hud.armed_build() != "hq")
 	_place_building_panel()
 
 
@@ -173,7 +174,7 @@ func _place(btype: String, ground: Vector2) -> void:
 	var spec: Dictionary = sim.BUILDINGS[btype]
 	var x: int = roundi(ground.x * sim.SCALE)
 	var z: int = roundi(ground.y * sim.SCALE)
-	if not sim.in_build_range(PLAYER_TEAM, x, z):
+	if btype != "hq" and not sim.in_build_range(PLAYER_TEAM, x, z):
 		hud.toast("Too far: build inside the circles around your buildings")
 		view.show_move_marker(Vector3(ground.x, 0, ground.y), true)
 		return

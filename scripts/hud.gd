@@ -2,8 +2,8 @@ extends Control
 ## The economy part of the screen:
 ##   - resource counter (top right): stone, wood, metal; full screen button
 ##     under it;
-##   - Build menu (bottom left): pick Quarry / Paper Mill / Forge, then tap
-##     the ground to place it;
+##   - Build menu (bottom left): pick HQ / Quarry / Paper Mill / Forge, then
+##     tap the ground to place it;
 ##   - building panel (beside the buildings, when your buildings are selected by
 ##     tap or lasso): a row per type with HP, and for factories a train
 ##     button (queues at the least busy one), the queue and progress;
@@ -18,7 +18,10 @@ signal train_pressed(building_id: int)
 signal play_again_pressed
 
 const FACTORIES := ["quarry", "mill", "forge"]
-const FACTORY_COLORS := {"quarry": Color("#ddd6ea"), "mill": Color("#fbf1d6"), "forge": Color("#c4eeea")}
+const FACTORY_COLORS := {"quarry": Color("#ddd6ea"), "mill": Color("#fbf1d6"), "forge": Color("#c4eeea"),
+		"hq": Color("#fbe3ea")}
+## Small town hall picture for the Build menu.
+var HQ_ICON: Texture2D = _small_hq_icon()
 const BUILD_COLOR := Color("#e7e1f5")
 const BUILD_ARMED := Color("#c9bdf0")
 
@@ -85,7 +88,7 @@ func _process(_delta: float) -> void:
 		return
 	for res in 3:
 		_res_labels[res].text = str(sim.resources[team][res])
-	for btype in FACTORIES:
+	for btype in _build_options:
 		var spec: Dictionary = sim.BUILDINGS[btype]
 		_build_options[btype].disabled = not sim.can_afford(team, spec.res, spec.cost)
 	_refresh_building_panel()
@@ -205,6 +208,12 @@ func toggle_fullscreen() -> void:
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 
+static func _small_hq_icon() -> Texture2D:
+	var img: Image = (load("res://assets/env/hq_red.png") as Texture2D).get_image()
+	img.resize(int(img.get_width() * 72.0 / img.get_height()), 72, Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(img)
+
+
 func _build_build_menu() -> void:
 	# Options stack upwards above the Build button, clear of the panels at
 	# the bottom centre.
@@ -225,12 +234,17 @@ func _build_build_menu() -> void:
 		_show_build_options(on)
 		if not on:
 			build_chosen.emit(""))
-	for kind in 3:
-		var btype: String = FACTORIES[kind]
-		var spec: Dictionary = {"cost": 150}
+	for btype in ["hq"] + FACTORIES:
+		var kind: int = FACTORIES.find(btype)
 		var b := UI.button(FACTORY_COLORS[btype], FACTORY_COLORS[btype].darkened(0.15), 24)
-		b.icon = UI.kind_icon(kind)
-		b.text = "%s\n%d %s" % [UI.BUILDING_NAMES[btype], spec.cost, UI.RES_NAMES[kind]]
+		if btype == "hq":
+			# Another HQ: 150 of every resource, anywhere on the map.
+			b.icon = HQ_ICON
+			b.expand_icon = false
+			b.text = "%s\n150 of each" % UI.BUILDING_NAMES[btype]
+		else:
+			b.icon = UI.kind_icon(kind)
+			b.text = "%s\n%d %s" % [UI.BUILDING_NAMES[btype], 150, UI.RES_NAMES[kind]]
 		b.pressed.connect(func():
 			_armed_build = btype
 			_show_build_options(false)

@@ -107,7 +107,9 @@ const FIGHT_NEAR := 6000
 const REPAIR_TICKS := 20
 const REPAIR_HP := 10
 const BUILDINGS := {
-	"hq": {"radius": 900, "hp": 2000, "cost": 0, "res": -1, "build": 0, "kind": -1},
+	# Extra HQs cost 150 of every resource (res -1 = all three), take 20 s,
+	# and can go anywhere (no build range). The starting HQs come ready.
+	"hq": {"radius": 900, "hp": 2000, "cost": 150, "res": -1, "build": 400, "kind": -1},
 	"quarry": {"radius": 650, "hp": 800, "cost": 150, "res": Res.STONE, "build": 200, "kind": Kind.ROCK},
 	"mill": {"radius": 650, "hp": 800, "cost": 150, "res": Res.WOOD, "build": 200, "kind": Kind.PAPER},
 	"forge": {"radius": 650, "hp": 800, "cost": 150, "res": Res.METAL, "build": 200, "kind": Kind.SCISSORS},
@@ -301,7 +303,19 @@ func hq_of(team: int) -> Dictionary:
 
 
 func can_afford(team: int, res: int, amount: int) -> bool:
-	return res < 0 or resources[team][res] >= amount
+	if res < 0:  # all three
+		return resources[team].all(func(have): return have >= amount)
+	return resources[team][res] >= amount
+
+
+## What a building costs: [stone, wood, metal].
+static func cost_of(btype: String) -> Array:
+	var spec: Dictionary = BUILDINGS[btype]
+	var cost := [0, 0, 0]
+	for res in 3:
+		if spec.res < 0 or spec.res == res:
+			cost[res] = spec.cost
+	return cost
 
 
 ## Can `team` put a building of this type here (ground point, map units)?
@@ -311,7 +325,7 @@ func can_afford(team: int, res: int, amount: int) -> bool:
 func can_place(btype: String, ground: Vector2, team: int = -1) -> bool:
 	var x: int = roundi(ground.x * SCALE)
 	var z: int = roundi(ground.y * SCALE)
-	if team >= 0 and not in_build_range(team, x, z):
+	if team >= 0 and btype != "hq" and not in_build_range(team, x, z):
 		return false
 	var radius: int = BUILDINGS[btype].radius
 	var grid = nav()
@@ -607,8 +621,9 @@ func _apply_build(command: Dictionary) -> void:
 	var ground := Vector2(command.x, command.z) / float(SCALE)
 	if winner >= 0 or not can_afford(command.team, spec.res, spec.cost) or not can_place(command.btype, ground, command.team):
 		return
-	if spec.res >= 0:
-		resources[command.team][spec.res] -= spec.cost
+	var cost: Array = cost_of(command.btype)
+	for res in 3:
+		resources[command.team][res] -= cost[res]
 	_add_building(command.team, command.btype, Vector2i(command.x, command.z), false)
 
 
@@ -942,7 +957,8 @@ func _remove_building(b: Dictionary) -> void:
 	if grid != null:
 		grid.set_blocked(b.x, b.z, b.radius, false)
 	building_destroyed.emit(b.id)
-	if b.btype == "hq" and winner < 0:
+	# Lose your last HQ (finished or not), lose the game.
+	if b.btype == "hq" and winner < 0 and hq_of(b.team).is_empty():
 		winner = 1 - b.team
 		game_over.emit(winner)
 
