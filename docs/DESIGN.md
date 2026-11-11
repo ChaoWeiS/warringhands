@@ -40,7 +40,7 @@
 - Selection bar (bottom): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type; Clear to deselect.
 - A second finger in the pane cancels a tap or lasso (it becomes a camera gesture).
 - **Pathfinding:** units plan a route around lakes, forests, plateaus and resource props (A* on a 4-unit grid, smoothed into straight runs). An order onto blocked ground (e.g. a lake) goes to the nearest open spot. Selected units show their route as a dashed line on the ground.
-- Units don't bump into each other yet (they can overlap while walking); local avoidance comes later.
+- **Collision:** each unit has a round body (radius 3.2 map units). Overlapping units are pushed apart every tick; idle units give way to walking ones; pushes never go onto blocked ground. A walker whose exact spot is already taken stops right next to it. Whole-number maths in a fixed order, so it stays lockstep-safe.
 
 ## Economy
 - Resources: **stone** (rock), **wood** (paper), **metal** (scissors), scattered on the map.

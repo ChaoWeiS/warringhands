@@ -21,6 +21,11 @@ const TICK_TIME := 1.0 / TICK_RATE
 const COMMAND_DELAY := 2
 ## Gap between units when a group moves together (sim units).
 const SPACING := 1000
+## Each unit's round body (sim units). Bodies don't overlap: units closer
+## than two radii are pushed apart every tick.
+const RADIUS := 320
+## Overlap passes per tick (more = firmer, a little slower).
+const PUSH_PASSES := 2
 
 enum Kind { ROCK, PAPER, SCISSORS }
 
@@ -131,6 +136,8 @@ func _step() -> void:
 		u.pz = u.z
 		if u.moving:
 			_move(u)
+	for pass_index in PUSH_PASSES:
+		_separate()
 	tick += 1
 	ticked.emit()
 
@@ -197,6 +204,95 @@ func _move(u: Dictionary) -> void:
 	else:
 		u.x += dx * speed / dist
 		u.z += dz * speed / dist
+
+
+## Pushes overlapping units apart (half each), never into blocked ground.
+## A walking unit whose spot is taken by someone already standing there
+## stops close by instead of jostling forever.
+## Whole numbers and a fixed order (by id), so every device agrees.
+func _separate() -> void:
+	var min_dist: int = RADIUS * 2
+	var buckets := _buckets(min_dist)
+	var n: int = units.size()
+	for i in n:
+		var a: Dictionary = units[i]
+		var cell := Vector2i(a.x / min_dist, a.z / min_dist)
+		for oy in range(-1, 2):
+			for ox in range(-1, 2):
+				for j in buckets.get(cell + Vector2i(ox, oy), []):
+					if j <= i:
+						continue  # each pair once
+					_push_apart(a, units[j], min_dist)
+	for u in units:
+		if u.moving and u.path.size() == 1:
+			_stop_if_spot_taken(u, min_dist)
+
+
+## Unit indexes grouped by square cells of `size`, for nearby lookups.
+func _buckets(size: int) -> Dictionary:
+	var buckets := {}
+	for i in units.size():
+		var u: Dictionary = units[i]
+		var cell := Vector2i(u.x / size, u.z / size)
+		if not buckets.has(cell):
+			buckets[cell] = []
+		buckets[cell].append(i)
+	return buckets
+
+
+func _push_apart(a: Dictionary, b: Dictionary, min_dist: int) -> void:
+	var dx: int = b.x - a.x
+	var dz: int = b.z - a.z
+	if absi(dx) >= min_dist or absi(dz) >= min_dist:
+		return
+	var d2: int = dx * dx + dz * dz
+	if d2 >= min_dist * min_dist:
+		return
+	var d: int = _isqrt(d2)
+	if d == 0:
+		# Exactly on top of each other: split sideways, by id.
+		dx = 1 if a.id < b.id else -1
+		dz = 0
+		d = 1
+	var overlap: int = min_dist - d
+	# A unit standing still gives way more than one that's walking.
+	var share_a: int = overlap / 2
+	if a.moving and not b.moving:
+		share_a = overlap / 4
+	elif b.moving and not a.moving:
+		share_a = overlap - overlap / 4
+	var share_b: int = overlap - share_a
+	_nudge(a, -dx * share_a / d, -dz * share_a / d)
+	_nudge(b, dx * share_b / d, dz * share_b / d)
+
+
+## Moves a unit by (dx, dz) unless that would put it on blocked ground.
+func _nudge(u: Dictionary, dx: int, dz: int) -> void:
+	if dx == 0 and dz == 0:
+		return
+	var nx: int = u.x + dx
+	var nz: int = u.z + dz
+	var grid = nav()
+	if grid != null and not grid.is_walkable_cell(grid.cell_of(nx, nz)):
+		return
+	u.x = nx
+	u.z = nz
+
+
+func _stop_if_spot_taken(u: Dictionary, min_dist: int) -> void:
+	var dx: int = u.tx - u.x
+	var dz: int = u.tz - u.z
+	if dx * dx + dz * dz > min_dist * min_dist:
+		return  # not yet up against the spot
+	for other in units:
+		if other.id == u.id or other.moving:
+			continue
+		var ox: int = other.x - u.tx
+		var oz: int = other.z - u.tz
+		if ox * ox + oz * oz < min_dist * min_dist:
+			u.moving = false
+			u.path.clear()
+			return
 
 
 ## Whole-number square root (same result on every device).

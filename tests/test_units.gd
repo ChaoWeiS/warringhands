@@ -96,6 +96,19 @@ func shot(name: String) -> void:
 		root.get_texture().get_image().save_png(out_dir + "/" + name + ".png")
 
 
+## Smallest distance (sim units) between any two of these units.
+func min_gap(ids: Array) -> int:
+	var best: int = 1 << 30
+	for i in ids.size():
+		for j in range(i + 1, ids.size()):
+			var a: Dictionary = sim.get_unit(ids[i])
+			var b: Dictionary = sim.get_unit(ids[j])
+			var dx: int = a.x - b.x
+			var dz: int = a.z - b.z
+			best = mini(best, int(sqrt(float(dx * dx + dz * dz))))
+	return best
+
+
 func tab_pt(leaf, side: int) -> Vector2:
 	return panes._tabs(leaf)[side][2].get_center()
 
@@ -178,7 +191,8 @@ func _run() -> void:
 	game._select([first])
 
 	# Tap the ground: the unit walks there.
-	var dest_screen: Vector2 = screen_pos(leaf, first) + Vector2(260, 0)
+	# (Left of the army: clear ground, nobody standing there.)
+	var dest_screen: Vector2 = screen_pos(leaf, first) + Vector2(-330, 0)
 	var dest_ground: Vector3 = cam.ground_at(dest_screen - leaf.rect.position)
 	tap(dest_screen)
 	check("tapping ground gives a move order", sim.has_pending_commands())
@@ -248,11 +262,52 @@ func _run() -> void:
 		mean += sim.unit_ground(id)
 	mean /= mine.size()
 	check("army walked to the spot tapped in the other pane (%.1f away)" % mean.distance_to(far), mean.distance_to(far) < 3.0)
+	if mean.distance_to(far) >= 3.0:
+		for id in mine:
+			var uu: Dictionary = sim.get_unit(id)
+			print("  unit ", id, " at ", sim.unit_ground(id), " target ", Vector2(uu.tx, uu.tz) / 100.0, " moving ", uu.moving, " path ", uu.path.size())
 	var all_stopped := true
 	for id in mine:
 		all_stopped = all_stopped and not sim.get_unit(id).moving
 	check("...and every unit has arrived", all_stopped)
 	await shot("units_3_cross_pane")
+
+	# Collision: nobody overlaps once the army has settled.
+	check("settled army: no units overlap (closest %.1f apart)" % (min_gap(mine) / 100.0),
+			min_gap(mine) >= sim.RADIUS * 2 * 0.9)
+
+	# Collision while walking: rocks and scissors swap sides straight through
+	# each other's rows (and the papers between them). Bodies may squeeze a
+	# little but never pass through each other or onto blocked ground.
+	var rocks: Array = mine.filter(func(id): return sim.get_unit(id).kind == SimScript.Kind.ROCK)
+	var scissors: Array = mine.filter(func(id): return sim.get_unit(id).kind == SimScript.Kind.SCISSORS)
+	var south := far + Vector2(0, 25)
+	var north := far + Vector2(0, -25)
+	check("crossing targets are open ground", field.is_walkable(south) and field.is_walkable(north))
+	sim.command_move(rocks, Vector3(south.x, 0, south.y))
+	sim.command_move(scissors, Vector3(north.x, 0, north.y))
+	var tightest: int = 1 << 30
+	var on_open_ground := true
+	var nav_grid = sim.nav()
+	for i in 500:
+		sim.step_ticks(1)
+		tightest = mini(tightest, min_gap(mine))
+		for id in mine:
+			var cu: Dictionary = sim.get_unit(id)
+			on_open_ground = on_open_ground and nav_grid.is_walkable_cell(nav_grid.cell_of(cu.x, cu.z))
+	check("crossing groups never overlap much (closest %.1f apart, bodies %.1f)" % [tightest / 100.0, sim.RADIUS * 2 / 100.0],
+			tightest >= sim.RADIUS * 2 * 0.6)
+	check("nobody was pushed onto blocked ground", on_open_ground)
+	var crossed := true
+	for id in rocks:
+		crossed = crossed and sim.unit_ground(id).y > far.y + 10
+	for id in scissors:
+		crossed = crossed and sim.unit_ground(id).y < far.y - 10
+	check("rocks and scissors made it past each other", crossed)
+	var settled := true
+	for id in mine:
+		settled = settled and not sim.get_unit(id).moving
+	check("everyone settled after crossing", settled)
 
 	# Pathfinding: walk around the central lake. The straight line between
 	# the two points crosses the lake; the unit must go around it, never
