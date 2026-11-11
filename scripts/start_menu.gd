@@ -82,7 +82,7 @@ func _ready() -> void:
 	for key in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "Join"]:
 		var b := UI.button(Color(1, 1, 1, 0.9), Color("#e7e1f5"), 40)
 		b.text = key
-		b.custom_minimum_size = Vector2(130, 88)
+		b.custom_minimum_size = Vector2(130, 88) * UI.ui_scale()
 		b.pressed.connect(_on_key.bind(key))
 		pad.add_child(b)
 	var pad_row := HBoxContainer.new()
@@ -90,7 +90,7 @@ func _ready() -> void:
 	pad_row.add_child(pad)
 	_join.add_child(pad_row)
 	var back_button := _big_button("Back", Color(1, 1, 1, 0.9), _back)
-	back_button.custom_minimum_size = Vector2(414, 80)
+	back_button.custom_minimum_size = Vector2(414, 80) * UI.ui_scale()
 	back_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_join.add_child(back_button)
 	column.add_child(_join)
@@ -110,7 +110,7 @@ func _ready() -> void:
 	if not (OS.has_feature("android") or OS.has_feature("ios")):
 		var full := UI.button(Color(1, 1, 1, 0.85), Color("#e7e1f5"))
 		full.icon = UI.fullscreen_icon()
-		full.custom_minimum_size = Vector2(72, 72)
+		full.custom_minimum_size = Vector2(72, 72) * UI.ui_scale()
 		full.anchor_left = 1.0
 		full.anchor_right = 1.0
 		full.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -131,7 +131,7 @@ func _ready() -> void:
 func _big_button(text: String, color: Color, action: Callable) -> Button:
 	var b := UI.button(color, color.darkened(0.12), 38)
 	b.text = text
-	b.custom_minimum_size = Vector2(460, 100)
+	b.custom_minimum_size = Vector2(460, 100) * UI.ui_scale()
 	b.pressed.connect(action)
 	return b
 

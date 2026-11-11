@@ -2,7 +2,7 @@ extends Control
 ## The economy part of the screen:
 ##   - resource counter (top right): stone, wood, metal; full screen button
 ##     under it;
-##   - Build menu (bottom left): pick HQ / Quarry / Paper Mill / Forge, then
+##   - Build menu (left, a third of the way down): pick HQ / Quarry / Paper Mill / Forge, then
 ##     tap the ground to place it;
 ##   - building panel (beside the buildings, when your buildings are selected by
 ##     tap or lasso): a row per type with HP, and for factories a train
@@ -30,6 +30,8 @@ var team := 0
 
 var resource_bar: PanelContainer
 var fullscreen_button: Button
+## Shown just under Build (the selection's Attack / Clear), placed by us.
+var below_build: Control = null
 var build_menu: VBoxContainer
 var building_panel: PanelContainer
 var game_over_screen: Control
@@ -100,8 +102,26 @@ func _process(_delta: float) -> void:
 		var spec: Dictionary = sim.BUILDINGS[btype]
 		_build_options[btype].disabled = not sim.can_afford(team, spec.res, spec.cost)
 	_refresh_building_panel()
+	_layout_left()
 	# Online: say so when we're waiting for the other player's orders.
 	_waiting.visible = sim.online and sim.stalled
+
+
+## Left column: the Build button about a third of the way down (lower if
+## its options wouldn't fit above it), options stacking upwards from it, and
+## `below_build` (Attack / Clear) just under it.
+func _layout_left() -> void:
+	var s: float = UI.ui_scale()
+	var margin: float = 24.0
+	var gap: float = 12.0 * s
+	var button_h: float = roundf(84 * s)
+	var options: int = _build_options.size()
+	var top: float = maxf(get_viewport_rect().size.y / 3.0, 16.0 + options * (button_h + gap))
+	build_menu.reset_size()
+	build_menu.position = Vector2(margin, top + button_h - build_menu.size.y)
+	if below_build != null:
+		below_build.reset_size()
+		below_build.position = Vector2(margin, top + button_h + gap * 2.0)
 
 
 ## The build the player picked and still has to place ("" if none).
@@ -207,7 +227,7 @@ func _build_resource_bar() -> void:
 func _build_fullscreen_button() -> void:
 	fullscreen_button = UI.button(Color(1, 1, 1, 0.85), Color("#e7e1f5"))
 	fullscreen_button.icon = UI.fullscreen_icon()
-	fullscreen_button.custom_minimum_size = Vector2(72, 72)
+	fullscreen_button.custom_minimum_size = Vector2(72, 72) * UI.ui_scale()
 	fullscreen_button.anchor_left = 1.0
 	fullscreen_button.anchor_right = 1.0
 	fullscreen_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -234,13 +254,10 @@ func _build_build_menu() -> void:
 	# Options stack upwards above the Build button, clear of the panels at
 	# the bottom centre.
 	build_menu = VBoxContainer.new()
-	build_menu.add_theme_constant_override("separation", 12)
+	build_menu.add_theme_constant_override("separation", roundi(12 * UI.ui_scale()))
 	build_menu.alignment = BoxContainer.ALIGNMENT_END
-	build_menu.anchor_top = 1.0
-	build_menu.anchor_bottom = 1.0
-	build_menu.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	build_menu.offset_left = 24
-	build_menu.offset_bottom = -104
+	# Placed each frame by _layout_left(): Build about a third of the way
+	# down on the left, its options stacking upwards.
 	_build_toggle = UI.button(BUILD_COLOR, BUILD_ARMED)
 	_build_toggle.text = "Build"
 	_build_toggle.toggle_mode = true

@@ -26,16 +26,18 @@ var _enemies: Array = []     # the last lesson's enemies
 
 ## Each step: text, and how it's done:
 ##   "on": a player action (game_controller `did`), or
-##   "poll": a method name checked every frame.
+##   "poll": a method name checked every frame, or
+##   "next": just a Next button (a tip).
 ## "enter" (optional): a method run when the step starts.
 var STEPS: Array = [
-	{"text": "Welcome to Warring Hands!\nTap one of your hands to select it.", "on": ["select", "lasso", "select_kind"]},
+	{"text": "Welcome to Warring Hands!\nFor the best experience, hold your device sideways (landscape).", "next": true},
+	{"text": "Tap one of your hands to select it.", "on": ["select", "lasso", "select_kind"]},
 	{"text": "Draw a loop around several hands with one finger to select them all.", "on": ["lasso"]},
 	{"text": "Tap the ground to send them there.", "on": ["move", "attack_move"]},
 	{"text": "Move the camera: drag with two fingers, pinch to zoom.\n(Mouse: right-drag to move, wheel to zoom.)", "poll": "_camera_moved", "enter": "_note_cameras"},
 	{"text": "Double tap a hand: every hand of that kind on screen gets selected.", "on": ["select_kind"]},
 	{"text": "Gather: with hands selected, tap your HQ (the town hall).\nRocks dig stone, papers cut wood, scissors mine metal.", "on": ["harvest", "gather"]},
-	{"text": "Build: tap Build (bottom left), pick Quarry, then tap open ground inside the circles.", "on": ["build_quarry", "build_mill", "build_forge"]},
+	{"text": "Build: tap Build (on the left), pick Quarry, then tap open ground inside the circles.", "on": ["build_quarry", "build_mill", "build_forge"]},
 	{"text": "Train: when your factory is finished, tap it and press + to make a new hand.\nNew hands go gathering by themselves.", "on": ["train"]},
 	{"text": "Split the screen: grab the white tab on a side of the screen and swipe across.\nEach pane has its own camera.", "poll": "_split_done"},
 	{"text": "Drag the divider between the panes all the way to an edge to merge them again.", "poll": "_merged_done"},
@@ -76,12 +78,12 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 12)
 	_skip = UI.button(Color("#f2eefb"), Color("#e7e1f5"), 22)
 	_skip.text = "Skip"
-	_skip.custom_minimum_size = Vector2(120, 56)
+	_skip.custom_minimum_size = Vector2(120, 56) * UI.ui_scale()
 	_skip.pressed.connect(next_step)
 	row.add_child(_skip)
 	var quit := UI.button(Color("#f2eefb"), Color("#e7e1f5"), 22)
 	quit.text = "Quit tutorial"
-	quit.custom_minimum_size = Vector2(170, 56)
+	quit.custom_minimum_size = Vector2(170, 56) * UI.ui_scale()
 	quit.pressed.connect(func(): finished.emit())
 	row.add_child(quit)
 	_done_buttons = row
@@ -101,7 +103,7 @@ func next_step() -> void:
 	var s: Dictionary = STEPS[step]
 	_count.text = "Tutorial  ·  step %d of %d" % [step + 1, STEPS.size()]
 	_text.text = s.text
-	_skip.text = "Finish" if s.get("end", false) else "Skip"
+	_skip.text = "Finish" if s.get("end", false) else ("Next" if s.get("next", false) else "Skip")
 	if s.has("enter"):
 		call(s.enter)
 	# A little bounce so the new instruction gets noticed.
@@ -115,7 +117,7 @@ func _on_did(action: String) -> void:
 		return
 	var s: Dictionary = STEPS[step]
 	if s.has("on") and action in s.on:
-		if action == "lasso" and step == 1 and game.selection.size() < 2:
+		if action == "lasso" and s.on == ["lasso"] and game.selection.size() < 2:
 			return  # a loop around just one hand doesn't count here
 		next_step()
 

@@ -41,6 +41,8 @@ const TAP_RADIUS := 44.0
 ## double tap.
 const DOUBLE_TAP_MS := 350
 const DOUBLE_TAP_PX := 40.0
+## Zoom when a game starts (map units per pixel): base and army in view.
+const HOME_ZOOM := 0.09
 ## Height (map units) of a building's middle, for lassoing it.
 const BUILDING_MIDDLE := 10.0
 const ResourcesView := preload("res://scripts/resources_view.gd")
@@ -71,6 +73,8 @@ func _ready() -> void:
 	panes.tapped.connect(_on_tapped)
 	panes.lassoed.connect(_on_lassoed)
 	panes.register_blocker(bar)
+	panes.register_blocker(bar.actions)
+	hud.below_build = bar.actions
 	for control in hud.blockers():
 		panes.register_blocker(control)
 	bar.filter_pressed.connect(_on_filter)
@@ -98,6 +102,7 @@ func _show_start_menu() -> void:
 	panes.register_blocker(menu)
 	menu.vs_computer.connect(func():
 		menu.queue_free()
+		focus_home()
 		sim.set_process(true))
 	menu.tutorial.connect(func():
 		menu.queue_free()
@@ -105,6 +110,25 @@ func _show_start_menu() -> void:
 	menu.online_ready.connect(func(session, seat):
 		menu.queue_free()
 		start_online(session, seat))
+
+
+## Starts the camera(s) zoomed in on our HQ and army, not the whole map.
+func focus_home() -> void:
+	var hq: Dictionary = sim.hq_of(player_team)
+	if hq.is_empty():
+		return
+	var spot := Vector2(hq.x, hq.z)
+	var army: Array = sim.units.filter(func(u): return u.team == player_team)
+	if not army.is_empty():
+		var middle := Vector2.ZERO
+		for u in army:
+			middle += Vector2(u.x, u.z)
+		spot = (spot + middle / army.size()) * 0.5  # between the HQ and the army
+	spot /= float(sim.SCALE)
+	for leaf in panes._leaves():
+		leaf.camera.target = Vector3(spot.x, 0, spot.y)
+		leaf.camera.units_per_pixel = HOME_ZOOM
+		leaf.camera.refit()
 
 
 ## Tutorial: our army alone on the island (enemies come for the last lesson),
@@ -120,6 +144,7 @@ func start_tutorial() -> Control:
 	tutorial.setup(self, sim, panes, hud)
 	hud.get_parent().add_child(tutorial)
 	panes.register_blocker(tutorial.card())
+	focus_home()
 	tutorial.finished.connect(func(): get_tree().reload_current_scene())
 	sim.set_process(true)
 	return tutorial
@@ -133,6 +158,7 @@ func start_online(session: Node, seat: int) -> void:
 	_select([])
 	_select_buildings([])
 	hud.setup(sim, seat)
+	focus_home()
 	session.attach(sim)
 	session.opponent_left.connect(func():
 		if sim.winner < 0:

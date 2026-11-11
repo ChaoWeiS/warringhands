@@ -1,8 +1,9 @@
 extends HBoxContainer
 ## Bar at the bottom of the screen showing what's selected: each unit
-## type's hand icon with a count ("× 4"). Tap one to keep only that type;
-## tap Attack, then the ground, to attack-move there; tap Clear to deselect.
-## Hidden when nothing is selected.
+## type's hand icon with a count ("× 4"). Tap one to keep only that type.
+## Attack (then tap the ground: attack-move) and Clear (deselect) are in
+## `actions`, a small stack the HUD places on the left under Build.
+## Both are hidden when nothing is selected.
 
 signal filter_pressed(kind: int)
 signal clear_pressed
@@ -19,6 +20,8 @@ const TEXT_COLOR := Color("#4a4560")
 
 var _kind_buttons: Array = []
 var _attack: Button
+## Attack and Clear, stacked (placed on screen by the HUD).
+var actions := VBoxContainer.new()
 
 
 func _ready() -> void:
@@ -33,21 +36,24 @@ func _ready() -> void:
 	for kind in 3:
 		var button := _make_button(KIND_COLORS[kind])
 		button.icon = _kind_icon(kind)
-		button.add_theme_constant_override("icon_max_width", 66)
+		button.add_theme_constant_override("icon_max_width", roundi(66 * UI.ui_scale()))
 		button.add_theme_constant_override("h_separation", 8)
 		button.pressed.connect(func(): filter_pressed.emit(kind))
 		add_child(button)
 		_kind_buttons.append(button)
+	actions.add_theme_constant_override("separation", roundi(12 * UI.ui_scale()))
 	_attack = _make_button(ATTACK_COLOR, ATTACK_ARMED_COLOR)
 	_attack.text = "Attack"
 	_attack.toggle_mode = true
 	_attack.toggled.connect(func(on): attack_toggled.emit(on))
-	add_child(_attack)
+	actions.add_child(_attack)
 	var clear := _make_button(CLEAR_COLOR)
 	clear.text = "Clear"
 	clear.pressed.connect(func(): clear_pressed.emit())
-	add_child(clear)
+	actions.add_child(clear)
+	add_sibling.call_deferred(actions)
 	visible = false
+	actions.visible = false
 
 
 ## counts = [rocks, papers, scissors] selected.
@@ -59,6 +65,7 @@ func show_counts(counts: Array) -> void:
 		button.visible = counts[kind] > 0
 		total += counts[kind]
 	visible = total > 0
+	actions.visible = visible
 	if not visible:
 		set_attack_armed(false)
 
@@ -79,9 +86,10 @@ func _kind_icon(kind: int) -> AtlasTexture:
 
 func _make_button(color: Color, pressed_color: Color = Color.TRANSPARENT) -> Button:
 	var button := Button.new()
-	button.custom_minimum_size = Vector2(0, 84)  # width fits the content
+	var s: float = UI.ui_scale()
+	button.custom_minimum_size = Vector2(0, roundf(84 * s))  # width fits the content
 	button.focus_mode = Control.FOCUS_NONE
-	button.add_theme_font_size_override("font_size", 30)
+	button.add_theme_font_size_override("font_size", roundi(30 * s))
 	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
 		button.add_theme_color_override(state, TEXT_COLOR)
 	for state in ["normal", "hover", "pressed", "hover_pressed"]:

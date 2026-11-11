@@ -37,7 +37,9 @@
 - Unit art: animated hand sprites with five animations of 5 frames each: **idle**, **moving** (hops along with dust puffs), **attack** (wind-up, lunge, POW! / SLAP! / SNIP!), **defend** (crying when hit) and **dying** (dizzy, keels over, a little ghost floats up). On a team-coloured base (pink vs blue). Source: `art_source/hands_sheet_v2.png`, cut by `tools/cut_hand_sprites.py` into `assets/units/hands.png` (192 px cells, row = kind × 5 + animation).
 - **One finger:** tap your unit to select it; draw a loop to lasso; tap the ground to move the selection there (they spread into a square formation).
 - Selection is shared by all panes: select in one pane, tap the destination in another.
-- Selection bar (bottom): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type; **Attack** arms an attack-move for the next ground tap; Clear to deselect.
+- Selection bar (bottom): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type. **Attack** (arms an attack-move for the next ground tap) and **Clear** sit on the left, just under Build.
+- Left column: **Build** about a third of the way down (lower on short screens), its options opening upwards; Attack / Clear below it. On phones (short screen side under ~560 CSS px) all game buttons are 35% bigger.
+- A game starts zoomed in on your HQ and army (not the whole map).
 - A second finger in the pane cancels a tap or lasso (it becomes a camera gesture).
 - **Pathfinding:** units plan a route around lakes, forests, plateaus and resource props (A* on a 4-unit grid, smoothed into straight runs). An order onto blocked ground (e.g. a lake) goes to the nearest open spot. Selected units show their route as a dashed line on the ground.
 - **Collision:** each unit has a round body (radius 3.2 map units); bodies don't overlap (pushed apart 8 times a tick, never onto blocked ground).
@@ -111,7 +113,7 @@
 ## Matches
 - Win by destroying the enemy HQ, or when the opponent concedes.
 - 10-30 minutes. Ideas against stalemates: HQ armor decays after ~20 min; resource spots run out.
-- **Tutorial** (start menu): a card at the top walks through select, loop, move, camera, double tap, gather, build, train, split / merge panes and a first fight (enemies arrive for it); each step moves on when done, or Skip. The on-screen instructions are gone; the tutorial teaches them.
+- **Tutorial** (start menu): opens with a tip to hold the device sideways (landscape); then a card at the top walks through select, loop, move, camera, double tap, gather, build, train, split / merge panes and a first fight (enemies arrive for it); each step moves on when done, or Skip. The on-screen instructions are gone; the tutorial teaches them.
 - Later tutorial ideas: upgrades, terrain, defences, Shifter.
 - Terrain ideas: shallow water slows paper, rocky ground slows scissors.
 
