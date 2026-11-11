@@ -133,6 +133,7 @@ const SELL_REFUND := 50
 const TRAIN_TICKS := 100
 const QUEUE_MAX := 5
 ## Where each HQ stands (offset from the island centre, mirrored for team 1).
+## Team 0's HQ on the first map (each map has its own: field.hq_offset).
 const HQ_OFFSET := Vector2i(-200, -30)
 
 ## Movement per tick, by kind (placeholder numbers until balancing).
@@ -388,8 +389,15 @@ func nav():
 
 
 ## Lets the computer play a team (it gives orders like a player would).
-func enable_ai(team: int) -> void:
-	_ais[team] = AI.new(team)
+## The computer plays this side ("easy", "normal" or "hard").
+func enable_ai(team: int, difficulty: String = "normal") -> void:
+	var old = _ais.get(team, null)
+	if old != null and old.bonus() > 0:
+		for res in 3:
+			resources[team][res] -= old.bonus()
+	_ais[team] = AI.new(team, difficulty)
+	for res in 3:
+		resources[team][res] += _ais[team].bonus()
 
 
 func ai_of(team: int):
@@ -549,7 +557,7 @@ func _step() -> void:
 	var ai_teams: Array = _ais.keys()
 	ai_teams.sort()
 	for team in ai_teams:
-		if tick >= AI.START and tick % AI.INTERVAL == team:
+		if tick >= AI.START and tick % _ais[team].interval == team:
 			_ais[team].think(self)
 	for u in units:
 		u.px = u.x
@@ -1197,8 +1205,10 @@ func _add_building(team: int, btype: String, at: Vector2i, finished: bool) -> Di
 ## HQs (mirrored) and the resource spots.
 func _spawn_bases() -> void:
 	var centre := Vector2i(410, 410) * SCALE
-	_add_building(0, "hq", centre + HQ_OFFSET * SCALE, true)
-	_add_building(1, "hq", centre - HQ_OFFSET * SCALE, true)
+	field.build()
+	var hq_at: Vector2i = field.hq_offset * SCALE
+	_add_building(0, "hq", centre + hq_at, true)
+	_add_building(1, "hq", centre - hq_at, true)
 	for spot in field.resource_spots():
 		var tree: bool = spot.get("tree", false)
 		var n := {
@@ -1461,7 +1471,11 @@ static func _isqrt(n: int) -> int:
 ## Two armies on opposite sides of the island, mirrored for fairness.
 func _spawn_armies() -> void:
 	var center := Vector2i(410, 410) * SCALE
-	var bases := [center + Vector2i(-150, -40) * SCALE, center + Vector2i(150, 40) * SCALE]
+	var army: Vector2i = Vector2i(-150, -40)
+	if field != null:
+		field.build()
+		army = field.army_offset
+	var bases := [center + army * SCALE, center - army * SCALE]
 	for team in 2:
 		var flip: int = 1 if team == 0 else -1
 		for kind in 3:

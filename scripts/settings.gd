@@ -58,6 +58,21 @@ static func get_option(which: String) -> bool:
 	return _options[which]
 
 
+## A saved choice (a word, like the difficulty).
+static func get_choice(which: String, default: String) -> String:
+	var cfg := ConfigFile.new()
+	if cfg.load(FILE) != OK:
+		return default
+	return str(cfg.get_value("choices", which, default))
+
+
+static func set_choice(which: String, value: String) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(FILE)
+	cfg.set_value("choices", which, value)
+	cfg.save(FILE)
+
+
 static func set_option(which: String, on: bool) -> void:
 	_options[which] = on
 	var cfg := ConfigFile.new()

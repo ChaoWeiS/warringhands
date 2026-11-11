@@ -35,20 +35,15 @@ const LAKE_DEEP := Color("#8ec8e3")
 const PLATEAU_TOP := Color("#d3ecbf")
 const CROWNS := [Color("#b8e0a0"), Color("#a6d68f"), Color("#cfe8b4"), Color("#b8e0a0"), Color("#f6c3d8")]
 
-# Coastline wobble: [frequency, amplitude, phase]. Only EVEN frequencies, so
-# the island looks the same after a 180° turn (fair for two players).
-const COAST_WAVES := [
-	[2, 0.10, 0.6], [4, 0.07, 2.1], [6, 0.04, 4.0], [8, 0.025, 1.3], [12, 0.012, 5.2],
-]
-
-# Terrain, as offsets from the island centre. Each is also placed mirrored
-# (turned 180° around the centre) for the other side.
-# Lakes: [offset, radius x, radius z, rotation]
-const LAKES := [[Vector2(0, 0), 58.0, 34.0, 0.5], [Vector2(-50, 185), 32.0, 22.0, -0.4]]
-# Forests: [offset, radius, seed]
-const FORESTS := [[Vector2(-70, -110), 34.0, 11], [Vector2(-215, 100), 28.0, 12], [Vector2(-40, 90), 22.0, 13]]
-# Plateaus (raised ground with cliffs): [offset, radius x, radius z, rotation]
-const PLATEAUS := [[Vector2(-90, 30), 26.0, 20.0, 0.3], [Vector2(-110, -185), 22.0, 17.0, -0.6]]
+## Which map (scripts/maps.gd); empty = MatchSetup.map. The layout below
+## comes from it: coastline wobble, lakes, forests, plateaus and resource
+## spots, as offsets from the island centre, each also placed mirrored
+## (turned 180° around the centre) for the other side.
+var map_id := ""
+var COAST_WAVES: Array = []
+var LAKES: Array = []
+var FORESTS: Array = []
+var PLATEAUS: Array = []
 const PLATEAU_HEIGHT := 5.0
 # Shape wobble for lakes and plateaus (even frequencies only).
 const BLOB_WAVES := [[2, 0.12, 0.4], [4, 0.08, 1.7], [6, 0.05, 3.1]]
@@ -59,10 +54,14 @@ const UNIT_CLEARANCE := 3.0
 const TREE_RADIUS := 3.5
 const SHORE_CLEARANCE := 6.0
 
-# Resource spots as offsets from the island centre (mirrored for fairness).
-const STONES := [Vector2(-170, -170), Vector2(170, 170)]
-const WOODS := [Vector2(-170, 170), Vector2(170, -170)]
-const METALS := [Vector2(0, -125), Vector2(0, 125), Vector2(-230, 0), Vector2(230, 0)]
+# Resource spots as offsets from the island centre (already listed for
+# both sides in the map, or mirrored here: see _load_map).
+var STONES: Array = []
+var WOODS: Array = []
+var METALS: Array = []
+## Team 0's HQ and army start (offsets; team 1's are mirrored).
+var hq_offset := Vector2i(-200, -30)
+var army_offset := Vector2i(-150, -40)
 
 
 var coastline: PackedVector2Array = PackedVector2Array()
@@ -91,6 +90,7 @@ func build() -> void:
 	if _built:
 		return
 	_built = true
+	_load_map()
 	coastline = _build_coastline()
 	_walk_coast = _offset(coastline, -SHORE_CLEARANCE)
 	var c := get_center()
@@ -117,6 +117,36 @@ func build() -> void:
 		_blocked_circles.append({"center": c + spot, "radius": 16.0 + UNIT_CLEARANCE})
 	for spot in METALS:
 		_blocked_circles.append({"center": c + spot, "radius": 5.0 + UNIT_CLEARANCE})
+
+
+func _load_map() -> void:
+	var MatchSetup = load("res://scripts/match_setup.gd")
+	if map_id == "":
+		map_id = MatchSetup.map
+	var m: Dictionary = load("res://scripts/maps.gd").get_map(map_id)
+	MatchSetup.built_map = map_id
+	island_radius = m.radius
+	COAST_WAVES = m.coast
+	LAKES = m.lakes
+	FORESTS = m.forests
+	PLATEAUS = m.plateaus
+	hq_offset = m.hq
+	army_offset = m.army
+	# Resource spots: every one listed gets its mirrored twin too (unless the
+	# map lists both already, as the first map does).
+	STONES = _with_twins(m.stones)
+	WOODS = _with_twins(m.woods)
+	METALS = _with_twins(m.metals)
+
+
+func _with_twins(spots: Array) -> Array:
+	var out: Array = []
+	for p in spots:
+		if not out.has(p):
+			out.append(p)
+		if not out.has(-p) and not spots.has(-p):
+			out.append(-p)
+	return out
 
 
 ## Resource spots on both sides: [{res, pos, radius}] (map units).

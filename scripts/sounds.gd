@@ -110,6 +110,13 @@ func unit_event(category: String, at: Vector3) -> void:
 		_play_clip(category, clip, BASE_DB - 2.0, 0.0, _rng.randf_range(0.92, 1.12))
 
 
+## A sound that isn't anywhere on the map (the countdown's ticks).
+func cue(category: String, pitch: float = 1.0) -> void:
+	var clip: AudioStream = _pick(category)
+	if clip != null:
+		_play_clip(category, clip, BASE_DB - 2.0, 0.0, pitch)
+
+
 func _pick(category: String) -> AudioStream:
 	var clips: Array = CLIPS.get(category, [])
 	return null if clips.is_empty() else clips[_rng.randi() % clips.size()]

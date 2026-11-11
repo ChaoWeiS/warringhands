@@ -13,11 +13,23 @@ const UI := preload("res://scripts/ui_style.gd")
 const NetSession := preload("res://scripts/net/net_session.gd")
 const CODE_LENGTH := 4
 const BuildInfo := preload("res://scripts/build_info.gd")
+const Maps := preload("res://scripts/maps.gd")
+const MatchSetup := preload("res://scripts/match_setup.gd")
+const Settings := preload("res://scripts/settings.gd")
+const Field := preload("res://scripts/field.gd")
+const DIFFICULTY_NAMES := {"easy": "Easy", "normal": "Normal", "hard": "Hard"}
 
 var _header: VBoxContainer     # title, subtitle, hands
 var _main: VBoxContainer       # the three big choices
 var _join: VBoxContainer       # number pad
 var _wait: VBoxContainer       # "your code is ..." / "joining ..."
+var _setup: VBoxContainer      # map (and difficulty) before a game
+var _setup_title: Label
+var _setup_go: Button
+var _difficulty_row: HBoxContainer
+var _map_cards := {}           # map id -> Button
+var _difficulty_buttons := {}  # "easy"... -> Button
+var _setup_for := ""           # "computer" or "online"
 var _code_label: Label
 var _status: Label
 var _wait_title: Label
@@ -68,8 +80,8 @@ func _ready() -> void:
 	_main = VBoxContainer.new()
 	_main.add_theme_constant_override("separation", 18)
 	_main.add_child(_big_button("Tutorial", Color("#fbf1d6"), func(): tutorial.emit()))
-	_main.add_child(_big_button("Play vs Computer", Color("#e7e1f5"), func(): vs_computer.emit()))
-	_main.add_child(_big_button("Create Online Game", Color("#fbe3ea"), _create))
+	_main.add_child(_big_button("Play vs Computer", Color("#e7e1f5"), func(): _open_setup("computer")))
+	_main.add_child(_big_button("Create Online Game", Color("#fbe3ea"), func(): _open_setup("online")))
 	_main.add_child(_big_button("Join Online Game", Color("#d3ece8"), func(): _show(_join)))
 	column.add_child(_main)
 
@@ -100,6 +112,8 @@ func _ready() -> void:
 	back_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_join.add_child(back_button)
 	column.add_child(_join)
+
+	_build_setup(column)
 
 	_wait = VBoxContainer.new()
 	_wait.add_theme_constant_override("separation", 18)
@@ -206,9 +220,9 @@ func _big_button(text: String, color: Color, action: Callable) -> Button:
 
 
 func _show(part: Control) -> void:
-	for p in [_main, _join, _wait]:
+	for p in [_main, _join, _wait, _setup]:
 		p.visible = p == part
-	_header.visible = part != _join  # the pad needs the room
+	_header.visible = part != _join and part != _setup  # these need the room
 	_status.text = ""
 	if part == _join:
 		_typed = ""
@@ -223,6 +237,168 @@ func _back() -> void:
 	_show(_main)
 
 
+# --- Match setup: map, difficulty ---------------------------------------------
+
+func _build_setup(column: VBoxContainer) -> void:
+	var s: float = UI.ui_scale()
+	_setup = VBoxContainer.new()
+	_setup.add_theme_constant_override("separation", roundi(16 * s))
+	_setup_title = UI.label("", 52)
+	_setup_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_setup.add_child(_setup_title)
+	var map_label := UI.label("Map", 30)
+	map_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_setup.add_child(map_label)
+	var maps := HBoxContainer.new()
+	maps.alignment = BoxContainer.ALIGNMENT_CENTER
+	maps.add_theme_constant_override("separation", roundi(14 * s))
+	for id in Maps.ORDER:
+		var card := _map_card(id)
+		maps.add_child(card)
+		_map_cards[id] = card
+	_setup.add_child(maps)
+	_difficulty_row = HBoxContainer.new()
+	_difficulty_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_difficulty_row.add_theme_constant_override("separation", roundi(12 * s))
+	var diff_label := UI.label("Difficulty", 30)
+	diff_label.custom_minimum_size.x = 170 * s
+	_difficulty_row.add_child(diff_label)
+	for d in MatchSetup.DIFFICULTIES:
+		var b := UI.button(Color(1, 1, 1, 0.9), Color("#d6cdef"), 30)
+		b.text = DIFFICULTY_NAMES[d]
+		b.custom_minimum_size = Vector2(150, 76) * s
+		b.pressed.connect(func(): _pick_difficulty(d))
+		_difficulty_row.add_child(b)
+		_difficulty_buttons[d] = b
+	_setup.add_child(_difficulty_row)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", roundi(16 * s))
+	var back := _big_button("Back", Color(1, 1, 1, 0.9), _back)
+	back.custom_minimum_size = Vector2(220, 90) * s
+	row.add_child(back)
+	_setup_go = _big_button("Start", Color("#d3ecbf"), _setup_confirmed)
+	_setup_go.custom_minimum_size = Vector2(300, 90) * s
+	row.add_child(_setup_go)
+	_setup.add_child(row)
+	column.add_child(_setup)
+
+
+## A map choice: its name and a little picture of the island.
+func _map_card(id: String) -> Button:
+	var s: float = UI.ui_scale()
+	var m: Dictionary = Maps.MAPS[id]
+	var b := UI.button(Color(1, 1, 1, 0.9), Color("#fff3b0"), 26)
+	b.custom_minimum_size = Vector2(250, 300) * s
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.add_theme_constant_override("separation", roundi(6 * s))
+	var pic := Control.new()
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pic.custom_minimum_size = Vector2(190, 190) * s
+	pic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	pic.draw.connect(func(): _draw_map_preview(pic, id))
+	box.add_child(pic)
+	var name := UI.label(m.name, roundi(28 * s))
+	name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(name)
+	var blurb := UI.label(m.blurb, roundi(18 * s))
+	blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	blurb.custom_minimum_size.x = 220 * s
+	blurb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(blurb)
+	b.add_child(box)
+	b.pressed.connect(func(): _pick_map(id))
+	return b
+
+
+## Island outlines for the previews, worked out once per map.
+static var _previews := {}
+
+
+func _draw_map_preview(pic: Control, id: String) -> void:
+	if not _previews.has(id):
+		var was_built: String = MatchSetup.built_map
+		var f: Node3D = Field.new()
+		f.map_id = id
+		f.build()
+		var hq: Vector2 = f.get_center() + Vector2(f.hq_offset)
+		_previews[id] = {"coast": f.coastline, "lakes": f.lakes, "plateaus": f.plateaus,
+				"forests": f.forests.map(func(x): return [x.center, x.radius]),
+				"hqs": [hq, 2.0 * f.get_center() - hq], "size": f.map_size.x}
+		MatchSetup.built_map = was_built  # (only the scene's own field counts)
+		f.free()
+	var p: Dictionary = _previews[id]
+	var side: float = pic.size.x
+	var k: float = side / p.size
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color("#b9e3f0")
+	box.set_corner_radius_all(roundi(side * 0.1))
+	pic.draw_style_box(box, Rect2(Vector2.ZERO, pic.size))
+	var scaled := func(poly: PackedVector2Array) -> PackedVector2Array:
+		var out := PackedVector2Array()
+		for q in poly:
+			out.append(q * k)
+		return out
+	pic.draw_colored_polygon(scaled.call(p.coast), Color("#c3e6ad"))
+	for poly in p.plateaus:
+		pic.draw_colored_polygon(scaled.call(poly), Color("#d3ecbf"))
+	for poly in p.lakes:
+		pic.draw_colored_polygon(scaled.call(poly), Color("#8ec8e3"))
+	for f in p.forests:
+		pic.draw_circle(f[0] * k, f[1] * k, Color("#9fd18a"))
+	var colors := [Color("#ff7f9a"), Color("#6fb6ff")]
+	for i in 2:
+		var c: Vector2 = p.hqs[i] * k
+		pic.draw_rect(Rect2(c - Vector2(7, 7), Vector2(14, 14)), Color("#5f5873"))
+		pic.draw_rect(Rect2(c - Vector2(5, 5), Vector2(10, 10)), colors[i])
+
+
+func _open_setup(what: String) -> void:
+	_setup_for = what
+	_setup_title.text = "Play vs Computer" if what == "computer" else "Create Online Game"
+	_setup_go.text = "Start" if what == "computer" else "Create"
+	_difficulty_row.visible = what == "computer"
+	MatchSetup.difficulty = Settings.get_choice("difficulty", "normal")
+	_show(_setup)
+	_pick_map(MatchSetup.map)
+	_pick_difficulty(MatchSetup.difficulty)
+
+
+func _pick_map(id: String) -> void:
+	MatchSetup.map = id
+	for other in _map_cards:
+		_highlight(_map_cards[other], other == id)
+
+
+func _pick_difficulty(d: String) -> void:
+	MatchSetup.difficulty = d
+	Settings.set_choice("difficulty", d)
+	for other in _difficulty_buttons:
+		_highlight(_difficulty_buttons[other], other == d)
+
+
+## The picked choice: a warm fill and a thick border.
+func _highlight(b: Button, on: bool) -> void:
+	for state in ["normal", "hover"]:
+		var box: StyleBoxFlat = b.get_theme_stylebox(state).duplicate()
+		box.bg_color = Color("#fff3b0") if on else Color(1, 1, 1, 0.9)
+		box.border_color = Color("#e0a64e") if on else Color(0, 0, 0, 0)
+		box.set_border_width_all(4 if on else 0)
+		b.add_theme_stylebox_override(state, box)
+
+
+func _setup_confirmed() -> void:
+	if _setup_for == "computer":
+		vs_computer.emit()
+	else:
+		_create()
+
+
 ## A session to the server, or null (and a message) if there isn't one.
 func _new_session() -> Node:
 	var url: String = NetSession.server_url()
@@ -231,6 +407,7 @@ func _new_session() -> Node:
 		_status.text = "Online play isn't set up yet (no game server)."
 		return null
 	_session = NetSession.new()
+	_session.map = MatchSetup.map
 	add_child(_session)
 	_session.failed.connect(func(message):
 		var keep := _status

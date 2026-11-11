@@ -80,6 +80,9 @@
 - **Minimap:** a small map in the top-left of every pane: the island, buildings and hands as dots in team colours, and a white outline of what that pane shows. Touch or drag on it to move that pane's camera. Settings → "Minimap in each pane" turns them off.
 - **Unselect:** tap with two fingers at once (quick, without moving). Clears hands and buildings.
 - **Surrender:** white flag button just left of Settings (in games, not the tutorial). It asks "Surrender?" (Keep playing / Surrender); surrendering loses the game. Pop-up windows (Settings, Surrender?) keep touches off the map while open.
+- **Maps:** Hand Island, Twin Lakes, Deep Woods (`scripts/maps.gd`; each mirrored through the centre). Picked on the Play vs Computer / Create Online Game screen (with little previews); the guest gets the host's pick. A different map than the one loaded reloads the scene with the match waiting (`scripts/match_setup.gd`).
+- **Difficulty** (vs Computer): Easy (thinks every 2 s, no counter-picking, late small waves), Normal, Hard (thinks twice a second, early big waves, +200 of each resource). Remembered.
+- **Countdown:** 3, 2, 1, Fight! before every match (not the tutorial); the game starts moving on Fight!.
 - **Tap priority** with units selected: an enemy unit under the finger comes first (even standing on your HQ's picture), unless one of your own units is closer to the finger.
 - Prices in the Build menu and on train buttons show the resource icons ("150 [rocks]").
 - **Selecting buildings:** tap a building anywhere on its picture (or its ground circle), or draw a loop around several. A loop with any of your units inside selects the units; otherwise it selects your buildings inside it. The panel shows one row per type ("Paper Mill × 2"); its + button trains at the least busy finished one.

@@ -39,6 +39,9 @@ const Sounds := preload("res://scripts/sounds.gd")
 const Music := preload("res://scripts/music.gd")
 const Settings := preload("res://scripts/settings.gd")
 const Minimap := preload("res://scripts/minimap.gd")
+const MatchSetup := preload("res://scripts/match_setup.gd")
+## The countdown before a match: each number shows this long (s).
+const COUNT_STEP := 0.8
 ## How close (pixels) a tap must be to a unit to pick it.
 const TAP_RADIUS := 44.0
 ## Two taps this close in time (ms) and space (px), in the same pane, make a
@@ -66,6 +69,8 @@ var bar: Control
 var buildings_view: Node3D
 var hud: Control
 var minimap: Control
+## The 3-2-1 overlay while it's showing (for tests).
+var countdown_layer: Control
 
 
 func _ready() -> void:
@@ -131,8 +136,14 @@ func _ready() -> void:
 			kept.erase(id)
 			_select_buildings(kept))
 	sim.game_over.connect(func(winner): hud.show_game_over(winner))
-	# The start menu (not when a test drives the game).
-	if get_tree().get_script() == null:
+	# A match picked before the reload (another map) starts right away;
+	# otherwise the start menu (not when a test drives the game).
+	if not MatchSetup.pending.is_empty():
+		var p: Dictionary = MatchSetup.pending
+		MatchSetup.pending = {}
+		_begin(p.mode, MatchSetup.session, p.get("seat", 0))
+		MatchSetup.session = null
+	elif get_tree().get_script() == null:
 		_show_start_menu()
 
 
@@ -145,15 +156,73 @@ func _show_start_menu() -> void:
 	panes.register_blocker(menu)
 	menu.vs_computer.connect(func():
 		menu.queue_free()
-		music.play("battle")
-		focus_home()
-		sim.set_process(true))
+		_begin("computer"))
 	menu.tutorial.connect(func():
 		menu.queue_free()
-		start_tutorial())
+		_begin("tutorial"))
 	menu.online_ready.connect(func(session, seat):
 		menu.queue_free()
-		start_online(session, seat))
+		_begin("online", session, seat))
+
+
+## Starts a match of this kind on the picked map. If the island in the
+## scene is a different map, the scene reloads with the match waiting
+## (MatchSetup.pending) and this runs again once it's built.
+func _begin(mode: String, session: Node = null, seat: int = 0) -> void:
+	if mode == "tutorial":
+		MatchSetup.map = "island"  # the lessons are written for it
+	elif mode == "online" and session != null and session.map != "":
+		MatchSetup.map = session.map  # the host's pick
+	if MatchSetup.map != MatchSetup.built_map:
+		MatchSetup.pending = {"mode": mode, "seat": seat}
+		MatchSetup.session = session
+		get_tree().reload_current_scene.call_deferred()
+		return
+	match mode:
+		"tutorial":
+			start_tutorial()
+		"online":
+			start_online(session, seat)
+		_:
+			sim.enable_ai(1 - player_team, MatchSetup.difficulty)
+			music.play("battle")
+			focus_home()
+			countdown(func(): sim.set_process(true))
+
+
+## 3, 2, 1, Fight! over the map, then `then` (the game starts moving).
+func countdown(then: Callable) -> Control:
+	sim.set_process(false)
+	var layer := Control.new()
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(layer)
+	var label := Label.new()
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 220)
+	label.add_theme_color_override("font_color", Color("#4a4560"))
+	label.add_theme_color_override("font_outline_color", Color.WHITE)
+	label.add_theme_constant_override("outline_size", 36)
+	layer.add_child(label)
+	var steps := ["3", "2", "1", "Fight!"]
+	var tween := layer.create_tween()
+	for i in steps.size():
+		tween.tween_callback(func():
+			label.text = steps[i]
+			label.pivot_offset = label.size * 0.5
+			label.scale = Vector2.ONE * 1.6
+			label.modulate.a = 1.0
+			sounds.cue("build_place" if i < 3 else "build_done", 1.0 + 0.12 * i))
+		tween.tween_property(label, "scale", Vector2.ONE, COUNT_STEP * 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween.tween_interval(COUNT_STEP * 0.5)
+		if i == 2:
+			tween.tween_callback(then)  # moving as "Fight!" shows
+	tween.tween_property(label, "modulate:a", 0.0, 0.4)
+	tween.tween_callback(layer.queue_free)
+	countdown_layer = layer
+	return layer
 
 
 ## Starts the camera(s) zoomed in on our HQ and army, not the whole map.
@@ -214,7 +283,7 @@ func start_online(session: Node, seat: int) -> void:
 	session.desynced.connect(func():
 		sim.set_process(false)
 		hud.show_message("Games went out of sync"))
-	sim.set_process(true)
+	countdown(func(): sim.set_process(true))
 
 
 func _process(_delta: float) -> void:

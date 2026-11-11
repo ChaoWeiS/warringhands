@@ -62,6 +62,8 @@ func _run() -> void:
 	menu_b.online_ready.connect(func(session, seat): got.b = [session, seat])
 	check("the menu shows the version", menu_a._version_label.text.begins_with("version ")
 			and not menu_a._update_button.visible)
+	var MatchSetup = load("res://scripts/match_setup.gd")
+	MatchSetup.map = "woods"  # the host picked Deep Woods
 	menu_a._create()
 	var shown: bool = await until(func(): return menu_a._wait_text.text.length() == 4)
 	var code: String = menu_a._wait_text.text
@@ -76,6 +78,8 @@ func _run() -> void:
 		print("FAILURES: ", failures + 1)
 		quit(1)
 		return
+	check("the guest is told the host's map (%s)" % got.b[0].map, got.a[0].map == "woods" and got.b[0].map == "woods")
+	MatchSetup.map = "island"
 	menu_a.queue_free()
 	menu_b.queue_free()
 

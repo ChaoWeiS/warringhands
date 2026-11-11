@@ -16,7 +16,18 @@ extends RefCounted
 ##   - attacks: sends waves at the enemy HQ, the first after FIRST_WAVE ticks,
 ##     each one bigger than the last.
 
-## Think once a second, starting 2 seconds in.
+## How it plays at each difficulty (see LEVELS): how often it thinks, when
+## and how big its attack waves are, extra workers, whether it picks units
+## to counter yours, and a head start in resources.
+const LEVELS := {
+	"easy": {"interval": 40, "first_wave": 4800, "wave_gap": 1500, "wave_size": 4, "growth": 1,
+			"extra_workers": 0, "counter": false, "defend_radius": 4000, "bonus": 0},
+	"normal": {"interval": 20, "first_wave": 3000, "wave_gap": 900, "wave_size": 6, "growth": 2,
+			"extra_workers": 2, "counter": true, "defend_radius": 6000, "bonus": 0},
+	"hard": {"interval": 10, "first_wave": 2000, "wave_gap": 600, "wave_size": 8, "growth": 3,
+			"extra_workers": 3, "counter": true, "defend_radius": 7000, "bonus": 200},
+}
+## Think once a second (normal), starting 2 seconds in.
 const INTERVAL := 20
 const START := 40
 ## First attack after 2.5 minutes, then every 45 s (if the army is big enough).
@@ -32,13 +43,35 @@ const RESERVE := 200
 const EXTRA_WORKERS := 2
 
 var team: int
+var level := "normal"
+var interval: int = INTERVAL
 var wave_size: int = FIRST_WAVE_SIZE
 var next_wave: int = FIRST_WAVE
 var waves_sent: int = 0
+var _wave_gap: int = WAVE_GAP
+var _growth: int = WAVE_GROWTH
+var _extra_workers: int = EXTRA_WORKERS
+var _counter := true
+var _defend_radius: int = DEFEND_RADIUS
 
 
-func _init(ai_team: int) -> void:
+func _init(ai_team: int, difficulty: String = "normal") -> void:
 	team = ai_team
+	level = difficulty if LEVELS.has(difficulty) else "normal"
+	var l: Dictionary = LEVELS[level]
+	interval = l.interval
+	next_wave = l.first_wave
+	wave_size = l.wave_size
+	_wave_gap = l.wave_gap
+	_growth = l.growth
+	_extra_workers = l.extra_workers
+	_counter = l.counter
+	_defend_radius = l.defend_radius
+
+
+## Resources it starts with on top of the usual (hard: a head start).
+func bonus() -> int:
+	return LEVELS[level].bonus
 
 
 func think(sim: Node) -> void:
@@ -56,8 +89,11 @@ func think(sim: Node) -> void:
 		_attack(sim, mine)
 
 
-## The kind that beats the opponent's most common unit type.
+## The kind that beats the opponent's most common unit type. (Easy doesn't
+## look: it just changes its favourite every two minutes.)
 func _counter_kind(sim: Node) -> int:
+	if not _counter:
+		return (sim.tick / 2400) % 3
 	var counts := [0, 0, 0]
 	for u in sim.units:
 		if u.team != team:
@@ -77,7 +113,7 @@ func _counter_kind(sim: Node) -> int:
 ## extra workers (any kind) on the favourite unit's resource.
 func _keep_workers(sim: Node, mine: Array, hq: Dictionary, favourite: int) -> void:
 	for res in 3:
-		var wanted: int = 1 + (EXTRA_WORKERS if res == favourite else 0)
+		var wanted: int = 1 + (_extra_workers if res == favourite else 0)
 		var have := 0
 		for u in mine:
 			if u.job == "gather" and sim.get_node_by_id(u.node).get("res", -1) == res:
@@ -182,7 +218,7 @@ func _defend(sim: Node, mine: Array) -> bool:
 		if u.team == team:
 			continue
 		for b in sim.buildings:
-			if b.team == team and sim._dist2(u, b) <= DEFEND_RADIUS * DEFEND_RADIUS:
+			if b.team == team and sim._dist2(u, b) <= _defend_radius * _defend_radius:
 				intruder = u
 				break
 		if not intruder.is_empty():
@@ -218,5 +254,5 @@ func _attack(sim: Node, mine: Array) -> void:
 		return
 	sim.command_attack_move(army, Vector3(goal.x / float(sim.SCALE), 0, goal.z / float(sim.SCALE)))
 	waves_sent += 1
-	wave_size += WAVE_GROWTH
-	next_wave = sim.tick + WAVE_GAP
+	wave_size += _growth
+	next_wave = sim.tick + _wave_gap

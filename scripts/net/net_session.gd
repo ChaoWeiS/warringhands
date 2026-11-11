@@ -20,6 +20,10 @@ const Config := preload("res://scripts/net/net_config.gd")
 static var _BASE64 := RegEx.create_from_string("^[A-Za-z0-9+/]+={0,2}$")
 
 var seat := -1
+## The map: the host's pick, sent to the guest right after the start.
+var map := ""
+var _awaiting_setup := false
+var _early: Array = []  # their orders that came before attach()
 var code := ""
 var sim: Node = null
 var _socket := WebSocketPeer.new()
@@ -68,6 +72,10 @@ func attach(simulation: Node) -> void:
 	sim.turn_ready.connect(func(at, cmds): _send({"t": "turn", "tick": at, "c": encode_commands(cmds)}))
 	sim.hash_ready.connect(func(at, h): _send({"t": "hash", "tick": at, "h": str(h)}))
 	sim.desynced.connect(func(_at): desynced.emit())
+	# Orders that arrived while we were still loading (the map, the countdown).
+	for msg in _early:
+		_handle_game(msg)
+	_early.clear()
 
 
 func leave() -> void:
@@ -114,18 +122,34 @@ func _handle(text: String) -> void:
 		"start":
 			seat = int(msg.get("seat", 0))
 			code = str(msg.get("code", code))
-			started.emit(seat)
+			if seat == 0:
+				# We made the game: tell the other player which map.
+				_send({"t": "setup", "map": map})
+				started.emit(seat)
+			else:
+				_awaiting_setup = true
+		"setup":
+			map = str(msg.get("map", ""))
+			if _awaiting_setup:
+				_awaiting_setup = false
+				started.emit(seat)
 		"error":
 			failed.emit(str(msg.get("msg", "Something went wrong")))
 		"left":
 			opponent_left.emit()
-		"turn":
-			if sim != null:
-				sim.receive_turn(int(msg.get("tick", -1)), int(msg.get("seat", -1)),
-						decode_commands(str(msg.get("c", ""))))
-		"hash":
-			if sim != null:
-				sim.receive_hash(int(msg.get("tick", -1)), int(msg.get("seat", -1)), str(msg.get("h", "0")).to_int())
+		"turn", "hash":
+			if sim == null:
+				_early.append(msg)
+			else:
+				_handle_game(msg)
+
+
+func _handle_game(msg: Dictionary) -> void:
+	if msg.t == "turn":
+		sim.receive_turn(int(msg.get("tick", -1)), int(msg.get("seat", -1)),
+				decode_commands(str(msg.get("c", ""))))
+	else:
+		sim.receive_hash(int(msg.get("tick", -1)), int(msg.get("seat", -1)), str(msg.get("h", "0")).to_int())
 
 
 ## Orders as text for the wire: Godot's own binary format (whole numbers
