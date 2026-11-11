@@ -50,7 +50,9 @@ const PLATEAU_HEIGHT := 5.0
 ## (CLIFF_BAND wide) is blocked everywhere else. A level 2 plateau sits on a
 ## level 1 one (twice as high), its ramps coming up from the lower top.
 ## Plateaus without ramps are solid scenery.
-const RAMP_LENGTH := 14.0
+const RAMP_LENGTH := 20.0
+## Ramps up to a level 2 tier are shorter (they land on the lower top).
+const RAMP_LENGTH_TIER := 11.0
 const RAMP_HALF_WIDTH := 5.5
 const CLIFF_BAND := 3.0
 # Shape wobble for lakes and plateaus (even frequencies only).
@@ -141,7 +143,8 @@ func build() -> void:
 			var info: Dictionary = plateau_info[plateau_info.size() - 1]
 			for dir in dirs:
 				ramps.append({"plateau": plateaus.size() - 1, "edge": _edge_point(poly, dir),
-						"dir": dir, "half_width": RAMP_HALF_WIDTH, "length": RAMP_LENGTH,
+						"dir": dir, "half_width": RAMP_HALF_WIDTH,
+						"length": RAMP_LENGTH if info.level == 1 else RAMP_LENGTH_TIER,
 						"top": info.height, "base": info.base})
 	for forest in FORESTS:
 		var trees := _forest_trees(c + forest[0], forest[1], forest[2])
@@ -243,8 +246,7 @@ func height_at(p: Vector2) -> float:
 	var r: int = ramp_at(p)
 	if r >= 0:
 		var ramp: Dictionary = ramps[r]
-		var along: float = (p - ramp.edge).dot(ramp.dir)
-		return lerpf(ramp.base, ramp.top, clampf(1.0 - along / ramp.length, 0.0, 1.0))
+		return ramp_height(ramp, (p - ramp.edge).dot(ramp.dir))
 	var h := 0.0
 	for i in plateaus.size():
 		if plateau_info[i].height > h and Geometry2D.is_point_in_polygon(p, plateaus[i]):
@@ -456,22 +458,73 @@ func _build_terrain() -> void:
 ## A ramp: a sloped path from the plateau top down to the ground, with its
 ## sides filled in down to the ground.
 func _add_ramp(r: Dictionary) -> void:
-	var side: Vector2 = r.dir.orthogonal() * r.half_width
-	var top_c: Vector2 = r.edge - r.dir * 1.5  # tucked into the plateau a little
-	var low_c: Vector2 = r.edge + r.dir * r.length
-	var h: float = r.top + 0.02
-	var low: float = r.base + 0.45 if r.base == 0.0 else r.base + 0.03
-	var t0 := Vector3(top_c.x + side.x, h, top_c.y + side.y)
-	var t1 := Vector3(top_c.x - side.x, h, top_c.y - side.y)
-	var b0 := Vector3(low_c.x + side.x, low, low_c.y + side.y)
-	var b1 := Vector3(low_c.x - side.x, low, low_c.y - side.y)
-	var g0 := Vector3(t0.x, r.base, t0.z)
-	var g1 := Vector3(t1.x, r.base, t1.z)
-	# The path (like the plateau top), then its two sides (cliff).
-	_add_tris([t0, b1, t1, t0, b0, b1], Vector3.UP, PLATEAU_TOP)
-	var out0: Vector3 = Vector3(side.x, 0, side.y).normalized()
-	_add_tris([t0, b0, g0], out0, CLIFF)
-	_add_tris([t1, g1, b1], -out0, CLIFF)
+	# A gentle, natural slope: eased at both ends (ramp_height), widening
+	# towards the foot so it melts into the ground, built from many small
+	# pieces with smoothed shading. Its sides drop to the ground below.
+	var along_n := 14
+	var across_n := 6
+	var start: float = -1.5  # tucked into the plateau a little
+	var end: float = r.length + 2.0  # and run out onto the ground
+	var lift: float = 0.45 if r.base == 0.0 else 0.03  # above the ground layers
+	var across: Vector2 = r.dir.orthogonal()
+	var rows: Array = []
+	for i in along_n + 1:
+		var a: float = lerpf(start, end, float(i) / along_n)
+		var t: float = clampf(a / r.length, 0.0, 1.0)
+		var hw: float = r.half_width * (1.0 + 0.7 * t * t)  # flares at the foot
+		var y: float = ramp_height(r, a) + (0.02 if t < 0.999 else lift)
+		y = maxf(y, r.base + lift)
+		var row: Array = []
+		for k in across_n + 1:
+			var s: float = lerpf(-1.0, 1.0, float(k) / across_n)
+			var p: Vector2 = r.edge + r.dir * a + across * hw * s
+			# Edges round off a touch lower, like a worn path.
+			row.append(Vector3(p.x, y - 0.25 * s * s * (y - r.base) * 0.15, p.y))
+		rows.append(row)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in along_n:
+		for k in across_n:
+			var a0: Vector3 = rows[i][k]
+			var a1: Vector3 = rows[i][k + 1]
+			var b0: Vector3 = rows[i + 1][k]
+			var b1: Vector3 = rows[i + 1][k + 1]
+			for v in _up_facing([a0, b1, a1]) + _up_facing([a0, b0, b1]):
+				st.add_vertex(v)
+	st.generate_normals()
+	var path := MeshInstance3D.new()
+	path.mesh = st.commit()
+	path.material_override = _material(PLATEAU_TOP)
+	add_child(path)
+	# The two sides, from the slope's edge down to the ground below it.
+	var sides := SurfaceTool.new()
+	sides.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for edge_k in [0, across_n]:
+		for i in along_n:
+			var e0: Vector3 = rows[i][edge_k]
+			var e1: Vector3 = rows[i + 1][edge_k]
+			var g0 := Vector3(e0.x, r.base, e0.z)
+			var g1 := Vector3(e1.x, r.base, e1.z)
+			for v in [e0, e1, g1, e0, g1, g0]:
+				sides.add_vertex(v)
+	sides.generate_normals()
+	var walls := MeshInstance3D.new()
+	walls.mesh = sides.commit()
+	walls.material_override = _material(CLIFF)
+	add_child(walls)
+
+
+## The triangle's corners in the order that makes it face up.
+static func _up_facing(tri: Array) -> Array:
+	var n: Vector3 = (tri[1] - tri[0]).cross(tri[2] - tri[0])
+	return tri if n.y > 0 else [tri[0], tri[2], tri[1]]
+
+
+## Height on a ramp, `along` map units down it from the cliff edge: eased
+## (gentle at the top and the foot, steepest in the middle).
+static func ramp_height(r: Dictionary, along: float) -> float:
+	var t: float = clampf(along / r.length, 0.0, 1.0)
+	return lerpf(r.top, r.base, 0.5 - 0.5 * cos(t * PI))
 
 
 ## Triangles with one colour and normal (drawn from both sides, like the

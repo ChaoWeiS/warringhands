@@ -115,6 +115,16 @@ func _run() -> void:
 				var edge: Vector2 = field._edge_point(poly, dir)
 				if field.ramp_at(edge) < 0 and field.ramp_at(edge + dir * 2.0) < 0:
 					cliff_ok = cliff_ok and not field.is_walkable(edge)
+		# Every ramp's foot lands on open ground at its base level (a tier's
+		# ramp stays on the lower plateau, not over its edge).
+		var feet_ok := true
+		for r in field.ramps:
+			var foot: Vector2 = r.edge + r.dir * (r.length + 4.0)
+			var ok: bool = is_equal_approx(field.height_at(foot), r.base) and not field.is_slope_or_edge(foot)
+			if not ok:
+				print("  ramp foot off its level at %s (height %.1f, wants %.1f)" % [foot, field.height_at(foot), r.base])
+			feet_ok = feet_ok and ok
+		check("%s: every ramp's foot lands on open ground at its level" % name, feet_ok)
 		check("%s: the plateaus with ramps (%d of %d) can be walked up to" % [name, field.climbable.size(), field.plateaus.size()], tops_ok)
 		check("%s: ...only by their ramps (%d); other cliffs and plateaus are blocked" % [name, field.ramps.size()], ramps_ok and cliff_ok)
 		# Building: not on a ramp; fine on a big enough flat top.
