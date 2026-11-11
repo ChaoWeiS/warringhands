@@ -1,8 +1,7 @@
 extends RefCounted
 ## One soft shadow look for everything standing on the ground (trees,
 ## resource spots, buildings): a light, flat oval hugging the object's base,
-## darkest in the middle and fading out at the edge, a touch in front of it
-## (towards the bottom of the screen). Real-time shadows are off (see field.gd), so these stand in.
+## darkest in the middle and fading out at the edge, tucked under it. Real-time shadows are off (see field.gd), so these stand in.
 
 const COLOR := Color(0.16, 0.22, 0.2)
 ## Above every flat ground layer (they top out at 0.42), under buildings'
@@ -18,7 +17,9 @@ static func make(radius: float, strength: float = 0.3, squash: float = 0.45) -> 
 	plane.size = Vector2(radius * 2.0, radius * 2.0 * squash)
 	m.mesh = plane
 	m.material_override = _shared(strength)
-	m.position = Vector3(radius * 0.04, Y, radius * squash * 0.25)
+	# Centred a little behind the base point (up the screen), so the shadow
+	# sits under the object instead of peeking out below it.
+	m.position = Vector3(0, Y, -radius * squash * 0.35)
 	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return m
 
