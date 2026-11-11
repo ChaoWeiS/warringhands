@@ -103,6 +103,60 @@ static func fullscreen_icon() -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
+## A small picture for inside a button's content.
+static func icon_rect(texture: Texture2D, size: float) -> TextureRect:
+	var t := TextureRect.new()
+	t.texture = texture
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.custom_minimum_size = Vector2(size, size) * ui_scale()
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return t
+
+
+## "150 [stone icon]" (or several icons): an amount with its resource
+## pictures instead of words. `res` = -1 means all three.
+static func cost_row(amount: int, res: int, font_size: int = 24, icon_size: float = 32.0) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", roundi(4 * ui_scale()))
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var number := label(str(amount), roundi(font_size * ui_scale()))
+	number.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(number)
+	for r in ([0, 1, 2] if res < 0 else [res]):
+		row.add_child(icon_rect(res_icon(r), icon_size))
+	return row
+
+
+## Puts any layout inside a button (instead of its text and icon) and makes
+## the button wide enough for it. Dim it with set_content_dimmed().
+static func fill_button(b: Button, content: Control) -> void:
+	b.text = ""
+	b.icon = null
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 20)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	margin.add_child(content)
+	b.add_child(margin)
+	b.set_meta("content", content)
+	_fit_button(b)
+
+
+static func _fit_button(b: Button) -> void:
+	var content: Control = b.get_meta("content")
+	var need: Vector2 = content.get_combined_minimum_size() + Vector2(36, 16)
+	b.custom_minimum_size = Vector2(maxf(b.custom_minimum_size.x, need.x), maxf(b.custom_minimum_size.y, need.y))
+
+
+static func set_content_dimmed(b: Button, dimmed: bool) -> void:
+	if b.has_meta("content"):
+		(b.get_meta("content") as Control).modulate.a = 0.45 if dimmed else 1.0
+
+
 ## A resource's icon: rocks (stone), logs (wood), ingots (metal).
 static func res_icon(res: int) -> Texture2D:
 	return RES_ICONS[res]

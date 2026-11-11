@@ -4,6 +4,7 @@ extends SceneTree
 ## Run: godot --headless -s res://tests/test_economy.gd
 
 const ResView := preload("res://scripts/resources_view.gd")
+const UI := preload("res://scripts/ui_style.gd")
 const SimScript := preload("res://scripts/sim/sim.gd")
 const ROCK := 0
 const PAPER := 1
@@ -374,6 +375,12 @@ func _run() -> void:
 	hud._build_toggle.button_pressed = true
 	check("Build shows the three factories and an HQ", hud._build_options.quarry.visible and hud._build_options.forge.visible
 			and hud._build_options.hq.visible)
+	var quarry_option: Button = hud._build_options.quarry
+	var shown_words: Array = quarry_option.find_children("*", "Label", true, false).map(func(l): return l.text)
+	var shown_icons: Array = quarry_option.find_children("*", "TextureRect", true, false).map(func(t): return t.texture)
+	check("prices show resource icons, not words (%s)" % ", ".join(shown_words), not "stone" in " ".join(shown_words)
+			and "150" in shown_words and shown_icons.has(UI.res_icon(0))
+			and hud._build_options.hq.find_children("*", "TextureRect", true, false).size() == 4)
 	hud._build_options.quarry.pressed.emit()
 	check("picking one waits for a tap on the ground", hud.armed_build() == "quarry")
 	game._on_tapped(cam, cam.unproject_position(Vector3(my_hq.x / 100.0, 0, my_hq.z / 100.0)))
@@ -385,7 +392,12 @@ func _run() -> void:
 	game._on_tapped(cam, cam.unproject_position(too_far))
 	check("tapping out of range doesn't build and says why", sim._pending.is_empty() and hud.armed_build() == "quarry"
 			and "far" in hud._toast.text)
-	var free_spot := Vector3(my_hq.x / 100.0 + 25, 0, my_hq.z / 100.0 - 20)
+	var free_spot := Vector3.ZERO  # open ground near the HQ, nobody standing there
+	for d in [28.0, 34.0, 40.0]:
+		for k in 16:
+			var p: Vector2 = Vector2(my_hq.x, my_hq.z) / 100.0 + Vector2.from_angle(k * TAU / 16) * d
+			if free_spot == Vector3.ZERO and sim.can_place("quarry", p, 0):
+				free_spot = Vector3(p.x, 0, p.y)
 	game._on_tapped(cam, cam.unproject_position(free_spot))
 	var queued: Array = [] if sim._pending.is_empty() else sim._pending.values()[0]
 	check("tapping open ground orders the build", queued.size() == 1 and queued[0].type == "build" and queued[0].btype == "quarry")
@@ -466,6 +478,24 @@ func _run() -> void:
 	game._on_tapped(cam, hq_px)
 	queued = [] if sim._pending.is_empty() else sim._pending.values()[0]
 	check("tapping the HQ with units selected sends them to gather", queued.size() == 1 and queued[0].type == "harvest")
+	# An enemy hitting the HQ, standing on its picture: tapping it attacks it
+	# (it doesn't count as tapping the HQ).
+	sim._pending.clear()
+	var hq_pic: Rect2 = buildings_view.screen_rect(cam, my_hq.id)
+	var hq_raider_spot: Variant = cam.ground_at(hq_pic.get_center() + Vector2(0, hq_pic.size.y * 0.3))
+	var hq_raider: int = sim.add_unit(1, ROCK, Vector2(hq_raider_spot.x, hq_raider_spot.z))
+	await frames(1)
+	var hq_raider_px: Vector2 = cam.unproject_position(view_units.world_position(hq_raider))
+	check("(the enemy stands on the HQ's picture)", hq_pic.has_point(hq_raider_px))
+	game._last_tap.camera = null
+	game._on_tapped(cam, hq_raider_px)
+	queued = [] if sim._pending.is_empty() else sim._pending.values()[0]
+	check("tapping an enemy on your HQ attacks it, not the HQ", queued.size() == 1 and queued[0].type == "attack"
+			and queued[0].target == hq_raider)
+	sim._pending.clear()
+	sim.units.erase(sim.get_unit(hq_raider))
+	sim._by_id.erase(hq_raider)
+	view_units.forget(hq_raider)
 	# Double tap the damaged HQ: repair.
 	sim._pending.clear()
 	game._select([])

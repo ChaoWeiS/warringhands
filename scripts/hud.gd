@@ -18,6 +18,9 @@ signal train_pressed(building_id: int)
 signal play_again_pressed
 
 const FACTORIES := ["quarry", "mill", "forge"]
+## Prices shown in the Build menu (must match sim.gd BUILDINGS).
+const BUILD_COSTS := {"hq": {"cost": 150, "res": -1}, "quarry": {"cost": 150, "res": 0},
+		"mill": {"cost": 150, "res": 1}, "forge": {"cost": 150, "res": 2}}
 const FACTORY_COLORS := {"quarry": Color("#ddd6ea"), "mill": Color("#fbf1d6"), "forge": Color("#c4eeea"),
 		"hq": Color("#fbe3ea")}
 ## Small town hall picture for the Build menu.
@@ -101,6 +104,7 @@ func _process(_delta: float) -> void:
 	for btype in _build_options:
 		var spec: Dictionary = sim.BUILDINGS[btype]
 		_build_options[btype].disabled = not sim.can_afford(team, spec.res, spec.cost)
+		UI.set_content_dimmed(_build_options[btype], _build_options[btype].disabled)
 	_refresh_building_panel()
 	_layout_left()
 	# Online: say so when we're waiting for the other player's orders.
@@ -270,14 +274,21 @@ func _build_build_menu() -> void:
 	for btype in ["hq"] + FACTORIES:
 		var kind: int = FACTORIES.find(btype)
 		var b := UI.button(FACTORY_COLORS[btype], FACTORY_COLORS[btype].darkened(0.15), 24)
-		if btype == "hq":
-			# Another HQ: 150 of every resource, anywhere on the map.
-			b.icon = HQ_ICON
-			b.expand_icon = false
-			b.text = "%s\n150 of each" % UI.BUILDING_NAMES[btype]
-		else:
-			b.icon = UI.kind_icon(kind)
-			b.text = "%s\n%d %s" % [UI.BUILDING_NAMES[btype], 150, UI.RES_NAMES[kind]]
+		# Picture, name, and the price with resource icons (an extra HQ costs
+		# 150 of every resource and can go anywhere on the map).
+		var spec: Dictionary = BUILD_COSTS[btype]
+		var content := HBoxContainer.new()
+		content.add_theme_constant_override("separation", roundi(10 * UI.ui_scale()))
+		content.add_child(UI.icon_rect(HQ_ICON if btype == "hq" else UI.kind_icon(kind), 60))
+		var words := VBoxContainer.new()
+		words.add_theme_constant_override("separation", 0)
+		words.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var name_label := UI.label(UI.BUILDING_NAMES[btype], roundi(24 * UI.ui_scale()))
+		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		words.add_child(name_label)
+		words.add_child(UI.cost_row(spec.cost, spec.res))
+		content.add_child(words)
+		UI.fill_button(b, content)
 		b.pressed.connect(func():
 			_armed_build = btype
 			_show_build_options(false)
@@ -430,11 +441,27 @@ func _refresh_row(btype: String, r: Dictionary) -> void:
 		r.progress.max_value = sim.TRAIN_TICKS
 		r.progress.value = best_train
 	if factory:
-		r.train.icon = UI.kind_icon(spec.kind)
-		var q: String = "" if queued == 0 else "  (%d queued)" % queued
-		r.train.text = "+  %d %s%s" % [sim.UNIT_COST, UI.RES_NAMES[spec.res], q]
+		if not r.train.has_meta("content"):
+			# [hand] + 60 [resource icon] (n queued)
+			var content := HBoxContainer.new()
+			content.add_theme_constant_override("separation", roundi(6 * UI.ui_scale()))
+			content.add_child(UI.icon_rect(UI.kind_icon(spec.kind), 54))
+			var plus := UI.label("+", roundi(26 * UI.ui_scale()))
+			content.add_child(plus)
+			content.add_child(UI.cost_row(sim.UNIT_COST, spec.res, 26, 36))
+			var queue_label := UI.label("", roundi(22 * UI.ui_scale()))
+			queue_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			content.add_child(queue_label)
+			r.queue_label = queue_label
+			UI.fill_button(r.train, content)
+		var q: String = "" if queued == 0 else "(%d queued)" % queued
+		if r.queue_label.text != q:
+			r.queue_label.text = q
+			r.train.custom_minimum_size.x = 0
+			UI._fit_button(r.train)
 		r.train.disabled = ready == 0 or queued >= sim.QUEUE_MAX * ready \
 				or not sim.can_afford(team, spec.res, sim.UNIT_COST)
+		UI.set_content_dimmed(r.train, r.train.disabled)
 
 
 func _build_game_over() -> void:

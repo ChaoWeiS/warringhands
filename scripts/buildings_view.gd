@@ -22,6 +22,9 @@ const ART := {
 }
 ## The red team's town hall: flag, banners and windows red instead of blue.
 const HQ_RED := preload("res://assets/env/hq_red.png")
+## How far in front of the footprint's centre a picture's bottom edge sits,
+## as a share of its width.
+const ART_BASE_DEPTH := 0.33
 ## Width of each building's picture (map units).
 const ART_WIDTH := {"hq": 30.0, "quarry": 23.0, "mill": 23.0, "forge": 23.0}
 
@@ -163,7 +166,9 @@ func _on_added(id: int) -> void:
 			art.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
 			art.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 			art.offset = Vector2(0, tex.get_height() * 0.5)
-			art.position = Vector3(0, 0, r * (1.0 if b.btype == "hq" else 0.15))
+			# The picture's drawn base (an isometric diamond about a third of
+			# its width deep) is centred on the footprint.
+			art.position = Vector3(0, 0, ART_WIDTH[b.btype] * ART_BASE_DEPTH)
 			model.add_child(art)
 			var patch := MeshInstance3D.new()
 			var disc := CylinderMesh.new()

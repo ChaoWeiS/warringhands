@@ -209,6 +209,17 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		return
 	var double := _is_double_tap(camera, point)
 	var id := _unit_at(camera, point, true)
+	# With units selected, an enemy under the finger beats your own buildings
+	# (an enemy hitting your HQ must be tappable), and beats your own units
+	# when it's the closer of the two (a melee).
+	var foe := -1
+	if not selection.is_empty():
+		foe = _unit_at(camera, point, false)
+		if foe != -1 and id != -1 and _tap_distance(camera, point, id) < _tap_distance(camera, point, foe):
+			foe = -1
+	if foe != -1:
+		_order_attack(foe)
+		return
 	if id != -1 and not bar.is_attack_armed():
 		if double and selection.has(id):
 			_select_same_kind_in_pane(camera, sim.get_unit(id).kind)
@@ -240,14 +251,9 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 	if selection.is_empty():
 		_select_building(0)
 		return
-	var enemy := _unit_at(camera, point, false)
-	if enemy == -1:
-		enemy = _building_at(camera, point, ground, false)
+	var enemy := _building_at(camera, point, ground, false)  # (enemy units were checked first)
 	if enemy > 0:
-		sim.command_attack(selection, enemy)
-		did.emit("attack")
-		view.show_attack_marker(enemy)
-		bar.set_attack_armed(false)
+		_order_attack(enemy)
 		return
 	if ground == null:
 		return
@@ -266,6 +272,17 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		sim.command_move(selection, ground)
 		did.emit("move")
 		view.show_move_marker(ground)
+
+
+func _order_attack(target: int) -> void:
+	sim.command_attack(selection, target)
+	did.emit("attack")
+	view.show_attack_marker(target)
+	bar.set_attack_armed(false)
+
+
+func _tap_distance(camera: Camera3D, point: Vector2, unit_id: int) -> float:
+	return camera.unproject_position(view.world_position(unit_id)).distance_to(point)
 
 
 ## Builds where tapped if possible; a red marker means "can't build here".

@@ -104,7 +104,8 @@ const NEXT_SPOT_RANGE := 4000
 ## Route attempts before a gatherer gives up on a spot it can't reach (a tree
 ## deep in a forest) and picks the nearest other one.
 const REACH_TRIES := 3
-## Buildings: footprint radius (sim units), HP, cost, build time (ticks).
+## Buildings: footprint radius (sim units; as big as the ground the
+## building's picture covers, so nobody walks into the drawing), HP, cost, build time (ticks).
 ## Factories make the unit of the same kind as their resource.
 ## New buildings go within this distance (centre to centre, sim units) of
 ## one of the team's own buildings.
@@ -119,10 +120,10 @@ const REPAIR_HP := 10
 const BUILDINGS := {
 	# Extra HQs cost 150 of every resource (res -1 = all three), take 20 s,
 	# and can go anywhere (no build range). The starting HQs come ready.
-	"hq": {"radius": 900, "hp": 2000, "cost": 150, "res": -1, "build": 400, "kind": -1},
-	"quarry": {"radius": 650, "hp": 800, "cost": 150, "res": Res.STONE, "build": 200, "kind": Kind.ROCK},
-	"mill": {"radius": 650, "hp": 800, "cost": 150, "res": Res.WOOD, "build": 200, "kind": Kind.PAPER},
-	"forge": {"radius": 650, "hp": 800, "cost": 150, "res": Res.METAL, "build": 200, "kind": Kind.SCISSORS},
+	"hq": {"radius": 1200, "hp": 2000, "cost": 150, "res": -1, "build": 400, "kind": -1},
+	"quarry": {"radius": 900, "hp": 800, "cost": 150, "res": Res.STONE, "build": 200, "kind": Kind.ROCK},
+	"mill": {"radius": 900, "hp": 800, "cost": 150, "res": Res.WOOD, "build": 200, "kind": Kind.PAPER},
+	"forge": {"radius": 900, "hp": 800, "cost": 150, "res": Res.METAL, "build": 200, "kind": Kind.SCISSORS},
 }
 const FACTORY_FOR_KIND := ["quarry", "mill", "forge"]
 const UNIT_COST := 60
