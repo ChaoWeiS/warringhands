@@ -37,7 +37,7 @@
 - Unit art: animated hand sprites (idle / attack / defend, 5 frames each) on a team-coloured base (pink vs blue). Source sheet in `art_source/hands_sheet.png`; `tools/cut_hand_sprites.py` cuts it into `assets/units/hands.png`. Units face the way they walk and **hop** while walking (base shrinks like a shadow at the top of a hop, slight squash and stretch; each unit at its own pace; it finishes the hop and lands when it stops).
 - **One finger:** tap your unit to select it; draw a loop to lasso; tap the ground to move the selection there (they spread into a square formation).
 - Selection is shared by all panes: select in one pane, tap the destination in another.
-- Selection bar (bottom): R / P / S counts; tap one to keep only that type; Clear to deselect.
+- Selection bar (bottom): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type; Clear to deselect.
 - A second finger in the pane cancels a tap or lasso (it becomes a camera gesture).
 - Ground units stop at the shore.
 
