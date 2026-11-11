@@ -99,5 +99,60 @@ func _run() -> void:
 	check("a fight off screen makes no sound", count(sounds.played, before, "attack") == 0
 			and count(sounds.played, before, "defend") == 0)
 
+	# Building sounds: laid down (thud and knocks), finished (sparkle).
+	sim.clear_units()
+	sim.resources[0] = [999, 999, 999]
+	var home: Dictionary = sim.hq_of(0)
+	var spot := Vector2.ZERO
+	for ring in [30.0, 36.0]:
+		for k in 16:
+			var p: Vector2 = Vector2(home.x, home.z) / 100.0 + Vector2.from_angle(k * TAU / 16) * ring
+			if spot == Vector2.ZERO and sim.can_place("quarry", p, 0):
+				spot = p
+	cam.target = Vector3(spot.x, 0, spot.y)
+	cam.refit()
+	await frames(2)
+	before = sounds.played.size()
+	sim.command_build(0, "quarry", spot)
+	sim.step_ticks(3)
+	check("laying down a building plays its construction sound", count(sounds.played, before, "build_place") == 1)
+	sim.step_ticks(SimScript.BUILDINGS.quarry.build + 2)
+	await frames(2)
+	check("...and finishing it plays another", count(sounds.played, before, "build_done") == 1)
+
+	# Settings: music and effects volumes go to their own buses, and stick.
+	var Settings = load("res://scripts/settings.gd")
+	Settings.set_volume("music", 0.25)
+	Settings.set_volume("sfx", 0.0)
+	var music_bus: int = AudioServer.get_bus_index("Music")
+	var sfx_bus: int = AudioServer.get_bus_index("SFX")
+	check("the music volume setting turns the music down", music_bus >= 0
+			and AudioServer.get_bus_volume_db(music_bus) < -20 and not AudioServer.is_bus_mute(music_bus))
+	check("effects at 0 are silent", sfx_bus >= 0 and AudioServer.is_bus_mute(sfx_bus))
+	check("...and the settings are remembered", is_equal_approx(Settings.get_volume("music"), 0.25)
+			and is_equal_approx(Settings.get_volume("sfx"), 0.0))
+	check("voices play on the effects bus", sounds._voices[0].bus == &"SFX")
+	var panel: Control = Settings.new()
+	root.add_child(panel)
+	await frames(1)
+	panel._music_slider.value = 80
+	check("the Settings window's music slider applies right away", is_equal_approx(Settings.get_volume("music"), 0.8))
+	panel.close()
+	Settings.set_volume("music", Settings.DEFAULTS.music)
+	Settings.set_volume("sfx", Settings.DEFAULTS.sfx)
+	check("there's a gear button in game, at the top right", game.hud.settings_button.visible
+			and game.hud.settings_button.anchor_left == 1.0)
+
+	# Music: the start screen's track, then the battle track in a game.
+	game._show_start_menu()
+	await frames(1)
+	check("the start screen plays Majestic Crescendo", game.music.current == "menu" and game.music._players[game.music._active].playing)
+	var menu: Control = root.get_node("Main/HUD").get_children().filter(func(c): return c.has_signal("vs_computer")).front()
+	menu.vs_computer.emit()
+	await frames(1)
+	check("a game plays Antes de la Batalla (crossfading)", game.music.current == "battle"
+			and game.music._players[game.music._active].stream.loop)
+	check("...on the music bus", game.music._players[0].bus == &"Music")
+
 	print("FAILURES: ", failures)
 	quit(1 if failures > 0 else 0)

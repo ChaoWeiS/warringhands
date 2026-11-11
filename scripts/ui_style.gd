@@ -108,6 +108,7 @@ const BUTTON_ICONS := {
 	"build": preload("res://assets/env/button_build.png"),
 	"attack": preload("res://assets/env/button_attack.png"),
 	"cancel": preload("res://assets/env/button_cancel.png"),
+	"settings": preload("res://assets/env/button_settings.png"),
 }
 const ICON_BUTTON_SIZE := 96.0
 
@@ -128,6 +129,26 @@ static func icon_button(icon_name: String) -> Button:
 	b.toggled.connect(func(on):
 		b.pivot_offset = b.size * 0.5
 		b.scale = Vector2.ONE * (1.12 if on else 1.0))
+	return b
+
+
+## The gear button (top right, left of the full screen button): opens
+## Settings on top of `parent`. `preview_sfx` plays a sample sound.
+static func settings_button(parent: Control, top: float, preview_sfx: Callable = func(): pass) -> Button:
+	var b := icon_button("settings")
+	var size: float = 72.0 * ui_scale()
+	b.custom_minimum_size = Vector2(size, size)
+	b.anchor_left = 1.0
+	b.anchor_right = 1.0
+	b.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	b.offset_top = top
+	b.offset_right = -24 - size - 12  # left of the full screen button
+	b.tooltip_text = "Settings"
+	b.pressed.connect(func():
+		var panel: Control = load("res://scripts/settings.gd").new()
+		panel.preview_sfx = preview_sfx
+		parent.add_child(panel))
+	parent.add_child(b)
 	return b
 
 

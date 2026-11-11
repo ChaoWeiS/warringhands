@@ -36,6 +36,8 @@ const UI := preload("res://scripts/ui_style.gd")
 const StartMenu := preload("res://scripts/start_menu.gd")
 const Tutorial := preload("res://scripts/tutorial.gd")
 const Sounds := preload("res://scripts/sounds.gd")
+const Music := preload("res://scripts/music.gd")
+const Settings := preload("res://scripts/settings.gd")
 ## How close (pixels) a tap must be to a unit to pick it.
 const TAP_RADIUS := 44.0
 ## Two taps this close in time (ms) and space (px), in the same pane, make a
@@ -51,6 +53,7 @@ const ResourcesView := preload("res://scripts/resources_view.gd")
 var selection: Array = []  # unit ids
 var selected_buildings: Array = []
 var sounds: Node
+var music: Node
 var _building_camera: Camera3D = null  # pane camera the buildings were picked in
 var _last_tap := {"camera": null, "point": Vector2.ZERO, "time": -100000}
 var selected_building := 0  # the first of them (0 = none)
@@ -77,8 +80,17 @@ func _ready() -> void:
 	panes.pointer_moved.connect(_on_pointer_moved)
 	# Unit voices: answers to selections and orders, and combat sounds for
 	# whatever is on screen.
+	Settings.apply_saved()
 	sounds = Sounds.new()
 	add_child(sounds)
+	music = Music.new()
+	add_child(music)
+	hud.preview_sfx = func(): sounds.respond("acknowledge", [0])
+	sim.building_added.connect(_on_building_added)
+	buildings_view.finished.connect(func(id):
+		var b: Dictionary = sim.get_entity(id)
+		if not b.is_empty():
+			sounds.unit_event("build_done", Vector3(b.x, 0, b.z) / float(sim.SCALE)))
 	sounds.on_screen = _on_screen
 	view.sounds = sounds
 	did.connect(_voice_for)
@@ -110,10 +122,13 @@ func _ready() -> void:
 func _show_start_menu() -> void:
 	sim.set_process(false)  # nothing moves until a game is picked
 	var menu: Control = StartMenu.new()
+	menu.preview_sfx = func(): sounds.respond("acknowledge", [0])
 	hud.get_parent().add_child(menu)
+	music.play("menu")
 	panes.register_blocker(menu)
 	menu.vs_computer.connect(func():
 		menu.queue_free()
+		music.play("battle")
 		focus_home()
 		sim.set_process(true))
 	menu.tutorial.connect(func():
@@ -156,6 +171,7 @@ func start_tutorial() -> Control:
 	tutorial.setup(self, sim, panes, hud)
 	hud.get_parent().add_child(tutorial)
 	panes.register_blocker(tutorial.card())
+	music.play("battle")
 	focus_home()
 	tutorial.finished.connect(func(): get_tree().reload_current_scene())
 	sim.set_process(true)
@@ -170,6 +186,7 @@ func start_online(session: Node, seat: int) -> void:
 	_select([])
 	_select_buildings([])
 	hud.setup(sim, seat)
+	music.play("battle")
 	focus_home()
 	session.attach(sim)
 	session.opponent_left.connect(func():
@@ -298,6 +315,15 @@ func _order_attack(target: int) -> void:
 
 func _tap_distance(camera: Camera3D, point: Vector2, unit_id: int) -> float:
 	return camera.unproject_position(view.world_position(unit_id)).distance_to(point)
+
+
+## A construction was laid down: a thud and hammer knocks (if on screen).
+## The starting HQs come ready-built, so they make no sound.
+func _on_building_added(id: int) -> void:
+	var b: Dictionary = sim.get_entity(id)
+	if b.is_empty() or b.progress >= sim.BUILDINGS[b.btype].build:
+		return
+	sounds.unit_event("build_place", Vector3(b.x, 0, b.z) / float(sim.SCALE))
 
 
 ## Selected units answer (all of them); ordered units confirm.

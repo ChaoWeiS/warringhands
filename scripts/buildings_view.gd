@@ -8,6 +8,9 @@ extends Node3D
 
 @export var sim_path: NodePath
 
+## A construction just finished (shown once per building).
+signal finished(building_id: int)
+
 const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
 const TRIM := Color("#e2cfae")
 const STONE := Color("#c9c3d6")
@@ -63,6 +66,9 @@ func _process(delta: float) -> void:
 			continue
 		var spec: Dictionary = sim.BUILDINGS[b.btype]
 		var done: float = 1.0 if spec.build == 0 else clampf(float(b.progress) / spec.build, 0.0, 1.0)
+		if done >= 1.0 and view.get("building", false):
+			finished.emit(b.id)
+		view.building = done < 1.0
 		# Under construction: grows up out of the ground.
 		view.model.scale = Vector3(1.0, 0.15 + 0.85 * done, 1.0)
 		view.scaffold.visible = done < 1.0
@@ -267,7 +273,8 @@ func _on_added(id: int) -> void:
 	root.add_child(hp_bg)
 	root.add_child(hp_fill)
 	_views[id] = {"root": root, "model": model, "ring": ring, "scaffold": scaffold,
-			"hp_bg": hp_bg, "hp_fill": hp_fill, "sails": sails, "art": art}
+			"hp_bg": hp_bg, "hp_fill": hp_fill, "sails": sails, "art": art,
+			"building": b.progress < sim.BUILDINGS[b.btype].build}  # under construction
 
 
 func _on_destroyed(id: int) -> void:

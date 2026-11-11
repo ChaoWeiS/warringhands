@@ -31,6 +31,9 @@ var team := 0
 
 var resource_bar: PanelContainer
 var fullscreen_button: Button
+var settings_button: Button
+## Plays a sample sound (set by the game) when the effects volume changes.
+var preview_sfx: Callable = func(): pass
 ## Shown just under Build (the selection's Attack / Clear), placed by us.
 var below_build: Control = null
 ## Shown on the right, level with Build (the selection's hand chips).
@@ -198,7 +201,7 @@ func show_message(text: String) -> void:
 
 ## Controls that touches on the map should ignore.
 func blockers() -> Array:
-	return [resource_bar, fullscreen_button, build_menu, building_panel, game_over_screen]
+	return [resource_bar, fullscreen_button, settings_button, build_menu, building_panel, game_over_screen]
 
 
 # --- Building the pieces ---------------------------------------------------------
@@ -246,6 +249,9 @@ func _build_fullscreen_button() -> void:
 	# Native apps are full screen already.
 	fullscreen_button.visible = not (OS.has_feature("android") or OS.has_feature("ios"))
 	add_child(fullscreen_button)
+	settings_button = UI.settings_button(self, 100, func(): preview_sfx.call())
+	if not fullscreen_button.visible:
+		settings_button.offset_right = -24
 
 
 func toggle_fullscreen() -> void:

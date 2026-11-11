@@ -24,6 +24,8 @@ var _wait_title: Label
 var _wait_text: Label
 var _typed := ""
 var _session: Node = null
+## Plays a sample sound (set by the game) when the effects volume changes.
+var preview_sfx: Callable = func(): pass
 var _update_button: Button
 var _version_label: Label
 var _checking_update := false
@@ -109,6 +111,10 @@ func _ready() -> void:
 	_wait.add_child(_wait_text)
 	_wait.add_child(_big_button("Cancel", Color(1, 1, 1, 0.9), _back))
 	column.add_child(_wait)
+
+	var gear := UI.settings_button(self, 24, func(): preview_sfx.call())
+	if OS.has_feature("android") or OS.has_feature("ios"):
+		gear.offset_right = -24
 
 	# Full screen from the start (browsers only allow it from a tap).
 	if not (OS.has_feature("android") or OS.has_feature("ios")):

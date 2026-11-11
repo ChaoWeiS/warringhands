@@ -4,6 +4,9 @@ extends Node
 ##   acknowledge: a unit is selected        objective: it's given an order
 ##   attack: it swings at someone           defend: a blow lands on it
 ##   death: it falls
+## and building sounds: build_place (a thud and hammer knocks when a
+## construction is laid down), build_done (when it's finished; made by
+## tools/make_build_sounds.py). All on the "SFX" bus (Settings volume).
 ## Every selected unit answers with the same line, together (a small chorus:
 ## each a hair apart in pitch and timing, so the words stay clear; quieter
 ## the more there are). Combat
@@ -32,6 +35,8 @@ const CLIPS := {
 		preload("res://assets/sounds/defend_ayah.ogg"),
 		preload("res://assets/sounds/defend_aaaaaa.ogg"),
 	],
+	"build_place": [preload("res://assets/sounds/build_place.ogg")],
+	"build_done": [preload("res://assets/sounds/build_done.ogg")],
 	"death": [
 		preload("res://assets/sounds/death_dead.ogg"),
 		preload("res://assets/sounds/death_ouch.ogg"),
@@ -67,6 +72,7 @@ func _ready() -> void:
 	_rng.randomize()
 	for i in MAX_VOICES:
 		var p := AudioStreamPlayer.new()
+		p.bus = load("res://scripts/settings.gd").sfx_bus()
 		add_child(p)
 		_voices.append(p)
 
