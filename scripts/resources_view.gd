@@ -4,7 +4,7 @@ extends Node3D
 ##   Stone (rocks gather fastest):    rock piles.
 ##   Wood (papers gather fastest):    every forest tree, plus lumber camps
 ##                                    (pines with a log pile).
-##   Metal (scissors gather fastest): a cluster of aqua crystals.
+##   Metal (scissors gather fastest): crystal clusters on rocks.
 ##
 ## Stone, metal and lumber camps sit on a tinted patch of ground with a
 ## floating badge (resource colour + amount left). Forest trees are drawn in
@@ -13,19 +13,18 @@ extends Node3D
 
 const UI := preload("res://scripts/ui_style.gd")
 const PINES := [preload("res://assets/env/pine_1.png"), preload("res://assets/env/pine_2.png")]
+const CRYSTALS := [preload("res://assets/env/crystals_1.png"), preload("res://assets/env/crystals_2.png")]
 const ROCKS := [preload("res://assets/env/rocks_1.png"), preload("res://assets/env/rocks_2.png")]
 
 @export var sim_path: NodePath
 
 const TRUNK := Color("#d9b48f")
 const LOG_END := Color("#f3dcb8")
-const METAL := Color("#a9e7e2")
-const METAL_DARK := Color("#7fd0ca")
 ## Forest tree height (map units), varied per tree by this much either way.
 const TREE_HEIGHT := 17.0
 const TREE_VARY := 0.18
 ## Height (map units) of each kind of spot, for its badge and for tapping.
-const TOPS := [12.0, 19.0, 15.0]
+const TOPS := [12.0, 19.0, 24.0]
 const BADGE_GAP := 3.0
 const FADE := 0.8
 
@@ -238,20 +237,10 @@ func _make_camp(root: Node3D) -> void:
 			pile.add_child(cap)
 
 
+## Two crystal clusters on rocks.
 func _make_metal(root: Node3D) -> void:
-	var crystals := [[Vector2(0, 0), Vector3(6, 15, 6), 0.0, METAL],
-			[Vector2(-4.5, 2.5), Vector3(4.5, 10, 4.5), 0.35, METAL_DARK],
-			[Vector2(4.5, 2), Vector3(4, 8, 4), -0.4, METAL],
-			[Vector2(1, -4), Vector3(3, 6, 3), 0.2, METAL_DARK]]
-	for c in crystals:
-		var crystal := MeshInstance3D.new()
-		var prism := PrismMesh.new()
-		prism.size = c[1]
-		crystal.mesh = prism
-		crystal.rotation = Vector3(0, 0, c[2])
-		crystal.position = Vector3(c[0].x, c[1].y * 0.5 - 0.3, c[0].y)
-		crystal.material_override = _material(c[3], false)
-		root.add_child(crystal)
+	_picture(root, CRYSTALS[0], 13.0, Vector3(-2.5, 0, 1.5))
+	_picture(root, CRYSTALS[1], 10.0, Vector3(3.5, 0, 5.0))
 
 
 func _remove(view: Dictionary) -> void:

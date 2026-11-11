@@ -3,29 +3,25 @@ extends Node3D
 ## roofs, rising from the ground while under construction, an HP bar once
 ## damaged, a ring when selected, and a collapse when destroyed.
 ##
-##   HQ:     a round keep with a tower and a flag.
-##   Quarry, Mill, Forge: painted art (assets/env/), on a patch of the
-##   team's colour. They make rocks, papers and scissors.
+##   HQ (town hall), Quarry, Mill, Forge: painted art (assets/env/), on a
+##   patch of the team's colour. The factories make rocks, papers and scissors.
 
 @export var sim_path: NodePath
 
 const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
-const WALLS := {
-	"hq": Color("#f6eedd"), "quarry": Color("#ddd6ea"),
-	"mill": Color("#f8f0da"), "forge": Color("#d3ece8"),
-}
 const TRIM := Color("#e2cfae")
 const STONE := Color("#c9c3d6")
 const HP_BAR_BG := Color(0.25, 0.22, 0.33, 0.85)
 const HP_BAR_PX := Vector2(160, 14)
 const PIXEL := 0.06
 const ART := {
+	"hq": preload("res://assets/env/hq.png"),
 	"quarry": preload("res://assets/env/quarry.png"),
 	"mill": preload("res://assets/env/mill.png"),
 	"forge": preload("res://assets/env/forge.png"),
 }
-## Width of a factory picture (map units).
-const ART_WIDTH := 23.0
+## Width of each building's picture (map units).
+const ART_WIDTH := {"hq": 30.0, "quarry": 23.0, "mill": 23.0, "forge": 23.0}
 
 var sim: Node
 var _views: Dictionary = {}  # building id -> {root, model, ring, hp_bg, hp_fill, sails}
@@ -84,26 +80,19 @@ func _on_added(id: int) -> void:
 	var roof: Color = TEAM_COLORS[b.team]
 	var sails: Node3D = null
 	match b.btype:
-		"hq":
-			_cylinder(model, r * 0.85, r * 0.95, 6.0, 3.0, WALLS.hq)
-			_cylinder(model, r * 0.98, r * 0.98, 0.8, 6.2, TRIM)
-			_cylinder(model, r * 0.45, r * 0.5, 7.0, 9.5, WALLS.hq)
-			_cone(model, r * 0.6, 5.0, 15.5, roof)
-			_box(model, Vector3(0.25, 4.0, 0.25), Vector3(0, 20.0, 0), TRIM)
-			_box(model, Vector3(2.4, 1.4, 0.15), Vector3(1.3, 21.2, 0), roof)
-		"quarry", "mill", "forge":
+		"hq", "quarry", "mill", "forge":
 			# Painted art, standing up and facing the camera, on a patch of
 			# the team's colour.
 			var tex: Texture2D = ART[b.btype]
 			var art := Sprite3D.new()
 			art.texture = tex
-			art.pixel_size = ART_WIDTH / tex.get_width()
+			art.pixel_size = ART_WIDTH[b.btype] / tex.get_width()
 			art.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 			art.shaded = false
 			art.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
 			art.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 			art.offset = Vector2(0, tex.get_height() * 0.5)
-			art.position = Vector3(0, 0, r * 0.15)
+			art.position = Vector3(0, 0, r * (1.0 if b.btype == "hq" else 0.15))
 			model.add_child(art)
 			var patch := MeshInstance3D.new()
 			var disc := CylinderMesh.new()
@@ -137,8 +126,8 @@ func _on_added(id: int) -> void:
 	ring.material_override = _mat(Color.WHITE)
 	ring.visible = id == _selected_id
 	root.add_child(ring)
-	var hp_bg := _bar(HP_BAR_BG, true, 24.0 if b.btype == "hq" else 25.0)
-	var hp_fill := _bar(TEAM_COLORS[b.team].lightened(0.15), false, 24.0 if b.btype == "hq" else 25.0)
+	var hp_bg := _bar(HP_BAR_BG, true, 33.0 if b.btype == "hq" else 25.0)
+	var hp_fill := _bar(TEAM_COLORS[b.team].lightened(0.15), false, 33.0 if b.btype == "hq" else 25.0)
 	hp_fill.render_priority = 2
 	root.add_child(hp_bg)
 	root.add_child(hp_fill)

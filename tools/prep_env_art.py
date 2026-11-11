@@ -6,7 +6,7 @@ import numpy as np, os
 
 SRC, DST = 'art_source/env', 'assets/env'
 # name -> height in pixels in the game texture (None = keep)
-SIZES = {'quarry': None, 'mill': None, 'forge': None,
+SIZES = {'hq': 320, 'crystals_1': 220, 'crystals_2': 220, 'quarry': None, 'mill': None, 'forge': None,
          'pine_1': 320, 'pine_2': 320, 'rocks_1': None, 'rocks_2': None,
          'icon_stone': 'icon', 'icon_wood': 'icon', 'icon_metal': 'icon'}
 ICON = 128  # resource icons: square, this many pixels

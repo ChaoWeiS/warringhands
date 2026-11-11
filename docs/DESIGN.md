@@ -61,7 +61,7 @@
 - `combat_enabled` switch on the sim (e.g. for early tutorial steps).
 
 ## Economy (prototype)
-- Each side has an **HQ** (lose it, lose the game) and starts with **300** stone, wood and metal.
+- Each side has an **HQ**, a town hall (painted art; lose it, lose the game) and starts with **300** stone, wood and metal.
 - **Gathering:** tap a resource spot with units selected. They gather 20 at a time and carry it to the HQ, then repeat. Own resource is twice as fast (2 s vs 4 s): rocks-stone, papers-wood, scissors-metal. Gatherers don't go looking for fights but fight back if attacked.
 - **Factories** (Build button, pick one, tap open ground): Quarry (150 stone, makes rocks), Paper Mill (150 wood, papers), Forge (150 metal, scissors). Drawn with painted art (`assets/env/`, cropped from `art_source/env/` by `tools/prep_env_art.py`) on a patch of the team's colour. 10 s to build; can't train until finished.
 - **Training:** tap your factory, then the + button: 60 of its resource, 5 s each, up to 5 queued. New units walk out towards the island centre.
@@ -71,7 +71,7 @@
 - Resource spots (`scripts/resources_view.gd`), each on a tinted patch of ground with a floating badge (resource icon + amount left):
   - **Stone**: rock piles (painted art).
   - **Wood**: lumber camps (pines and a log pile), and **every forest tree** (100 wood each). A cut-down tree is gone and its ground opens up for walking (and building), so forests thin out over a match.
-  - **Metal**: a cluster of aqua crystals.
+  - **Metal**: crystal clusters on rocks (painted art).
 - Tap anywhere on a spot's model (crystal tip, tree) or its ground patch to gather.
 - Spots hold 2000 (stone, wood) / 1000 (metal) and sink away when empty.
 - When a spot or tree runs out, gatherers move on by themselves to the nearest one of the same resource (within 40 map units of where they were working). A gatherer that can't reach its tree (deep in a forest) picks the nearest other one.
