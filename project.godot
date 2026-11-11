@@ -24,9 +24,14 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=4
 
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
 [rendering]
 
-environment/defaults/default_clear_color=Color(0.12156863, 0.37254903, 0.54509807, 1)
+environment/defaults/default_clear_color=Color(0.6627451, 0.8392157, 0.92156863, 1)
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
+anti_aliasing/quality/msaa_3d=1

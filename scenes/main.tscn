@@ -1,23 +1,40 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/field.gd" id="1_field"]
-[ext_resource type="Script" path="res://scripts/touch_camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://scripts/pane_layout.gd" id="2_panes"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node"]
 
-[node name="Field" type="Node2D" parent="."]
+[node name="World" type="SubViewport" parent="."]
+size = Vector2i(2, 2)
+render_target_update_mode = 0
+
+[node name="Field" type="Node3D" parent="World"]
 script = ExtResource("1_field")
 
-[node name="Camera" type="Camera2D" parent="."]
-position = Vector2(4096, 4096)
-zoom = Vector2(0.25, 0.25)
-script = ExtResource("2_camera")
+[node name="Panes" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_panes")
+world_path = NodePath("../World")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
-[node name="Title" type="Label" parent="HUD"]
+[node name="Hint" type="Label" parent="HUD"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = 20.0
-theme_override_font_sizes/font_size = 32
-text = "Warring Hands: prototype
+offset_top = -74.0
+offset_right = 1400.0
+offset_bottom = -16.0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.35, 0.33, 0.44, 1)
+theme_override_font_sizes/font_size = 22
+text = "Grab a side tab and swipe across: cut  ·  Drag a divider: resize, all the way: merge
 Two fingers: pan / pinch zoom"

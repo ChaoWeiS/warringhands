@@ -7,12 +7,21 @@
 - Rock beats scissors, scissors beat paper, paper beats rock. Same vs same is an even fight.
 - The selling point is **how you see and control the battlefield**: you cut your screen into panes.
 
+## Look
+- **2.5D**: 2D sprites standing on a 3D world, like Ragnarok Online. Sprites always face the camera.
+- Tilted camera (about 50° down), narrow field of view.
+- **Pastel** palette: soft blue sea, cream sand, mint grass, pink-blossom trees, lavender stone, aqua crystals.
+- Soft blob shadows under units instead of real-time shadows (cheaper on phones).
+- Game logic stays flat 2D (positions on the ground plane); only the visuals are 3D.
+
 ## Screen panes
-- **Cut**: swipe from a pane's side (or its handle) across it. Cuts snap to straight lines.
+- **Cut**: grab the grip tab in the middle of a pane's side and swipe across the pane. The cut line follows your finger; it happens if you swipe far enough (about halfway). Cuts are straight lines.
 - **Resize**: drag a divider.
 - **Merge**: drag a divider until one pane closes. Panes too small snap shut.
 - Each pane has its own camera and zoom.
-- Outer screen edges belong to the OS (back / home), so cuts start from visible handles there.
+- Grip tabs sit slightly inside the screen edge, clear of the OS back / home gestures.
+- Dividers can be grabbed anywhere except the tabs. Snap points at 1/3, 1/2, 2/3.
+- A new pane starts looking at the same spot as the pane it was cut from.
 - Ideas to explore: drag units from one pane to a destination in another; pin a pane to a group.
 
 ## Controls
@@ -54,6 +63,7 @@
 
 ## Tech
 - Godot 4.6, GL Compatibility renderer (Android, iOS, web).
+- Panes: each is a SubViewport sharing one 3D world, with its own camera. Layout is a tree of splits.
 - Multiplayer: deterministic lockstep (send commands only). Game logic uses integers / fixed point.
 - Relay / matchmaking: Nakama (planned).
 - Builds: GitHub Actions exports Web (GitHub Pages) and an Android debug APK. iOS builds on the Mac with Xcode.

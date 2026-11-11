@@ -7,12 +7,15 @@ A touch-first, multiplayer rock-paper-scissors RTS for tablets. Cut your screen 
 See [docs/DESIGN.md](docs/DESIGN.md) for the full design.
 
 ## Status
-Early prototype: an island map with a two-finger pan / pinch-zoom camera.
+Early prototype:
+- A pastel 2.5D island (3D world, placeholder billboard units)
+- Screen panes: grab a side tab and swipe across to **cut**, drag a divider to **resize**, drag it all the way to **merge**
+- Each pane has its own camera: two fingers to pan and pinch-zoom
 
 ## Open the project
 1. Install [Godot 4.6](https://godotengine.org/download) (standard version, not .NET).
 2. In Godot, **Import** and pick this folder's `project.godot`.
-3. Press **Play**. On a computer: mouse wheel zooms, right-drag pans.
+3. Press **Play**. On a computer: left mouse acts as one finger (cut / resize), mouse wheel zooms, right-drag pans.
 
 ## Layout
 ```
