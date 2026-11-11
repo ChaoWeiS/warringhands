@@ -25,7 +25,15 @@ const SPACING := 1000
 ## than two radii are pushed apart every tick.
 const RADIUS := 320
 ## Overlap passes per tick (more = firmer, a little slower).
-const PUSH_PASSES := 2
+const PUSH_PASSES := 8
+## Idle units of the same side closer than this slowly drift apart until
+## each has its own space (formations are spaced wider, so they don't move).
+const COMFORT := 860
+## How far an idle unit drifts per tick while fanning out.
+const SPREAD_STEP := 14
+## A walker that barely moves for this many ticks (e.g. pressed against
+## enemies) stops where it is.
+const STUCK_TICKS := 30
 
 enum Kind { ROCK, PAPER, SCISSORS }
 
@@ -138,6 +146,8 @@ func _step() -> void:
 			_move(u)
 	for pass_index in PUSH_PASSES:
 		_separate()
+	_spread_idle()
+	_check_stuck()
 	tick += 1
 	ticked.emit()
 
@@ -206,9 +216,13 @@ func _move(u: Dictionary) -> void:
 		u.z += dz * speed / dist
 
 
-## Pushes overlapping units apart (half each), never into blocked ground.
-## A walking unit whose spot is taken by someone already standing there
-## stops close by instead of jostling forever.
+## Pushes overlapping units apart, never into blocked ground:
+##   - two walkers, or two idle units: half each;
+##   - a walker meets an idle unit of its own side: the idle one steps aside
+##     (sideways out of the walker's path);
+##   - a walker meets an idle enemy: the enemy holds its ground and the
+##     walker is blocked.
+## A walker whose exact spot is already taken stops right next to it.
 ## Whole numbers and a fixed order (by id), so every device agrees.
 func _separate() -> void:
 	var min_dist: int = RADIUS * 2
@@ -255,28 +269,135 @@ func _push_apart(a: Dictionary, b: Dictionary, min_dist: int) -> void:
 		dz = 0
 		d = 1
 	var overlap: int = min_dist - d
-	# A unit standing still gives way more than one that's walking.
-	var share_a: int = overlap / 2
-	if a.moving and not b.moving:
-		share_a = overlap / 4
-	elif b.moving and not a.moving:
-		share_a = overlap - overlap / 4
-	var share_b: int = overlap - share_a
-	_nudge(a, -dx * share_a / d, -dz * share_a / d)
-	_nudge(b, dx * share_b / d, dz * share_b / d)
+	# Direction from a to b, scaled to 1000.
+	var nx: int = dx * 1000 / d
+	var nz: int = dz * 1000 / d
+	if a.moving == b.moving:
+		var half: int = overlap / 2
+		_nudge_or_other(a, b, -nx * half / 1000, -nz * half / 1000)
+		_nudge_or_other(b, a, nx * (overlap - half) / 1000, nz * (overlap - half) / 1000)
+		return
+	var walker: Dictionary = a if a.moving else b
+	var idle: Dictionary = b if a.moving else a
+	var sign: int = 1 if walker == a else -1  # direction walker -> idle
+	if walker.team != idle.team:
+		# Enemies don't make way: the walker is held back.
+		_nudge(walker, -sign * nx * overlap / 1000, -sign * nz * overlap / 1000)
+		return
+	# Our own idle unit steps aside, mostly sideways to the walker's heading,
+	# exactly far enough to clear the walker's body.
+	var side: Vector2i = _sidestep(walker, idle, Vector2i(sign * nx, sign * nz))
+	var wx: int = idle.x - walker.x
+	var wz: int = idle.z - walker.z
+	var along: int = (wx * side.x + wz * side.y) / 1000  # how far apart along the step
+	var dist_now2: int = wx * wx + wz * wz
+	var step: int = _isqrt(along * along + min_dist * min_dist - dist_now2) - along + 1
+	if _nudge(idle, side.x * step / 1000, side.y * step / 1000):
+		# The walker eases off a little too, so in a crowd the stepping-aside
+		# unit isn't the only one absorbing the pushes.
+		_nudge(walker, -sign * nx * overlap / 4000, -sign * nz * overlap / 4000)
+	else:
+		_nudge(walker, -sign * nx * overlap / 1000, -sign * nz * overlap / 1000)
+
+
+## Direction (scaled to 1000) for an idle unit to step out of a walker's way:
+## sideways to where the walker is heading, on the side it's already on,
+## plus a little straight away from the walker.
+func _sidestep(walker: Dictionary, idle: Dictionary, away: Vector2i) -> Vector2i:
+	var next: Vector2i = walker.path[0] if not walker.path.is_empty() else Vector2i(walker.tx, walker.tz)
+	var hx: int = next.x - walker.x
+	var hz: int = next.y - walker.z
+	var h: int = _isqrt(hx * hx + hz * hz)
+	if h == 0:
+		return away
+	var px: int = -hz * 1000 / h
+	var pz: int = hx * 1000 / h
+	var on_side: int = px * away.x + pz * away.y
+	if on_side < 0 or (on_side == 0 and idle.id % 2 == 0):
+		px = -px
+		pz = -pz
+	var vx: int = px * 2 + away.x
+	var vz: int = pz * 2 + away.y
+	var v: int = _isqrt(vx * vx + vz * vz)
+	if v == 0:
+		return away
+	return Vector2i(vx * 1000 / v, vz * 1000 / v)
+
+
+## Nudges `u`; if it can't move there (blocked ground), pushes `other` the
+## opposite way instead, so the overlap still gets resolved.
+func _nudge_or_other(u: Dictionary, other: Dictionary, dx: int, dz: int) -> void:
+	if not _nudge(u, dx, dz):
+		_nudge(other, -dx, -dz)
 
 
 ## Moves a unit by (dx, dz) unless that would put it on blocked ground.
-func _nudge(u: Dictionary, dx: int, dz: int) -> void:
+## Returns false if it couldn't move.
+func _nudge(u: Dictionary, dx: int, dz: int) -> bool:
 	if dx == 0 and dz == 0:
-		return
+		return true
 	var nx: int = u.x + dx
 	var nz: int = u.z + dz
 	var grid = nav()
 	if grid != null and not grid.is_walkable_cell(grid.cell_of(nx, nz)):
-		return
+		return false
 	u.x = nx
 	u.z = nz
+	return true
+
+
+## Idle units of the same side that are a bit too close drift apart, a little
+## each tick, until each has its own space.
+func _spread_idle() -> void:
+	var buckets := _buckets(COMFORT)
+	var n: int = units.size()
+	for i in n:
+		var a: Dictionary = units[i]
+		if a.moving:
+			continue
+		var cell := Vector2i(a.x / COMFORT, a.z / COMFORT)
+		for oy in range(-1, 2):
+			for ox in range(-1, 2):
+				for j in buckets.get(cell + Vector2i(ox, oy), []):
+					if j <= i:
+						continue
+					var b: Dictionary = units[j]
+					if b.moving or b.team != a.team:
+						continue
+					var dx: int = b.x - a.x
+					var dz: int = b.z - a.z
+					var d2: int = dx * dx + dz * dz
+					if d2 >= COMFORT * COMFORT:
+						continue
+					var d: int = _isqrt(d2)
+					if d == 0:
+						dx = 1 if a.id < b.id else -1
+						dz = 0
+						d = 1
+					var step: int = mini(SPREAD_STEP, (COMFORT - d) / 2)
+					if step <= 0:
+						continue
+					_nudge_or_other(a, b, -dx * step / d, -dz * step / d)
+					_nudge_or_other(b, a, dx * step / d, dz * step / d)
+
+
+## Walkers that have barely moved for STUCK_TICKS ticks stop where they are.
+func _check_stuck() -> void:
+	for u in units:
+		if not u.moving:
+			u.stuck = 0
+			continue
+		var dx: int = u.x - u.px
+		var dz: int = u.z - u.pz
+		var expected: int = SPEED[u.kind] / 3
+		if dx * dx + dz * dz < expected * expected:
+			u.stuck += 1
+			if u.stuck >= STUCK_TICKS:
+				u.moving = false
+				u.path.clear()
+				u.stuck = 0
+		else:
+			u.stuck = 0
 
 
 func _stop_if_spot_taken(u: Dictionary, min_dist: int) -> void:
@@ -326,7 +447,7 @@ func _add_unit(team: int, kind: int, at: Vector2i) -> void:
 	var u := {
 		"id": _next_id, "team": team, "kind": kind,
 		"x": at.x, "z": at.y, "px": at.x, "pz": at.y,
-		"tx": at.x, "tz": at.y, "moving": false, "path": [],
+		"tx": at.x, "tz": at.y, "moving": false, "path": [], "stuck": 0,
 	}
 	_next_id += 1
 	units.append(u)

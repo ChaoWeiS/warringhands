@@ -296,7 +296,7 @@ func _run() -> void:
 			var cu: Dictionary = sim.get_unit(id)
 			on_open_ground = on_open_ground and nav_grid.is_walkable_cell(nav_grid.cell_of(cu.x, cu.z))
 	check("crossing groups never overlap much (closest %.1f apart, bodies %.1f)" % [tightest / 100.0, sim.RADIUS * 2 / 100.0],
-			tightest >= sim.RADIUS * 2 * 0.6)
+			tightest >= sim.RADIUS * 2 * 0.9)
 	check("nobody was pushed onto blocked ground", on_open_ground)
 	var crossed := true
 	for id in rocks:
@@ -308,6 +308,47 @@ func _run() -> void:
 	for id in mine:
 		settled = settled and not sim.get_unit(id).moving
 	check("everyone settled after crossing", settled)
+
+	# Giving way: a walker heads straight through one of our idle units. The
+	# idle one steps aside (sideways), they never overlap much, and the
+	# walker gets where it's going.
+	var stander: int = scissors[0]
+	var mover: int = rocks[0]
+	var q := Vector2.ZERO
+	for cand in [far + Vector2(0, 45), far + Vector2(0, -45), far + Vector2(-50, 0), far + Vector2(50, 0)]:
+		var clear := true
+		for k in 13:
+			clear = clear and field.is_walkable(cand + Vector2(-30 + k * 5, 0))
+		if clear:
+			q = cand
+			break
+	check("found clear ground for the give-way test", q != Vector2.ZERO)
+	sim.command_move([stander], Vector3(q.x, 0, q.y))
+	sim.command_move([mover], Vector3(q.x - 30, 0, q.y))
+	sim.step_ticks(700)
+	var stand_before: Vector2 = sim.unit_ground(stander)
+	sim.command_move([mover], Vector3(q.x + 30, 0, q.y))
+	var closest: int = 1 << 30
+	for i in 300:
+		sim.step_ticks(1)
+		closest = mini(closest, min_gap([stander, mover]))
+	var moved: Vector2 = sim.unit_ground(stander) - stand_before
+	check("walker reached the far side (%.1f away)" % sim.unit_ground(mover).distance_to(Vector2(q.x + 30, q.y)),
+			sim.unit_ground(mover).distance_to(Vector2(q.x + 30, q.y)) < 1.0)
+	check("they never overlapped (closest %.1f, bodies %.1f)" % [closest / 100.0, sim.RADIUS * 2 / 100.0],
+			closest >= sim.RADIUS * 2 * 0.9)
+	check("the idle unit stepped aside sideways (moved %.1f across, %.1f along)" % [absf(moved.y), absf(moved.x)],
+			absf(moved.y) > 2.0 and absf(moved.y) > absf(moved.x))
+
+	# Fanning out: two groups ordered onto the same spot clump up, then
+	# drift apart until each unit has its own space.
+	var papers: Array = mine.filter(func(id): return sim.get_unit(id).kind == SimScript.Kind.PAPER)
+	var clump: Array = rocks + papers
+	sim.command_move(rocks, Vector3(far.x, 0, far.y))
+	sim.command_move(papers, Vector3(far.x, 0, far.y))
+	sim.step_ticks(500)
+	check("clumped units fanned out to their own space (closest %.1f, comfort %.1f)" % [min_gap(clump) / 100.0, sim.COMFORT / 100.0],
+			min_gap(clump) >= sim.COMFORT * 0.85)
 
 	# Pathfinding: walk around the central lake. The straight line between
 	# the two points crosses the lake; the unit must go around it, never
@@ -347,6 +388,33 @@ func _run() -> void:
 	sim.step_ticks(1500)
 	var u: Dictionary = sim.get_unit(first)
 	check("unit sent to sea stops on land", field.is_on_land(sim.unit_ground(first)) and not u.moving)
+
+	# Enemies hold their ground: walking into the enemy army doesn't push
+	# through it. Our unit is blocked, never overlaps them, and stops.
+	var theirs_before: Dictionary = {}
+	for id in theirs:
+		theirs_before[id] = sim.unit_ground(id)
+	var enemy_centre := Vector2.ZERO
+	for id in theirs:
+		enemy_centre += sim.unit_ground(id)
+	enemy_centre /= theirs.size()
+	var intruder: int = mine[5]
+	sim.command_move([intruder], Vector3(enemy_centre.x, 0, enemy_centre.y))
+	var nearest_enemy: int = 1 << 30
+	for i in 2500:
+		sim.step_ticks(1)
+		for id in theirs:
+			nearest_enemy = mini(nearest_enemy, min_gap([intruder, id]))
+		if not sim.get_unit(intruder).moving and i > 50:
+			break
+	var enemy_shift := 0.0
+	for id in theirs:
+		enemy_shift = maxf(enemy_shift, sim.unit_ground(id).distance_to(theirs_before[id]))
+	check("can't walk through enemies (closest %.1f, bodies %.1f)" % [nearest_enemy / 100.0, sim.RADIUS * 2 / 100.0],
+			nearest_enemy >= sim.RADIUS * 2 * 0.9)
+	check("enemies held their ground (moved at most %.2f)" % enemy_shift, enemy_shift < 0.5)
+	check("blocked unit stopped at the enemy line", not sim.get_unit(intruder).moving
+			and sim.unit_ground(intruder).distance_to(enemy_centre) < 40.0)
 
 	# Lockstep: two simulations given the same orders end up identical.
 	var a: Node = SimScript.new()
