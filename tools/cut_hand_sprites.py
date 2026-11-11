@@ -33,17 +33,36 @@ PANELS = [
     [2545, 2651, 2754, 2857, 2961, 3062],  # dying
 ]
 ROWS = [(122, 395), (404, 676), (688, 977)]
-BADGE = 62          # skip the numbered badge at the top of each cell
-LINE = 6            # skip the cell lines
-EDGE = 16           # skip the panel borders
+BADGE = 51          # start just under the numbered badge (art starts lower)
+EDGE_PAD = 1        # px kept clear of a line (its anti-aliased edge)
+ROW_PAD = 6         # px above the row's bottom border
 
 src = np.array(Image.open(sys.argv[1]).convert('RGB')).astype(float)
 lum = src @ np.array([0.299, 0.587, 0.114])
 
 
-def cells(lines):
-    # The panel's outer border is thicker than the lines between cells.
-    return [(lines[i] + (EDGE if i == 0 else LINE), lines[i + 1] - (EDGE if i == 4 else LINE)) for i in range(5)]
+def line_band(x_centre, y0, y1):
+    """The pixel columns of a cell line near x_centre: the ones painted (not
+    white) nearly all the way down the row. Art stops short of that."""
+    painted = (src[y0:y1, :].min(axis=2) < 235).mean(axis=0)
+    cols = [x for x in range(x_centre - 8, x_centre + 9) if painted[x] > 0.85]
+    if not cols:
+        return x_centre, x_centre
+    # The run of line columns containing (or nearest) the centre.
+    cols.sort(key=lambda x: abs(x - x_centre))
+    lo = hi = cols[0]
+    while lo - 1 in cols:
+        lo -= 1
+    while hi + 1 in cols:
+        hi += 1
+    return lo, hi
+
+
+def cells(lines, y0, y1):
+    """x ranges of a panel's 5 cells in one row, right up to (not including)
+    the lines between them."""
+    bands = [line_band(x, y0, y1) for x in lines]
+    return [(bands[i][1] + 1 + EDGE_PAD, bands[i + 1][0] - EDGE_PAD) for i in range(5)]
 
 
 def cut(x0, x1, y0, y1):
@@ -74,10 +93,10 @@ def cut(x0, x1, y0, y1):
 atlas = Image.new('RGBA', (CELL * 5, CELL * 15), (0, 0, 0, 0))
 clipped = []
 for k, (ry0, ry1) in enumerate(ROWS):
-    y0, y1 = ry0 + BADGE, ry1 - LINE
+    y0, y1 = ry0 + BADGE, ry1 - ROW_PAD
     # Scale and ground line for this kind, from its idle frames.
     heights, bottoms = [], []
-    for (x0, x1) in cells(PANELS[0]):
+    for (x0, x1) in cells(PANELS[0], y0, y1):
         _, solid = cut(x0, x1, y0, y1)
         lab, n = ndi.label(solid)
         sizes = ndi.sum(solid, lab, range(1, n + 1))
@@ -88,7 +107,7 @@ for k, (ry0, ry1) in enumerate(ROWS):
     s = HAND_HEIGHT / float(np.median(heights))
     ground = float(np.median(bottoms))  # in cell pixels
     for state, panel in enumerate(PANELS):
-        for f, (x0, x1) in enumerate(cells(panel)):
+        for f, (x0, x1) in enumerate(cells(panel, y0, y1)):
             rgba, _ = cut(x0, x1, y0, y1)
             img = Image.fromarray(rgba, 'RGBA')
             img = img.resize((round(img.width * s), round(img.height * s)), Image.LANCZOS)
