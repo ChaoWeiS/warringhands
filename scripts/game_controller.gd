@@ -72,6 +72,8 @@ func _ready() -> void:
 	sim.enable_ai(1 - player_team)  # the computer plays the other side (vs Computer)
 	panes.tapped.connect(_on_tapped)
 	panes.lassoed.connect(_on_lassoed)
+	panes.pointer_moved.connect(_on_pointer_moved)
+	panes.placed.connect(_on_placed)
 	panes.register_blocker(bar)
 	panes.register_blocker(bar.actions)
 	hud.below_build = bar.actions
@@ -173,6 +175,9 @@ func start_online(session: Node, seat: int) -> void:
 func _process(_delta: float) -> void:
 	# Range circles while placing (an HQ can go anywhere).
 	buildings_view.show_build_range(player_team, hud.armed_build() != "" and hud.armed_build() != "hq")
+	panes.placing = hud.armed_build() != ""
+	if not panes.placing:
+		buildings_view.hide_ghost()
 	_place_building_panel()
 
 
@@ -285,6 +290,28 @@ func _tap_distance(camera: Camera3D, point: Vector2, unit_id: int) -> float:
 	return camera.unproject_position(view.world_position(unit_id)).distance_to(point)
 
 
+## Placing: the preview follows the finger / mouse.
+func _on_pointer_moved(camera: Camera3D, point: Vector2) -> void:
+	var btype: String = hud.armed_build()
+	var ground: Variant = camera.ground_at(point)
+	if btype == "" or ground == null:
+		return
+	var at := Vector2(ground.x, ground.z)
+	buildings_view.show_ghost(btype, player_team, at, _can_build_at(btype, at))
+
+
+## Placing: the finger was lifted here.
+func _on_placed(camera: Camera3D, point: Vector2) -> void:
+	var ground: Variant = camera.ground_at(point)
+	if hud.armed_build() != "" and ground != null:
+		_place(hud.armed_build(), Vector2(ground.x, ground.z))
+
+
+func _can_build_at(btype: String, at: Vector2) -> bool:
+	var spec: Dictionary = sim.BUILDINGS[btype]
+	return sim.can_place(btype, at, player_team) and sim.can_afford(player_team, spec.res, spec.cost)
+
+
 ## Builds where tapped if possible; a red marker means "can't build here".
 func _place(btype: String, ground: Vector2) -> void:
 	var spec: Dictionary = sim.BUILDINGS[btype]
@@ -296,6 +323,7 @@ func _place(btype: String, ground: Vector2) -> void:
 		return
 	if sim.can_place(btype, ground, player_team) and sim.can_afford(player_team, spec.res, spec.cost):
 		sim.command_build(player_team, btype, ground)
+		buildings_view.hide_ghost()
 		did.emit("build_" + btype)
 		view.show_move_marker(Vector3(ground.x, 0, ground.y))
 		hud.clear_build()

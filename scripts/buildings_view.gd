@@ -31,6 +31,9 @@ const ART_WIDTH := {"hq": 30.0, "quarry": 23.0, "mill": 23.0, "forge": 23.0}
 var sim: Node
 var _views: Dictionary = {}  # building id -> {root, model, ring, hp_bg, hp_fill, sails}
 var _selected_ids: Array = []
+var _ghost: Node3D = null        # placement preview
+var _ghost_type := ""
+const GHOST_ALPHA := 0.5
 var _ranges := Node3D.new()   # build range circles, shown while placing
 var _range_key := ""          # which buildings the circles were drawn for
 const RANGE_COLOR := Color(1, 1, 1, 0.16)
@@ -132,6 +135,62 @@ func screen_rect(camera: Camera3D, id: int) -> Rect2:
 	var head: Vector2 = camera.unproject_position(base + Vector3(0, size.y, 0))
 	var half: float = size.x * 0.5 / camera.units_per_pixel
 	return Rect2(foot.x - half, head.y, half * 2.0, foot.y - head.y)
+
+
+## Placing a building: a see-through preview where it would go (red if it
+## can't go there).
+func show_ghost(btype: String, team: int, at: Vector2, ok: bool) -> void:
+	if _ghost == null or _ghost_type != btype:
+		hide_ghost()
+		_ghost = Node3D.new()
+		_ghost_type = btype
+		add_child(_ghost)
+		var tex: Texture2D = HQ_RED if btype == "hq" and team == 0 else ART[btype]
+		var art := Sprite3D.new()
+		art.texture = tex
+		art.pixel_size = ART_WIDTH[btype] / tex.get_width()
+		art.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		art.shaded = false
+		art.transparent = true
+		art.no_depth_test = true
+		art.render_priority = 4
+		art.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		art.offset = Vector2(0, tex.get_height() * 0.5)
+		art.position = Vector3(0, 0, ART_WIDTH[btype] * ART_BASE_DEPTH)
+		art.name = "Art"
+		_ghost.add_child(art)
+		var disc := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		var r: float = sim.BUILDINGS[btype].radius / float(sim.SCALE)
+		cyl.top_radius = r
+		cyl.bottom_radius = r
+		cyl.height = 0.02
+		cyl.radial_segments = 32
+		disc.mesh = cyl
+		disc.position.y = 0.6
+		disc.name = "Footprint"
+		var mat := _mat(Color.WHITE)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		disc.material_override = mat
+		_ghost.add_child(disc)
+	_ghost.position = Vector3(at.x, 0, at.y)
+	_ghost.visible = true
+	var tint: Color = Color(1, 1, 1, GHOST_ALPHA) if ok else Color(1, 0.45, 0.45, GHOST_ALPHA)
+	(_ghost.get_node("Art") as Sprite3D).modulate = tint
+	(_ghost.get_node("Footprint") as MeshInstance3D).material_override.albedo_color = \
+			Color(0.6, 1, 0.6, 0.35) if ok else Color(1, 0.4, 0.4, 0.35)
+
+
+func hide_ghost() -> void:
+	if _ghost != null:
+		_ghost.queue_free()
+		_ghost = null
+		_ghost_type = ""
+
+
+func ghost_visible() -> bool:
+	return _ghost != null and _ghost.visible
 
 
 func set_selected_buildings(ids: Array) -> void:

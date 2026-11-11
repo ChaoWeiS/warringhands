@@ -23,6 +23,14 @@ const CameraRig := preload("res://scripts/camera_rig.gd")
 signal tapped(camera: Camera3D, point: Vector2)
 ## One finger drew a loop in a pane. Points are relative to that pane.
 signal lassoed(camera: Camera3D, polygon: PackedVector2Array)
+## Placing a building (see `placing`): the finger (or mouse) is over this
+## pane point; and the finger was lifted here (build it).
+signal pointer_moved(camera: Camera3D, point: Vector2)
+signal placed(camera: Camera3D, point: Vector2)
+
+## While true (a building is picked), one finger drags a preview instead of
+## drawing a loop, and lifting it emits `placed` (not over a button).
+var placing := false
 
 @export var world_path: NodePath
 ## Smallest a pane can be (width or height). Smaller panes snap shut.
@@ -137,6 +145,11 @@ func _input(event: InputEvent) -> void:
 		if _mouse_pan_leaf != null and _is_alive(_mouse_pan_leaf) \
 				and event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 			_mouse_pan_leaf.camera.pan_by_screen(event.relative)
+		elif placing and event.button_mask == 0 and not _blocked(event.position):
+			# Mouse: the preview follows the pointer.
+			var hover := _leaf_at(event.position)
+			if hover:
+				pointer_moved.emit(hover.camera, event.position - hover.rect.position)
 	elif event is InputEventMagnifyGesture:
 		var leaf := _leaf_at(event.position)
 		if leaf:
@@ -184,6 +197,8 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 		_fingers[event.index] = finger
 		if finger.mode == Mode.PANE:
 			_reset_pinch(finger.leaf)
+			if placing and finger.solo:
+				pointer_moved.emit(finger.leaf.camera, p - finger.leaf.rect.position)
 		else:
 			get_viewport().set_input_as_handled()
 	else:
@@ -219,7 +234,10 @@ func _on_drag(event: InputEventScreenDrag) -> void:
 				_pinch(finger.leaf, points)
 				get_viewport().set_input_as_handled()
 			elif finger.get("solo", false):
-				_track_lasso(finger)
+				if placing:
+					pointer_moved.emit(finger.leaf.camera, finger.pos - finger.leaf.rect.position)
+				else:
+					_track_lasso(finger)
 	_overlay.queue_redraw()
 
 
@@ -251,6 +269,11 @@ func _finish_solo(finger: Dictionary) -> void:
 	if not finger.get("solo", false) or not _is_alive(finger.leaf):
 		return
 	var leaf: PaneNode = finger.leaf
+	if placing:
+		# Lifted: build here (unless the finger ended up over a button).
+		if not _blocked(finger.pos) and leaf.rect.has_point(finger.pos):
+			placed.emit(leaf.camera, finger.pos - leaf.rect.position)
+		return
 	if finger.lasso:
 		var path: PackedVector2Array = finger.path
 		if path.size() >= 3:

@@ -402,6 +402,56 @@ func _run() -> void:
 	var queued: Array = [] if sim._pending.is_empty() else sim._pending.values()[0]
 	check("tapping open ground orders the build", queued.size() == 1 and queued[0].type == "build" and queued[0].btype == "quarry")
 	check("...and leaves build mode", hud.armed_build() == "")
+	# Placing by finger: press, drag (a see-through preview follows), lift = build.
+	sim.step_ticks(3)  # (the quarry ordered above goes up first)
+	sim._pending.clear()
+	hud._build_toggle.button_pressed = true
+	hud._build_options.mill.pressed.emit()
+	game._process(0.0)
+	var mill_spots: Array = []
+	for d in [30.0, 36.0, 42.0]:
+		for k in 16:
+			var p: Vector2 = Vector2(my_hq.x, my_hq.z) / 100.0 + Vector2.from_angle(k * TAU / 16) * d
+			if sim.can_place("mill", p, 0) and p.distance_to(Vector2(free_spot.x, free_spot.z)) > 22:
+				mill_spots.append(p)
+	var screen_of := func(p: Vector2) -> Vector2: return leaf.rect.position + cam.unproject_position(Vector3(p.x, 0, p.y))
+	var touch := func(at: Vector2, down: bool):
+		var e := InputEventScreenTouch.new()
+		e.index = 0
+		e.position = at
+		e.pressed = down
+		panes._input(e)
+	var drag := func(at: Vector2):
+		var e := InputEventScreenDrag.new()
+		e.index = 0
+		e.position = at
+		panes._input(e)
+	touch.call(screen_of.call(mill_spots[0]), true)
+	check("touching the map while placing shows a see-through preview", buildings_view.ghost_visible()
+			and Vector2(buildings_view._ghost.position.x, buildings_view._ghost.position.z).distance_to(mill_spots[0]) < 0.5
+			and is_equal_approx(buildings_view._ghost.get_node("Art").modulate.a, 0.5))
+	var last: Vector2 = mill_spots[mill_spots.size() - 1]
+	for i in 6:
+		drag.call(screen_of.call(mill_spots[0].lerp(last, (i + 1) / 6.0)))
+	check("...that follows the finger", Vector2(buildings_view._ghost.position.x, buildings_view._ghost.position.z).distance_to(last) < 0.5)
+	check("...and nothing is built until the finger lifts", sim._pending.is_empty())
+	touch.call(screen_of.call(last), false)
+	queued = [] if sim._pending.is_empty() else sim._pending.values()[0]
+	check("lifting the finger builds it there", queued.size() == 1 and queued[0].btype == "mill"
+			and Vector2(queued[0].x, queued[0].z).distance_to(last * 100) < 60 and not buildings_view.ghost_visible())
+	sim._pending.clear()
+	# Lifting over a button builds nothing.
+	hud._build_toggle.button_pressed = true
+	hud._build_options.forge.pressed.emit()
+	game._process(0.0)
+	touch.call(screen_of.call(mill_spots[0]), true)
+	var on_button: Vector2 = hud._build_toggle.get_global_rect().get_center()
+	drag.call(on_button)
+	touch.call(on_button, false)
+	check("lifting over a button builds nothing", sim._pending.is_empty() and hud.armed_build() == "forge")
+	hud._build_toggle.button_pressed = false
+	game._process(0.0)
+	check("cancelling hides the preview", not buildings_view.ghost_visible() and not panes.placing)
 	sim.step_ticks(3)
 	var built: Dictionary = sim.buildings.filter(func(b): return b.btype == "quarry" and b.team == 0).front()
 	built.progress = SimScript.BUILDINGS.quarry.build
