@@ -102,6 +102,8 @@ const BUILD_RANGE := 5000
 ## Repairs: your units within this distance of a damaged building's edge
 ## answer the call; each restores REPAIR_HP every REPAIR_TICKS (free).
 const REPAIR_CALL := 4000
+## Enemies this close to a team's building (beyond its edge) mean a fight is on.
+const FIGHT_NEAR := 6000
 const REPAIR_TICKS := 20
 const REPAIR_HP := 10
 const BUILDINGS := {
@@ -643,13 +645,35 @@ func _apply_harvest(command: Dictionary) -> void:
 		if u.is_empty() or u.has("btype"):
 			continue
 		var hq: Dictionary = hq_of(u.team)
-		var from: Dictionary = hq if not hq.is_empty() else u
-		var best: Dictionary = {}
-		for n in nodes:
-			if n.res == u.kind and (best.is_empty() or _dist2(n, from) < _dist2(best, from)):
-				best = n
-		if not best.is_empty():
-			_assign_gather(u, best)
+		_gather_own(u, hq if not hq.is_empty() else u)
+
+
+## Gather the unit's own resource from the spot of it nearest `from`.
+## False if there's none left.
+func _gather_own(u: Dictionary, from: Dictionary) -> bool:
+	var best: Dictionary = {}
+	for n in nodes:
+		if n.res == u.kind and (best.is_empty() or _dist2(n, from) < _dist2(best, from)):
+			best = n
+	if best.is_empty():
+		return false
+	_assign_gather(u, best)
+	return true
+
+
+## Is the team in a fight? One of its units is fighting, or an enemy is
+## within FIGHT_NEAR of one of its buildings.
+func in_fight(team: int) -> bool:
+	for u in units:
+		if u.team == team and u.target != 0:
+			return true
+	for e in units:
+		if e.team == team:
+			continue
+		for b in buildings:
+			if b.team == team and _dist2(e, b) <= (b.radius + FIGHT_NEAR) * (b.radius + FIGHT_NEAR):
+				return true
+	return false
 
 
 func _assign_gather(u: Dictionary, node: Dictionary) -> void:
@@ -722,6 +746,10 @@ func _spawn_from(b: Dictionary, kind: int) -> void:
 			at = grid.cell_centre(cell)
 	_add_unit(b.team, kind, at)
 	var u: Dictionary = units[units.size() - 1]
+	# A player's new unit goes straight to work unless there's a fight on.
+	# (The computer opponent decides for its own units.)
+	if ai_of(b.team) == null and not in_fight(b.team) and _gather_own(u, b):
+		return
 	var rally := Vector2i(b.x + dx * (out + 1200) / d, b.z + dz * (out + 1200) / d)
 	_route(u, rally.x, rally.y)
 

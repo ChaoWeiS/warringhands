@@ -239,6 +239,22 @@ func _run() -> void:
 	for u in trained:
 		outside = outside and SimScript._dist2(u, quarry) >= (quarry.radius + SimScript.RADIUS - 5) * (quarry.radius + SimScript.RADIUS - 5)
 	check("...standing outside it", outside)
+	var to_work := true
+	for u in trained:
+		to_work = to_work and u.job == "gather" and s.get_node_by_id(u.node).res == 0
+	check("...and go straight to gathering stone (no fight on)", to_work)
+	# With an enemy at the gates, new units stay ready instead.
+	var raider: int = s.add_unit(1, PAPER, ground_of(hq0) + Vector2(-40, 0))
+	check("an enemy near your base means a fight is on", s.in_fight(0))
+	s.resources[0][0] += 60
+	s.command_train(0, quarry.id)
+	s.step_ticks(SimScript.TRAIN_TICKS + 10)
+	var fresh_unit: Dictionary = s.units.filter(func(u): return u.team == 0 and u.kind == ROCK).back()
+	check("...so a new unit doesn't go off gathering", fresh_unit.job == "")
+	s.units.erase(s.get_unit(raider))
+	s._by_id.erase(raider)
+	s.units.erase(fresh_unit)
+	s._by_id.erase(fresh_unit.id)
 	s.command_build(0, "mill", spot + Vector2(0, 30))
 	s.command_build(0, "mill", spot + Vector2(30, 30))
 	s.command_build(0, "mill", spot + Vector2(-30, 30))
@@ -348,6 +364,13 @@ func _run() -> void:
 	game._on_tapped(cam, cam.unproject_position(Vector3(built.x / 100.0, 0, built.z / 100.0)))
 	hud._process(0.0)
 	check("tapping your factory selects it and shows its panel", game.selected_building == built.id and hud.building_panel.visible)
+	game._process(0.0)
+	var pic_rect: Rect2 = buildings_view.screen_rect(cam, built.id)
+	pic_rect.position += leaf.rect.position
+	var panel_rect: Rect2 = hud.building_panel.get_global_rect()
+	var beside: bool = absf(panel_rect.position.x - (pic_rect.end.x + 14)) < 2 or absf(panel_rect.end.x - (pic_rect.position.x - 14)) < 2
+	check("its panel sits right beside it", beside and panel_rect.position.y < pic_rect.end.y
+			and panel_rect.end.y > pic_rect.position.y)
 	sim._pending.clear()
 	hud._train_button.pressed.emit()
 	queued = [] if sim._pending.is_empty() else sim._pending.values()[0]

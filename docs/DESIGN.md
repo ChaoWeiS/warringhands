@@ -69,7 +69,8 @@
 - **Tap your HQ with units selected:** each goes to gather what it's fastest at (rock stone, paper wood, scissors metal) from the spot nearest the HQ, dropping off at the nearest HQ or matching factory.
 - **Repair:** double tap a damaged building of yours; your units within 40 map units of it (not ones in a fight) walk over and repair it, 10 HP a second each, free. They stop when it's whole. Green numbers show the HP coming back.
 - **Selecting buildings:** tap a building anywhere on its picture (or its ground circle), or draw a loop around several. A loop with any of your units inside selects the units; otherwise it selects your buildings inside it. The panel shows one row per type ("Paper Mill × 2"); its + button trains at the least busy finished one.
-- **Training:** tap your factory, then the + button: 60 of its resource, 5 s each, up to 5 queued. New units walk out towards the island centre.
+- **Building panel:** appears right beside the selected building(s), in the pane you picked them in, and follows them as you pan (bottom centre if they're out of view).
+- **Training:** tap your factory, then the + button: 60 of its resource, 5 s each, up to 5 queued. New units go straight to gathering their own resource (rocks stone, papers wood, scissors metal; nearest spot to the factory) unless a fight is on (one of your units is fighting, or enemies are within 60 of your buildings); then they walk out towards the island centre and wait. The computer opponent decides for its own units.
 - Buildings block walking, push units out, can be attacked (10 per hit) and show HP bars. HQ 2000 HP, factories 800.
 - Destroying the enemy HQ = **Victory**; losing yours = **Defeat** (Play again).
 - Resources have icons (rocks, logs, ingots; `assets/env/icon_*.png`), used in the counter at the top right and on the map.

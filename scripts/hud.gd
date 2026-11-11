@@ -3,7 +3,7 @@ extends Control
 ##   - resource counter (top right): stone, wood, metal;
 ##   - Build menu (bottom left): pick Quarry / Paper Mill / Forge, then tap
 ##     the ground to place it;
-##   - building panel (bottom centre, when your buildings are selected by
+##   - building panel (beside the buildings, when your buildings are selected by
 ##     tap or lasso): a row per type with HP, and for factories a train
 ##     button (queues at the least busy one), the queue and progress;
 ##   - victory / defeat screen with Play Again.
@@ -97,6 +97,41 @@ func clear_build() -> void:
 	_armed_build = ""
 	_build_toggle.set_pressed_no_signal(false)
 	_show_build_options(false)
+
+
+## Puts the building panel beside `target` (screen rect of the selected
+## buildings), inside `bounds` (their pane): to the right, or to the left if
+## there's no room. An empty target puts it back at the bottom centre.
+func place_building_panel(target: Rect2, bounds: Rect2) -> void:
+	if not target.has_area():
+		building_panel.anchor_left = 0.5
+		building_panel.anchor_right = 0.5
+		building_panel.anchor_top = 1.0
+		building_panel.anchor_bottom = 1.0
+		building_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		building_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		building_panel.offset_left = 0
+		building_panel.offset_right = 0
+		building_panel.offset_top = 0
+		building_panel.offset_bottom = -104
+		return
+	var size: Vector2 = building_panel.get_combined_minimum_size()
+	var gap := 14.0
+	var x: float = target.end.x + gap
+	if x + size.x > bounds.end.x:
+		x = target.position.x - gap - size.x
+	var y: float = target.get_center().y - size.y * 0.5
+	var screen: Vector2 = get_viewport_rect().size
+	x = clampf(x, 8.0, maxf(8.0, screen.x - size.x - 8.0))
+	y = clampf(y, maxf(8.0, bounds.position.y + 8.0), maxf(8.0, minf(bounds.end.y, screen.y) - size.y - 8.0))
+	building_panel.anchor_left = 0.0
+	building_panel.anchor_right = 0.0
+	building_panel.anchor_top = 0.0
+	building_panel.anchor_bottom = 0.0
+	building_panel.grow_horizontal = Control.GROW_DIRECTION_END
+	building_panel.grow_vertical = Control.GROW_DIRECTION_END
+	building_panel.position = Vector2(x, y).round()
+	building_panel.size = size
 
 
 ## Shows the panel for these buildings (one row per type), or hides it.

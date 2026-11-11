@@ -40,6 +40,7 @@ const ResourcesView := preload("res://scripts/resources_view.gd")
 
 var selection: Array = []  # unit ids
 var selected_buildings: Array = []
+var _building_camera: Camera3D = null  # pane camera the buildings were picked in
 var _last_tap := {"camera": null, "point": Vector2.ZERO, "time": -100000}
 var selected_building := 0  # the first of them (0 = none)
 
@@ -80,6 +81,31 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	buildings_view.show_build_range(PLAYER_TEAM, hud.armed_build() != "")
+	_place_building_panel()
+
+
+## Keeps the building panel beside the selected buildings, in the pane they
+## were picked in (bottom centre if they're out of view there).
+func _place_building_panel() -> void:
+	if selected_buildings.is_empty():
+		return
+	var leaf = null
+	for l in panes._leaves():
+		if l.camera == _building_camera:
+			leaf = l
+	if leaf == null:
+		hud.place_building_panel(Rect2(), Rect2())
+		return
+	var around := Rect2()
+	for id in selected_buildings:
+		var r: Rect2 = buildings_view.screen_rect(leaf.camera, id)
+		if r.has_area():
+			around = r if not around.has_area() else around.merge(r)
+	var pane := Rect2(Vector2.ZERO, leaf.rect.size)
+	if not around.has_area() or not pane.intersects(around):
+		hud.place_building_panel(Rect2(), Rect2())
+		return
+	hud.place_building_panel(Rect2(around.position + leaf.rect.position, around.size), leaf.rect)
 
 
 func _on_tapped(camera: Camera3D, point: Vector2) -> void:
@@ -104,6 +130,7 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 			# Double tap a damaged building: units nearby come to fix it.
 			sim.command_repair(PLAYER_TEAM, own_building)
 			hud.toast("Units nearby are coming to repair the %s" % UI.BUILDING_NAMES[b.btype])
+			_building_camera = camera
 			_select_building(own_building)
 		elif not selection.is_empty() and b.btype == "hq":
 			# Units sent to the HQ go and gather what they're best at.
@@ -111,6 +138,7 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 			view.show_move_marker(Vector3(b.x / float(sim.SCALE), 0, b.z / float(sim.SCALE)))
 			hud.toast("Off to gather: rocks stone, papers wood, scissors metal")
 		else:
+			_building_camera = camera
 			_select_building(own_building)
 		return
 	if selection.is_empty():
@@ -180,6 +208,7 @@ func _on_lassoed(camera: Camera3D, polygon: PackedVector2Array) -> void:
 				bids.append(b.id)
 				break
 	if not bids.is_empty():
+		_building_camera = camera
 		_select_buildings(bids)
 
 
