@@ -24,7 +24,16 @@ const GROUND := 24
 const FRAMES := 5
 ## Atlas rows: kind * 5 + state.
 const STATES := ["idle", "move", "attack", "defend", "death"]
-const STATE_FPS := {"idle": 6.0, "move": 10.0, "attack": 12.0, "defend": 8.0, "death": 9.0}
+const STATE_FPS := {"idle": 6.0, "move": 10.0, "attack": 8.0, "defend": 5.0, "death": 9.0}
+## How long each attack frame shows (in frames): wind-up, lunge, then the
+## impact frame (POW! / SLAP! / SNIP!) held longest, then recover.
+const ATTACK_FRAMES := [1.0, 1.0, 1.0, 3.0, 1.5]
+## When the impact frame comes up (s after the swing starts). The damage
+## number, the victim's cry and a fall wait for it, so the hit lands there.
+const IMPACT_SECONDS := 3.0 / 8.0
+const IMPACT_TICKS := 7
+## A little size pop on the impact frame.
+const IMPACT_POP := 1.18
 ## Attack and death play once (attack restarts on every swing); idle and
 ## defend loop.
 const LOOPS := {"idle": true, "move": true, "attack": false, "defend": true, "death": false}
@@ -44,8 +53,8 @@ const ROUTE_WIDTH := 0.6
 const ROUTE_DASH := 2.2
 const ROUTE_GAP := 1.6
 ## Combat look.
-const HURT_TICKS := 12      # play "defend" this long after being hit
-const SWING_TICKS := 10     # play "attack" this long after swinging (once, from the wind-up)
+const HURT_TICKS := 20      # play "defend" this long once the hit lands
+const SWING_TICKS := 19     # play "attack" this long after swinging (once, from the wind-up)
 const DEATH_HOLD := 0.5     # seconds the fallen hand lies there before fading
 const HP_BAR_PX := Vector2(90, 10)   # in sprite pixels
 const HP_BAR_HEIGHT := 8.4           # above the ground (map units)
@@ -56,6 +65,7 @@ const DAMAGE_SIZES := {1: 115, 0: 85, -1: 68}
 var sim: Node
 var _views: Dictionary = {}  # unit id -> {root, ring, sprite, base, hp bars, swing}
 var _selected: Dictionary = {}
+var _dying: Dictionary = {}  # unit id -> view, while its fall plays
 var _frames_by_kind: Array = []  # SpriteFrames per kind
 var _routes_mesh := ImmediateMesh.new()
 var _white: ImageTexture
@@ -176,14 +186,16 @@ func _update_combat_look() -> void:
 		var state := "move" if u.moving else "idle"
 		if u.target != 0 and sim.tick - u.attack_tick < SWING_TICKS:
 			state = "attack"
-		elif sim.tick - u.hurt_tick < HURT_TICKS:
-			state = "defend"
+		elif sim.tick - u.hurt_tick >= IMPACT_TICKS and sim.tick - u.hurt_tick < IMPACT_TICKS + HURT_TICKS:
+			state = "defend"  # from when the blow lands
 		if state == "attack" and view.swing != u.attack_tick:
 			view.swing = u.attack_tick  # a new swing: start from the wind-up
 			view.sprite.play("attack")
 			view.sprite.frame = 0
 		elif view.sprite.animation != state:
 			view.sprite.play(state)
+		# Idle bobbing is a little out of step per unit; fights run on time.
+		view.sprite.speed_scale = view.idle_speed if state == "idle" else 1.0
 		var foe: Dictionary = sim.get_unit(u.target)
 		if not foe.is_empty() and not u.moving:
 			view.sprite.flip_h = foe.x < u.x
@@ -197,8 +209,17 @@ func _update_combat_look() -> void:
 
 ## Floating damage number: big and red for a counter hit, small and pale
 ## when countered.
-func _on_unit_hit(target_id: int, _attacker_id: int, damage: int, strength: int) -> void:
-	var view: Dictionary = _views.get(target_id, {})
+func _on_unit_hit(target_id: int, attacker_id: int, damage: int, strength: int) -> void:
+	# Shown when the attacker's impact frame comes up.
+	get_tree().create_timer(IMPACT_SECONDS).timeout.connect(
+			_show_hit.bind(target_id, attacker_id, damage, strength))
+
+
+func _show_hit(target_id: int, attacker_id: int, damage: int, strength: int) -> void:
+	var hitter: Dictionary = _views.get(attacker_id, {})
+	if not hitter.is_empty():
+		_pop(hitter.sprite)
+	var view: Dictionary = _views.get(target_id, _dying.get(target_id, {}))
 	if view.is_empty():
 		return
 	var label := Label3D.new()
@@ -214,9 +235,21 @@ func _on_unit_hit(target_id: int, _attacker_id: int, damage: int, strength: int)
 	label.position = view.root.position + Vector3(randf_range(-1.5, 1.5), 7.5, 0)
 	add_child(label)
 	var tween := create_tween().set_parallel(true)
+	label.scale = Vector3.ONE * 1.6  # punches in, then floats up
+	tween.tween_property(label, "scale", Vector3.ONE, 0.18).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "position:y", label.position.y + 4.0, 0.8).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "modulate:a", 0.0, 0.8).set_delay(0.3)
 	tween.chain().tween_callback(label.queue_free)
+
+
+## Removes a unit's visuals at once (it was taken out of the game, not killed).
+func forget(id: int) -> void:
+	var view: Dictionary = _views.get(id, {})
+	if view.is_empty():
+		return
+	_views.erase(id)
+	_selected.erase(id)
+	view.root.queue_free()
 
 
 ## A fallen unit plays its death animation (it keels over, X eyes), lies
@@ -232,13 +265,18 @@ func _on_unit_died(id: int) -> void:
 	view.hp_fill.visible = false
 	var sprite: AnimatedSprite3D = view.sprite
 	sprite.speed_scale = 1.0
-	sprite.play("death")
+	_dying[id] = view  # its last damage number still shows
+	# It falls when the killing blow lands (the attacker's impact frame).
 	var fall: float = FRAMES / STATE_FPS["death"]
+	var start := IMPACT_SECONDS
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(view.base, "scale", Vector3(0.6, 1.0, 0.6), fall)
-	tween.tween_property(sprite, "modulate:a", 0.0, 0.6).set_delay(fall + DEATH_HOLD)
-	tween.tween_property(view.base, "scale", Vector3(0.2, 1.0, 0.2), 0.6).set_delay(fall + DEATH_HOLD)
-	tween.chain().tween_callback(view.root.queue_free)
+	tween.tween_callback(sprite.play.bind("death")).set_delay(start)
+	tween.tween_property(view.base, "scale", Vector3(0.6, 1.0, 0.6), fall).set_delay(start)
+	tween.tween_property(sprite, "modulate:a", 0.0, 0.6).set_delay(start + fall + DEATH_HOLD)
+	tween.tween_property(view.base, "scale", Vector3(0.2, 1.0, 0.2), 0.6).set_delay(start + fall + DEATH_HOLD)
+	tween.chain().tween_callback(func():
+		_dying.erase(id)
+		view.root.queue_free())
 
 
 ## Dashed lines on the ground showing where selected units are headed,
@@ -331,7 +369,8 @@ func _make_view(u: Dictionary) -> void:
 	# Don't let everyone bob in sync.
 	sprite.play("idle")
 	sprite.frame = u.id % FRAMES
-	sprite.speed_scale = 0.85 + 0.3 * float((u.id * 37) % 10) / 10.0
+	var idle_speed: float = 0.85 + 0.3 * float((u.id * 37) % 10) / 10.0
+	sprite.speed_scale = idle_speed
 
 	# HP bar (shown once damaged): dark back, team-coloured fill shrinking
 	# from the right.
@@ -345,6 +384,7 @@ func _make_view(u: Dictionary) -> void:
 		"root": root, "ring": ring, "sprite": sprite, "base": base,
 		"hp_bg": hp_bg, "hp_fill": hp_fill,
 		"swing": u.attack_tick,  # last swing whose animation was started
+		"idle_speed": idle_speed,
 	}
 
 
@@ -370,6 +410,13 @@ func _hp_bar_sprite(color: Color, back: bool) -> Sprite3D:
 	return bar
 
 
+## A quick size pop (the impact frame).
+func _pop(sprite: AnimatedSprite3D) -> void:
+	var tween := create_tween()
+	tween.tween_property(sprite, "scale", Vector3.ONE * IMPACT_POP, 0.06).set_ease(Tween.EASE_OUT)
+	tween.tween_property(sprite, "scale", Vector3.ONE, 0.16).set_ease(Tween.EASE_IN_OUT)
+
+
 func _build_frames(kind: int) -> SpriteFrames:
 	var frames := SpriteFrames.new()
 	frames.remove_animation("default")
@@ -385,7 +432,7 @@ func _build_frames(kind: int) -> SpriteFrames:
 			var region := AtlasTexture.new()
 			region.atlas = ATLAS
 			region.region = Rect2(f * CELL, row * CELL, CELL, CELL)
-			frames.add_frame(anim, region)
+			frames.add_frame(anim, region, ATTACK_FRAMES[f] if anim == "attack" else 1.0)
 	return frames
 
 

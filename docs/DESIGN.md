@@ -57,7 +57,7 @@
   - **Attack** (tap an enemy with units selected; red ring on the enemy): hunt down that unit until it's dead.
 - Charging a mirrored army with attack-move is a roughly even trade; defenders keep a slight edge (they're already in position).
 - All hits in a tick land at once (no first-strike advantage from unit ids).
-- Look: every swing plays the attack animation once from its wind-up (a swing shows over a flinch), crying defend animation when hit, HP bar once damaged, floating damage numbers (big red for counter hits). A fallen unit plays its death animation, lies there half a second, then fades. Fallen units leave the selection.
+- Look: every swing plays the attack animation once from its wind-up, holding on the impact frame (POW! / SLAP! / SNIP!); the damage number punches in, the attacker pops, and the victim cries or falls right on that frame (a swing shows over a flinch). Purely visual: the sim's timing is unchanged. crying defend animation when hit, HP bar once damaged, floating damage numbers (big red for counter hits). A fallen unit plays its death animation, lies there half a second, then fades. Fallen units leave the selection.
 - `combat_enabled` switch on the sim (e.g. for early tutorial steps).
 
 ## Economy (prototype)
@@ -111,7 +111,8 @@
 ## Matches
 - Win by destroying the enemy HQ, or when the opponent concedes.
 - 10-30 minutes. Ideas against stalemates: HQ armor decays after ~20 min; resource spots run out.
-- Tutorial introduces things gradually: open field, then gathering, factories, panes, upgrades, terrain, defences, Shifter.
+- **Tutorial** (start menu): a card at the top walks through select, loop, move, camera, double tap, gather, build, train, split / merge panes and a first fight (enemies arrive for it); each step moves on when done, or Skip. The on-screen instructions are gone; the tutorial teaches them.
+- Later tutorial ideas: upgrades, terrain, defences, Shifter.
 - Terrain ideas: shallow water slows paper, rocky ground slows scissors.
 
 ## Open questions

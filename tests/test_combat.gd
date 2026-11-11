@@ -267,7 +267,8 @@ func _run() -> void:
 		if u.hp == sim.MAX_HP:
 			bars_ok = bars_ok and not view._views[u.id].hp_bg.visible
 	check("damaged units show an HP bar (and healthy ones don't)", bars_ok)
-	check("a fallen unit plays its death animation (once)", doomed_sprite.animation == "death"
+	await create_timer(view.IMPACT_SECONDS + 0.15).timeout  # it falls when the blow lands
+	check("a fallen unit plays its death animation (once), when the blow lands", doomed_sprite.animation == "death"
 			and not doomed_sprite.sprite_frames.get_animation_loop("death"))
 
 	# Every swing plays the attack animation once, from the wind-up.

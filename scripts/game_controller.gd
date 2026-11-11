@@ -26,9 +26,15 @@ extends Node
 @export var hud_path: NodePath
 
 ## Which team this device controls (online: the seat the server gave us).
+## Something the player just did (for the tutorial): "select", "lasso",
+## "move", "attack", "attack_move", "gather", "harvest", "build_<type>",
+## "train", "select_kind", "repair", "lasso_buildings".
+signal did(action: String)
+
 var player_team := 0
 const UI := preload("res://scripts/ui_style.gd")
 const StartMenu := preload("res://scripts/start_menu.gd")
+const Tutorial := preload("res://scripts/tutorial.gd")
 ## How close (pixels) a tap must be to a unit to pick it.
 const TAP_RADIUS := 44.0
 ## Two taps this close in time (ms) and space (px), in the same pane, make a
@@ -69,7 +75,9 @@ func _ready() -> void:
 		panes.register_blocker(control)
 	bar.filter_pressed.connect(_on_filter)
 	bar.clear_pressed.connect(func(): _select([]))
-	hud.train_pressed.connect(func(id): sim.command_train(player_team, id))
+	hud.train_pressed.connect(func(id):
+		sim.command_train(player_team, id)
+		did.emit("train"))
 	hud.play_again_pressed.connect(func(): get_tree().reload_current_scene())
 	sim.unit_died.connect(_on_unit_died)
 	sim.building_destroyed.connect(func(id):
@@ -91,9 +99,30 @@ func _show_start_menu() -> void:
 	menu.vs_computer.connect(func():
 		menu.queue_free()
 		sim.set_process(true))
+	menu.tutorial.connect(func():
+		menu.queue_free()
+		start_tutorial())
 	menu.online_ready.connect(func(session, seat):
 		menu.queue_free()
 		start_online(session, seat))
+
+
+## Tutorial: our army alone on the island (enemies come for the last lesson),
+## with a step-by-step card at the top.
+func start_tutorial() -> Control:
+	sim._ais.clear()
+	for u in sim.units.duplicate():
+		if u.team != player_team:
+			sim.units.erase(u)
+			sim._by_id.erase(u.id)
+			view.forget(u.id)
+	var tutorial: Control = Tutorial.new()
+	tutorial.setup(self, sim, panes, hud)
+	hud.get_parent().add_child(tutorial)
+	panes.register_blocker(tutorial.card())
+	tutorial.finished.connect(func(): get_tree().reload_current_scene())
+	sim.set_process(true)
+	return tutorial
 
 
 ## Online against a friend: we play `seat`'s side, no computer player.
@@ -157,8 +186,10 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 	if id != -1 and not bar.is_attack_armed():
 		if double and selection.has(id):
 			_select_same_kind_in_pane(camera, sim.get_unit(id).kind)
+			did.emit("select_kind")
 		else:
 			_select([id])
+			did.emit("select")
 		return
 	var own_building := _building_at(camera, point, ground, true)
 	if own_building != 0 and not bar.is_attack_armed():
@@ -166,12 +197,14 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		if double and b.hp < b.max_hp:
 			# Double tap a damaged building: units nearby come to fix it.
 			sim.command_repair(player_team, own_building)
+			did.emit("repair")
 			hud.toast("Units nearby are coming to repair the %s" % UI.BUILDING_NAMES[b.btype])
 			_building_camera = camera
 			_select_building(own_building)
 		elif not selection.is_empty() and b.btype == "hq":
 			# Units sent to the HQ go and gather what they're best at.
 			sim.command_harvest(selection)
+			did.emit("harvest")
 			view.show_move_marker(Vector3(b.x / float(sim.SCALE), 0, b.z / float(sim.SCALE)))
 			hud.toast("Off to gather: rocks stone, papers wood, scissors metal")
 		else:
@@ -186,6 +219,7 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		enemy = _building_at(camera, point, ground, false)
 	if enemy > 0:
 		sim.command_attack(selection, enemy)
+		did.emit("attack")
 		view.show_attack_marker(enemy)
 		bar.set_attack_armed(false)
 		return
@@ -194,14 +228,17 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 	var node := _resource_at(camera, point)
 	if node != 0 and not bar.is_attack_armed():
 		sim.command_gather(selection, node)
+		did.emit("gather")
 		view.show_move_marker(ground)
 		return
 	if bar.is_attack_armed():
 		sim.command_attack_move(selection, ground)
+		did.emit("attack_move")
 		view.show_move_marker(ground, true)
 		bar.set_attack_armed(false)
 	else:
 		sim.command_move(selection, ground)
+		did.emit("move")
 		view.show_move_marker(ground)
 
 
@@ -216,6 +253,7 @@ func _place(btype: String, ground: Vector2) -> void:
 		return
 	if sim.can_place(btype, ground, player_team) and sim.can_afford(player_team, spec.res, spec.cost):
 		sim.command_build(player_team, btype, ground)
+		did.emit("build_" + btype)
 		view.show_move_marker(Vector3(ground.x, 0, ground.y))
 		hud.clear_build()
 	else:
@@ -234,6 +272,7 @@ func _on_lassoed(camera: Camera3D, polygon: PackedVector2Array) -> void:
 			ids.append(u.id)
 	if not ids.is_empty():
 		_select(ids)
+		did.emit("lasso")
 		return
 	var bids: Array = []
 	for b in sim.buildings:
@@ -247,6 +286,7 @@ func _on_lassoed(camera: Camera3D, polygon: PackedVector2Array) -> void:
 	if not bids.is_empty():
 		_building_camera = camera
 		_select_buildings(bids)
+		did.emit("lasso_buildings")
 
 
 ## Fallen units leave the selection.

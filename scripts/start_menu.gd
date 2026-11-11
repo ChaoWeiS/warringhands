@@ -1,11 +1,12 @@
 extends Control
-## The start screen: play the computer, or play a friend online with a
+## The start screen: the tutorial, play the computer, or play a friend online with a
 ## 4-digit room code (create one, or type theirs on the number pad, so the
 ## phone keyboard never pops up).
 ##
 ## Emits vs_computer, or online_ready(session, seat) once both players are in.
 
 signal vs_computer
+signal tutorial
 signal online_ready(session: Node, seat: int)
 
 const UI := preload("res://scripts/ui_style.gd")
@@ -60,6 +61,7 @@ func _ready() -> void:
 
 	_main = VBoxContainer.new()
 	_main.add_theme_constant_override("separation", 18)
+	_main.add_child(_big_button("Tutorial", Color("#fbf1d6"), func(): tutorial.emit()))
 	_main.add_child(_big_button("Play vs Computer", Color("#e7e1f5"), func(): vs_computer.emit()))
 	_main.add_child(_big_button("Create Online Game", Color("#fbe3ea"), _create))
 	_main.add_child(_big_button("Join Online Game", Color("#d3ece8"), func(): _show(_join)))
