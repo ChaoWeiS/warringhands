@@ -15,6 +15,8 @@ const UI := preload("res://scripts/ui_style.gd")
 
 signal build_chosen(btype: String)  # "" = cancelled
 signal train_pressed(building_id: int)
+## Cancel (still going up) or sell (finished) these buildings; confirmed.
+signal sell_pressed(building_ids: Array)
 signal play_again_pressed
 
 const FACTORIES := ["quarry", "mill", "forge"]
@@ -367,8 +369,30 @@ func _make_row(btype: String) -> Dictionary:
 	progress.add_theme_stylebox_override("fill", fill)
 	progress.add_theme_stylebox_override("background", back)
 	row.add_child(progress)
+	# Cancel / Sell: a first tap asks "Sure?", a second (soon after) does it.
+	var sell := UI.button(Color(1, 1, 1, 0.9), Color("#f2c4d2"), 26)
+	var r := {"row": row, "title": title, "info": info, "train": train, "progress": progress,
+			"sell": sell, "sell_key": "", "confirm_until": 0}
+	sell.pressed.connect(func(): _on_sell(btype, r))
+	row.add_child(sell)
 	_panel_rows.add_child(row)
-	return {"row": row, "title": title, "info": info, "train": train, "progress": progress}
+	return r
+
+
+## How long a "Sure?" waits for the second tap (ms).
+const SELL_CONFIRM_MS := 3000
+
+
+func _on_sell(btype: String, r: Dictionary) -> void:
+	var now: int = Time.get_ticks_msec()
+	if now < r.confirm_until:
+		r.confirm_until = 0
+		var ids: Array = _standing(btype).filter(func(b): return sim.can_sell(b)).map(func(b): return b.id)
+		if not ids.is_empty():
+			sell_pressed.emit(ids)
+	else:
+		r.confirm_until = now + SELL_CONFIRM_MS
+	_refresh_row(btype, r)
 
 
 ## Selected buildings of a type that still stand.
@@ -473,6 +497,39 @@ func _refresh_row(btype: String, r: Dictionary) -> void:
 		r.train.disabled = ready == 0 or queued >= sim.QUEUE_MAX * ready \
 				or not sim.can_afford(team, spec.res, sim.UNIT_COST)
 		UI.set_content_dimmed(r.train, r.train.disabled)
+	_refresh_sell(spec, group, r)
+
+
+## The Cancel / Sell button: what it does and what you get back.
+func _refresh_sell(spec: Dictionary, group: Array, r: Dictionary) -> void:
+	var sellable: Array = group.filter(func(b): return sim.can_sell(b))
+	r.sell.visible = not sellable.is_empty() and (group.is_empty() or group[0].team == team)
+	if not r.sell.visible:
+		return
+	var all_unfinished: bool = sellable.all(func(b): return b.progress < spec.build)
+	var back := 0
+	var shown_res: int = spec.res if spec.res >= 0 else 0
+	for b in sellable:
+		back += sim.refund_of(b)[shown_res]
+	var sure: bool = Time.get_ticks_msec() < r.confirm_until
+	var word: String = "Sure?" if sure else ("Cancel" if all_unfinished else "Sell")
+	var key := "%s %d" % [word, back]
+	if key == r.sell_key:
+		return
+	r.sell_key = key
+	for child in r.sell.get_children():
+		child.queue_free()
+	var content := HBoxContainer.new()
+	content.add_theme_constant_override("separation", roundi(8 * UI.ui_scale()))
+	content.add_child(UI.label(word, roundi(26 * UI.ui_scale())))
+	content.add_child(UI.label("+", roundi(26 * UI.ui_scale())))
+	content.add_child(UI.cost_row(back, spec.res, 26, 36))
+	r.sell.custom_minimum_size.x = 0
+	UI.fill_button(r.sell, content)
+	for state in ["normal", "hover"]:
+		var box: StyleBoxFlat = r.sell.get_theme_stylebox(state).duplicate()
+		box.bg_color = Color("#ffc9d2") if sure else Color(1, 1, 1, 0.9)
+		r.sell.add_theme_stylebox_override(state, box)
 
 
 func _build_game_over() -> void:

@@ -28,7 +28,7 @@ extends Node
 ## Which team this device controls (online: the seat the server gave us).
 ## Something the player just did (for the tutorial): "select", "lasso",
 ## "move", "attack", "attack_move", "gather", "harvest", "build_<type>",
-## "train", "select_kind", "repair", "lasso_buildings".
+## "train", "select_kind", "repair", "lasso_buildings", "sell".
 signal did(action: String)
 
 var player_team := 0
@@ -106,6 +106,9 @@ func _ready() -> void:
 	hud.train_pressed.connect(func(id):
 		sim.command_train(player_team, id)
 		did.emit("train"))
+	hud.sell_pressed.connect(func(ids):
+		sim.command_sell(player_team, ids)
+		did.emit("sell"))
 	hud.play_again_pressed.connect(func(): get_tree().reload_current_scene())
 	sim.unit_died.connect(_on_unit_died)
 	sim.building_destroyed.connect(func(id):

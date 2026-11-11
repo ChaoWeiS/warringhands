@@ -127,6 +127,9 @@ const BUILDINGS := {
 }
 const FACTORY_FOR_KIND := ["quarry", "mill", "forge"]
 const UNIT_COST := 60
+## Selling a finished building gives back this share of its cost (percent).
+## Cancelling one still going up gives it all back.
+const SELL_REFUND := 50
 const TRAIN_TICKS := 100
 const QUEUE_MAX := 5
 ## Where each HQ stands (offset from the island centre, mirrored for team 1).
@@ -476,6 +479,38 @@ func command_repair(team: int, building_id: int) -> void:
 	_queue({"type": "repair", "team": team, "building": building_id})
 
 
+## Cancels buildings still going up (all the cost back) or sells finished
+## ones (SELL_REFUND% back); units queued in them are refunded too. A team's
+## last HQ can't go.
+func command_sell(team: int, building_ids: Array) -> void:
+	_queue({"type": "sell", "team": team, "ids_b": building_ids.duplicate()})
+
+
+## What selling (or cancelling) this building gives back: [stone, wood, metal].
+func refund_of(b: Dictionary) -> Array:
+	var spec: Dictionary = BUILDINGS[b.btype]
+	var cost: Array = cost_of(b.btype)
+	var out := [0, 0, 0]
+	var finished: bool = b.progress >= spec.build
+	for res in 3:
+		out[res] = cost[res] if not finished else cost[res] * SELL_REFUND / 100
+	if spec.res >= 0:
+		out[spec.res] += UNIT_COST * b.queue.size()
+	return out
+
+
+## Can this building be sold / cancelled? (Not a team's only HQ.)
+func can_sell(b: Dictionary) -> bool:
+	if b.is_empty() or not b.has("btype"):
+		return false
+	if b.btype != "hq":
+		return true
+	for other in buildings:
+		if other.team == b.team and other.btype == "hq" and other.id != b.id:
+			return true
+	return false
+
+
 # --- Simulation ----------------------------------------------------------------
 
 func _queue(command: Dictionary) -> void:
@@ -556,6 +591,8 @@ func _apply(command: Dictionary) -> void:
 			_apply_harvest(command)
 		"repair":
 			_apply_repair(command)
+		"sell":
+			_apply_sell(command)
 
 
 ## Spreads the group into a square formation around the target point.
@@ -762,6 +799,19 @@ func _apply_train(command: Dictionary) -> void:
 		return
 	resources[b.team][spec.res] -= UNIT_COST
 	b.queue.append(spec.kind)
+
+
+func _apply_sell(command: Dictionary) -> void:
+	if winner >= 0:
+		return
+	for id in command.ids_b:
+		var b: Dictionary = _by_id.get(int(id), {})
+		if b.is_empty() or not b.has("btype") or b.team != command.team or not can_sell(b):
+			continue
+		var back: Array = refund_of(b)
+		for res in 3:
+			resources[b.team][res] += back[res]
+		_remove_building(b)
 
 
 func _apply_gather(command: Dictionary) -> void:
