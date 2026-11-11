@@ -18,7 +18,7 @@ if command -v node >/dev/null 2>&1; then
 	echo "=== server (npm test)"
 	server_log="$(cd server && npm test --silent 2>&1)"
 	echo "$server_log" | grep -E "^(PASS|FAIL)|FAILURES"
-	if echo "$server_log" | grep -qE "^FAIL" || ! echo "$server_log" | grep -q "FAILURES: 0"; then
+	if echo "$server_log" | grep -qE "^FAIL " || ! echo "$server_log" | grep -q "FAILURES: 0"; then
 		echo "!!! server tests failed"
 		status=1
 	fi
