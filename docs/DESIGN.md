@@ -9,7 +9,7 @@
 
 ## Look
 - **2.5D**: 2D sprites standing on a 3D world, like Ragnarok Online. Sprites always face the camera.
-- Tilted camera (about 50° down), narrow field of view.
+- Tilted **orthographic** camera (about 50° down, no perspective). Needed so cut / resized panes keep the map exactly still; also makes tapping units precise.
 - **Pastel** palette: soft blue sea, cream sand, mint grass, pink-blossom trees, lavender stone, aqua crystals.
 - Soft blob shadows under units instead of real-time shadows (cheaper on phones).
 - Game logic stays flat 2D (positions on the ground plane); only the visuals are 3D.
@@ -21,7 +21,7 @@
 - Each pane has its own camera and zoom.
 - Grip tabs sit slightly inside the screen edge, clear of the OS back / home gestures.
 - Dividers can be grabbed anywhere except the tabs. Snap points at 1/3, 1/2, 2/3.
-- A new pane starts looking at the same spot as the pane it was cut from.
+- Cutting, resizing and merging never move the map: each pane keeps showing exactly what was already under it, and simply reveals or hides more at its edges. The player navigates from there.
 - Ideas to explore: drag units from one pane to a destination in another; pin a pane to a group.
 
 ## Controls

@@ -33,6 +33,8 @@ const CameraRig := preload("res://scripts/camera_rig.gd")
 ## How far across the pane (0-1) a swipe must travel to cut.
 @export var cut_commit: float = 0.45
 
+## Panes smaller than this (while being squeezed shut) don't re-aim their camera.
+const ANCHOR_MIN := 120.0
 const SNAPS := [1.0 / 3.0, 0.5, 2.0 / 3.0]
 const SNAP_RANGE := 0.03
 
@@ -56,6 +58,8 @@ class PaneNode:
 	var camera: Camera3D = null
 	var pinch_center := Vector2.ZERO
 	var pinch_distance := 0.0
+	# Last on-screen rectangle the camera was matched to (see _layout).
+	var anchor_rect := Rect2()
 	# Split
 	var vertical := true  # true: divider runs top-bottom (panes side by side)
 	var ratio := 0.5
@@ -253,7 +257,10 @@ func _split_leaf(leaf: PaneNode, vertical: bool, ratio: float) -> void:
 	var split := PaneNode.new()
 	split.vertical = vertical
 	split.ratio = ratio
-	var fresh := _make_leaf(leaf)  # new pane starts looking at the same spot
+	# The new pane starts as a copy of the old one; _layout then re-aims both
+	# so each keeps showing exactly the part of the map that was under it.
+	var fresh := _make_leaf(leaf)
+	fresh.anchor_rect = leaf.anchor_rect
 	_replace(leaf, split)
 	split.a = leaf
 	split.b = fresh
@@ -401,6 +408,12 @@ func _layout(node: PaneNode, r: Rect2) -> void:
 	if node.is_leaf():
 		node.container.position = r.position
 		node.container.size = Vector2(maxf(r.size.x, 1.0), maxf(r.size.y, 1.0))
+		# Keep the map still on screen. Skip while a pane is squeezed very
+		# small (about to merge), so its view isn't lost if dragged back out.
+		if r.size.x >= ANCHOR_MIN and r.size.y >= ANCHOR_MIN:
+			if node.anchor_rect.size.x > 0.0 and node.anchor_rect != r:
+				node.camera.reanchor(node.anchor_rect, r)
+			node.anchor_rect = r
 		return
 	var half: float = divider_width * 0.5
 	if node.vertical:
