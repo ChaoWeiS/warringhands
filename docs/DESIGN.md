@@ -78,7 +78,7 @@
 - **Repair:** double tap a damaged building of yours; your units within 40 map units of it (not ones in a fight) walk over and repair it, 10 HP a second each, free. They stop when it's whole. Green numbers show the HP coming back.
 - **Cancel / sell:** the building panel's button. Still going up: Cancel, the whole cost back. Finished: Sell, half the cost back. Units queued in it are refunded either way. Tap once ("Sure?"), again within 3 s to do it. Your last HQ can't go.
 - **Minimap:** a small map in the top-left of every pane: the island, buildings and hands as dots in team colours, and a white outline of what that pane shows. Touch or drag on it to move that pane's camera. Settings → "Minimap in each pane" turns them off.
-- **Unselect:** tap with two fingers at once (quick, without moving). Clears hands and buildings.
+- **Unselect:** tap with two fingers at once (quick, without moving), or right click with a mouse (right drag still pans). Clears hands and buildings.
 - **Surrender:** white flag button just left of Settings (in games, not the tutorial). It asks "Surrender?" (Keep playing / Surrender); surrendering loses the game. Pop-up windows (Settings, Surrender?) keep touches off the map while open.
 - **Maps:** Hand Island, Twin Lakes, Deep Woods (`scripts/maps.gd`; each mirrored through the centre). Picked on the Play vs Computer / Create Online Game screen (with little previews); the guest gets the host's pick. A different map than the one loaded reloads the scene with the match waiting (`scripts/match_setup.gd`).
 - **Difficulty** (vs Computer): Easy (thinks every 2 s, no counter-picking, late small waves), Normal, Hard (thinks twice a second, early big waves, +200 of each resource). Remembered.

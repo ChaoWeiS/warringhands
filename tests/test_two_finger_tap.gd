@@ -40,6 +40,14 @@ func drag(index: int, at: Vector2) -> void:
 	panes._input(e)
 
 
+func mouse_right(at: Vector2, down: bool) -> void:
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_RIGHT
+	e.position = at
+	e.pressed = down
+	panes._input(e)
+
+
 func _run() -> void:
 	await frames(3)
 	var game: Node = root.get_node("Main/Game")
@@ -79,6 +87,22 @@ func _run() -> void:
 	touch(0, a, false)
 	check("...and it unselects buildings too", game.selected_buildings.is_empty())
 
+
+	# PC: a right click unselects; a right drag pans and keeps the selection.
+	game._select(mine.slice(0, 3))
+	var cam: Camera3D = panes._leaves()[0].camera
+	var before: Vector3 = cam.target
+	mouse_right(a, true)
+	var move := InputEventMouseMotion.new()
+	move.position = a + Vector2(120, 0)
+	move.relative = Vector2(120, 0)
+	move.button_mask = MOUSE_BUTTON_MASK_RIGHT
+	panes._input(move)
+	mouse_right(a + Vector2(120, 0), false)
+	check("PC: a right drag pans and keeps the selection", game.selection.size() == 3 and cam.target != before)
+	mouse_right(a, true)
+	mouse_right(a, false)
+	check("PC: a right click unselects", game.selection.is_empty())
 
 	print("FAILURES: ", failures)
 	quit(1 if failures > 0 else 0)

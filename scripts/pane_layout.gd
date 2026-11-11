@@ -29,6 +29,8 @@ signal pointer_moved(camera: Camera3D, point: Vector2)
 signal placed(camera: Camera3D, point: Vector2)
 ## Two fingers tapped together (down and up quickly, without moving).
 signal two_finger_tapped(camera: Camera3D)
+## Mouse: right button clicked (not dragged: that pans).
+signal right_clicked(camera: Camera3D)
 
 ## While true (a building is picked), one finger drags a preview instead of
 ## drawing a loop, and lifting it emits `placed` (not over a button).
@@ -108,6 +110,8 @@ var _root: PaneNode
 var _overlay: Control
 var _fingers: Dictionary = {}  # finger index -> Dictionary
 var _mouse_pan_leaf: PaneNode = null
+var _right_down_at := Vector2.ZERO
+var _right_moved := 0.0
 var _blockers: Array = []  # on-screen controls (buttons) panes must ignore
 
 
@@ -159,6 +163,7 @@ func _input(event: InputEvent) -> void:
 		if _mouse_pan_leaf != null and _is_alive(_mouse_pan_leaf) \
 				and event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 			_mouse_pan_leaf.camera.pan_by_screen(event.relative)
+			_right_moved += event.relative.length()
 		elif placing and event.button_mask == 0 and not _blocked(event.position):
 			# Mouse: the preview follows the pointer.
 			var hover := _leaf_at(event.position)
@@ -267,6 +272,12 @@ func _on_mouse_button(event: InputEventMouseButton) -> void:
 				var factor: float = 1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.1
 				leaf.camera.zoom_at(factor, event.position - leaf.rect.position)
 		MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				_right_moved = 0.0
+				_right_down_at = event.position
+			elif leaf != null and _mouse_pan_leaf == leaf and _right_moved <= tap_slop \
+					and not _blocked(event.position) and not placing:
+				right_clicked.emit(leaf.camera)  # a click, not a drag
 			_mouse_pan_leaf = leaf if event.pressed else null
 
 

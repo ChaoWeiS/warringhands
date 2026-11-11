@@ -112,6 +112,7 @@ func _ready() -> void:
 	panes.placed.connect(_on_placed)
 	# Two-finger tap: unselect everything (like the cancel button).
 	panes.two_finger_tapped.connect(func(_camera): _unselect_all())
+	panes.right_clicked.connect(func(_camera): _unselect_all())  # PC
 	panes.register_blocker(bar)
 	panes.register_blocker(bar.actions)
 	hud.below_build = bar.actions
@@ -571,7 +572,7 @@ func _on_filter(kind: int) -> void:
 	_select(kept)
 
 
-## A two-finger tap: nothing selected, hands or buildings.
+## A two-finger tap (or a right click): nothing selected, hands or buildings.
 func _unselect_all() -> void:
 	_select([])
 	_select_buildings([])
