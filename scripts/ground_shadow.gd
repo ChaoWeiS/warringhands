@@ -11,7 +11,8 @@ static var _materials := {}  # strength -> material
 
 
 ## A shadow `radius` map units across (x), `squash` as deep (z).
-static func make(radius: float, strength: float = 0.3, squash: float = 0.45) -> MeshInstance3D:
+## `back`: how far behind the base point its centre sits (share of its depth).
+static func make(radius: float, strength: float = 0.5, squash: float = 0.45, back: float = 0.35) -> MeshInstance3D:
 	var m := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(radius * 2.0, radius * 2.0 * squash)
@@ -19,13 +20,13 @@ static func make(radius: float, strength: float = 0.3, squash: float = 0.45) -> 
 	m.material_override = _shared(strength)
 	# Centred a little behind the base point (up the screen), so the shadow
 	# sits under the object instead of peeking out below it.
-	m.position = Vector3(0, Y, -radius * squash * 0.35)
+	m.position = Vector3(0, Y, -radius * squash * back)
 	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return m
 
 
 static func _shared(strength: float) -> StandardMaterial3D:
-	var key: int = roundi(strength * 20)
+	var key: int = roundi(clampf(strength, 0.0, 1.0) * 20)
 	if not _materials.has(key):
 		var grad := Gradient.new()
 		grad.set_color(0, Color(COLOR, 1.0))

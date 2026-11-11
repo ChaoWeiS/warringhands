@@ -110,7 +110,9 @@ func _make_tree(n: Dictionary) -> Dictionary:
 	mm.visible_instance_count = index + 1
 	mm.set_instance_transform(index, Transform3D(Basis().scaled(Vector3.ONE * size), pos))
 	# Soft shadow on the ground (the same look as everything else's).
-	var shadow: MeshInstance3D = GroundShadow.make(3.4 * size, 0.32)
+	# Trees: wider and stronger, centred on the trunk (the crown hides
+	# anything further back).
+	var shadow: MeshInstance3D = GroundShadow.make(5.5 * size, 0.75, 0.42, 0.05)
 	shadow.position += pos
 	add_child(shadow)
 	return {"tree": true, "batch": batch, "index": index, "pos": pos, "size": size, "shadow": shadow}
@@ -220,7 +222,7 @@ func _picture(root: Node3D, tex: Texture2D, width: float, at: Vector3) -> Sprite
 	s.position = at
 	root.add_child(s)
 	# Its own shadow, tucked in under its base.
-	var shade: MeshInstance3D = GroundShadow.make(width * 0.5, 0.28)
+	var shade: MeshInstance3D = GroundShadow.make(width * 0.5, 0.5)
 	shade.position += Vector3(at.x, 0, at.z)
 	root.add_child(shade)
 	return s
