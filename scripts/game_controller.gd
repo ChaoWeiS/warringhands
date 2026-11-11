@@ -35,6 +35,7 @@ var player_team := 0
 const UI := preload("res://scripts/ui_style.gd")
 const StartMenu := preload("res://scripts/start_menu.gd")
 const Tutorial := preload("res://scripts/tutorial.gd")
+const Sounds := preload("res://scripts/sounds.gd")
 ## How close (pixels) a tap must be to a unit to pick it.
 const TAP_RADIUS := 44.0
 ## Two taps this close in time (ms) and space (px), in the same pane, make a
@@ -49,6 +50,7 @@ const ResourcesView := preload("res://scripts/resources_view.gd")
 
 var selection: Array = []  # unit ids
 var selected_buildings: Array = []
+var sounds: Node
 var _building_camera: Camera3D = null  # pane camera the buildings were picked in
 var _last_tap := {"camera": null, "point": Vector2.ZERO, "time": -100000}
 var selected_building := 0  # the first of them (0 = none)
@@ -73,6 +75,13 @@ func _ready() -> void:
 	panes.tapped.connect(_on_tapped)
 	panes.lassoed.connect(_on_lassoed)
 	panes.pointer_moved.connect(_on_pointer_moved)
+	# Unit voices: answers to selections and orders, and combat sounds for
+	# whatever is on screen.
+	sounds = Sounds.new()
+	add_child(sounds)
+	sounds.on_screen = _on_screen
+	view.sounds = sounds
+	did.connect(_voice_for)
 	panes.placed.connect(_on_placed)
 	panes.register_blocker(bar)
 	panes.register_blocker(bar.actions)
@@ -288,6 +297,26 @@ func _order_attack(target: int) -> void:
 
 func _tap_distance(camera: Camera3D, point: Vector2, unit_id: int) -> float:
 	return camera.unproject_position(view.world_position(unit_id)).distance_to(point)
+
+
+## Selected units answer (all of them); ordered units confirm.
+func _voice_for(action: String) -> void:
+	match action:
+		"select", "lasso", "select_kind":
+			sounds.respond("acknowledge", selection)
+		"move", "attack_move", "attack", "gather", "harvest":
+			sounds.respond("objective", selection)
+
+
+## Is a point in the world showing in any pane?
+func _on_screen(at: Vector3) -> bool:
+	for leaf in panes._leaves():
+		var cam: Camera3D = leaf.camera
+		if cam.is_position_in_frustum(at):
+			var p: Vector2 = cam.unproject_position(at)
+			if Rect2(Vector2.ZERO, leaf.rect.size).has_point(p):
+				return true
+	return false
 
 
 ## Placing: the preview follows the finger / mouse.

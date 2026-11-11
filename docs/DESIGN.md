@@ -60,6 +60,7 @@
 - Charging a mirrored army with attack-move is a roughly even trade; defenders keep a slight edge (they're already in position).
 - All hits in a tick land at once (no first-strike advantage from unit ids).
 - Look: every swing plays the attack animation once from its wind-up, holding on the impact frame (POW! / SLAP! / SNIP!); the damage number punches in, the attacker pops, and the victim cries or falls right on that frame (a swing shows over a flinch). Purely visual: the sim's timing is unchanged. crying defend animation when hit, HP bar once damaged, floating damage numbers (big red for counter hits). A fallen unit plays its death animation, lies there half a second, then fades. Fallen units leave the selection.
+- **Unit voices** (`scripts/sounds.gd`; originals in `art_source/sounds/`, converted by `tools/prep_sounds.sh` to small Ogg files in `assets/sounds/`): *Acknowledge* when selected, *Objective* when given an order (move, attack, gather...), *Attack* when a swing starts, *Defend* when a blow lands, *Death* when a unit falls (once). Every selected unit answers at once, as a little chorus (random pick, pitch and tiny delay each; quieter per voice in bigger groups; up to 12). Combat sounds only for units on screen in a pane, at most 4 of a kind per 0.3 s, 16 voices in all.
 - `combat_enabled` switch on the sim (e.g. for early tutorial steps).
 
 ## Economy (prototype)

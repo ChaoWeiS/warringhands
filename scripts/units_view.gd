@@ -66,6 +66,8 @@ var sim: Node
 var _views: Dictionary = {}  # unit id -> {root, ring, sprite, base, hp bars, swing}
 var _selected: Dictionary = {}
 var _dying: Dictionary = {}  # unit id -> view, while its fall plays
+## Unit voices (scripts/sounds.gd), set by the game; may be null in tests.
+var sounds: Node = null
 var _frames_by_kind: Array = []  # SpriteFrames per kind
 var _routes_mesh := ImmediateMesh.new()
 var _white: ImageTexture
@@ -210,6 +212,9 @@ func _update_combat_look() -> void:
 ## Floating damage number: big and red for a counter hit, small and pale
 ## when countered.
 func _on_unit_hit(target_id: int, attacker_id: int, damage: int, strength: int) -> void:
+	var hitter: Dictionary = _views.get(attacker_id, {})
+	if sounds != null and not hitter.is_empty():
+		sounds.unit_event("attack", hitter.root.position)  # the swing starts now
 	# Shown when the attacker's impact frame comes up.
 	get_tree().create_timer(IMPACT_SECONDS).timeout.connect(
 			_show_hit.bind(target_id, attacker_id, damage, strength))
@@ -222,6 +227,13 @@ func _show_hit(target_id: int, attacker_id: int, damage: int, strength: int) -> 
 	var view: Dictionary = _views.get(target_id, _dying.get(target_id, {}))
 	if view.is_empty():
 		return
+	if sounds != null:
+		# The blow lands: a cry, or (once, for a fallen unit) its death.
+		if not _dying.has(target_id):
+			sounds.unit_event("defend", view.root.position)
+		elif not view.get("death_sounded", false):
+			view.death_sounded = true
+			sounds.unit_event("death", view.root.position)
 	var label := Label3D.new()
 	label.text = "-%d" % damage
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
