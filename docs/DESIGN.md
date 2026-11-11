@@ -33,7 +33,8 @@
 - Tablet: two hands can work two panes at once (multi-touch per pane).
 
 ## Units and orders (prototype)
-- Each side starts with 4 rocks, 4 papers, 4 scissors (placeholder discs with an icon: lump, sheet, X).
+- Each side starts with 4 rocks, 4 papers, 4 scissors.
+- Unit art: animated hand sprites (idle / attack / defend, 5 frames each) on a team-coloured base (pink vs blue). Source sheet in `art_source/hands_sheet.png`; `tools/cut_hand_sprites.py` cuts it into `assets/units/hands.png`. Units face the way they walk.
 - **One finger:** tap your unit to select it; draw a loop to lasso; tap the ground to move the selection there (they spread into a square formation).
 - Selection is shared by all panes: select in one pane, tap the destination in another.
 - Selection bar (bottom): R / P / S counts; tap one to keep only that type; Clear to deselect.

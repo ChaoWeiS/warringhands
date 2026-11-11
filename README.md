@@ -24,6 +24,9 @@ scenes/       Godot scenes (.tscn)
 scripts/      GDScript code (.gd)
 scripts/sim/  Game simulation (deterministic, lockstep-ready)
 tests/        Automated tests (run: tests/run_tests.sh)
+assets/       Game art (hand sprites)
+art_source/   Original art sheets (not shipped in the game)
+tools/        Helper scripts (e.g. cutting sprites from the art sheet)
 docs/         Design notes
 .github/      Automatic builds
 ```
@@ -38,5 +41,6 @@ One-time setup on GitHub: **Settings → Pages → Source: GitHub Actions**.
 
 iOS builds are made on a Mac: export from Godot to an Xcode project, then build in Xcode.
 
-## Large files
-Art, audio and fonts are tracked with Git LFS (see `.gitattributes`). Run `git lfs install` once on your machine.
+## Art files
+Art is stored as regular Git files (they're small). If art grows past a few
+MB per file, consider Git LFS.

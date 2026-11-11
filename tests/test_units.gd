@@ -133,6 +133,21 @@ func _run() -> void:
 	await frames(3)
 	await shot("units_1_start")
 
+	# Sprites: every unit plays its idle animation; states can be switched.
+	var anim_ok := true
+	for id in mine + theirs:
+		var spr = view._views[id].sprite
+		anim_ok = anim_ok and spr.is_playing() and spr.animation == "idle" \
+				and spr.sprite_frames.get_frame_count("idle") == 5
+	check("all units play a 5-frame idle animation", anim_ok)
+	view.set_state(mine[0], "attack")
+	view.set_state(mine[4], "defend")
+	check("units can switch to attack / defend", view._views[mine[0]].sprite.animation == "attack" \
+			and view._views[mine[4]].sprite.animation == "defend")
+	await shot("units_1b_states")
+	view.set_state(mine[0], "idle")
+	view.set_state(mine[4], "idle")
+
 	# Tap a unit: it alone is selected.
 	var first: int = mine[0]
 	tap(screen_pos(leaf, first))

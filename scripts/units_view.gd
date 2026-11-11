@@ -1,31 +1,42 @@
 extends Node3D
-## Draws the units from the simulation: flat 2D sprites standing on the 3D
-## world (always facing the camera), with soft blob shadows, a selection
-## ring, and a marker where a move order was given.
+## Draws the units from the simulation: animated 2D hand sprites standing on
+## the 3D world (always facing the camera), Ragnarok-style, with a soft
+## team-coloured base under each, a selection ring, and a marker where a move
+## order was given.
 ##
-## It only reads the sim and smooths positions between ticks. Placeholder
-## look until real hand sprites exist: a team-coloured disc with an icon
-## (lump = rock, sheet = paper, X = scissors).
+## It only reads the sim and smooths positions between ticks.
+##
+## Sprites: assets/units/hands.png, cut from art_source/hands_sheet.png by
+## tools/cut_hand_sprites.py. 5 frames per row, 128 px cells;
+## row = kind * 3 + state (kind: rock, paper, scissors; state: idle, attack, defend).
 
 @export var sim_path: NodePath
 
-const TEAM_COLORS := [Color("#ffb3ba"), Color("#bae1ff")]
-const ICON_COLOR := Color("#5a5470")
+const ATLAS := preload("res://assets/units/hands.png")
+const CELL := 128
+const FRAMES := 5
+const STATES := ["idle", "attack", "defend"]
+const STATE_FPS := {"idle": 6.0, "attack": 10.0, "defend": 8.0}
+
+## Team colours, used for the base under each unit.
+const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
 const RING_COLOR := Color("#ffffff")
 const MARKER_COLOR := Color("#fff3b0")
-## Height of the sprite's centre above the ground (map units), so its
-## bottom just touches the ground.
-const SPRITE_HEIGHT := 2.5
-const SPRITE_PIXEL_SIZE := 0.07
+## Map units per sprite pixel (a hand is about 6 map units tall).
+const SPRITE_PIXEL_SIZE := 0.06
+## Height of the hand's middle above the ground, for picking.
+const SPRITE_HEIGHT := 3.0
 
 var sim: Node
-var _views: Dictionary = {}  # unit id -> {root, ring}
+var _views: Dictionary = {}  # unit id -> {root, ring, sprite}
 var _selected: Dictionary = {}
-var _textures: Dictionary = {}  # "team:kind" -> texture
+var _frames_by_kind: Array = []  # SpriteFrames per kind
 
 
 func _ready() -> void:
 	sim = get_node(sim_path)
+	for kind in 3:
+		_frames_by_kind.append(_build_frames(kind))
 	for u in sim.units:
 		_make_view(u)
 	_update_positions()
@@ -35,7 +46,7 @@ func _process(_delta: float) -> void:
 	_update_positions()
 
 
-## Where a unit is drawn right now (centre of its sprite), for picking.
+## Where a unit is drawn right now (middle of its sprite), for picking.
 func world_position(id: int) -> Vector3:
 	var view: Dictionary = _views.get(id, {})
 	if view.is_empty():
@@ -51,6 +62,13 @@ func set_selected(ids: Array) -> void:
 		_views[id].ring.visible = _selected.has(id)
 
 
+## Plays "idle", "attack" or "defend" for a unit (combat will use this).
+func set_state(id: int, state: String) -> void:
+	var view: Dictionary = _views.get(id, {})
+	if not view.is_empty() and view.sprite.animation != state:
+		view.sprite.play(state)
+
+
 ## A ring that shrinks and fades where a move order was given.
 func show_move_marker(ground: Vector3) -> void:
 	var marker := MeshInstance3D.new()
@@ -58,7 +76,7 @@ func show_move_marker(ground: Vector3) -> void:
 	torus.inner_radius = 5.0
 	torus.outer_radius = 6.2
 	marker.mesh = torus
-	var mat := _flat_material(MARKER_COLOR)
+	var mat := _flat_material(MARKER_COLOR, true)
 	marker.material_override = mat
 	marker.position = Vector3(ground.x, 0.6, ground.z)
 	add_child(marker)
@@ -78,89 +96,78 @@ func _update_positions() -> void:
 		var x: float = lerpf(u.px, u.x, t) / scale_factor
 		var z: float = lerpf(u.pz, u.z, t) / scale_factor
 		view.root.position = Vector3(x, 0, z)
+		# Face the way we're walking (the art faces right).
+		if u.x != u.px:
+			view.sprite.flip_h = u.x < u.px
 
 
 func _make_view(u: Dictionary) -> void:
 	var root := Node3D.new()
 	add_child(root)
 
-	var blob := MeshInstance3D.new()
-	var disc_mesh := CylinderMesh.new()
-	disc_mesh.top_radius = 2.3
-	disc_mesh.bottom_radius = 2.3
-	disc_mesh.height = 0.02
-	blob.mesh = disc_mesh
-	blob.position = Vector3(0, 0.35, 0)
-	blob.material_override = _flat_material(Color(0.25, 0.22, 0.35, 0.25))
-	root.add_child(blob)
+	# Soft team-coloured base (doubles as the blob shadow).
+	var base := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = 3.0
+	disc.bottom_radius = 3.0
+	disc.height = 0.02
+	disc.radial_segments = 24
+	base.mesh = disc
+	base.position = Vector3(0, 0.35, 0)
+	var team_color: Color = TEAM_COLORS[u.team]
+	base.material_override = _flat_material(Color(team_color, 0.8), true)
+	root.add_child(base)
 
 	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
-	torus.inner_radius = 2.7
-	torus.outer_radius = 3.2
+	torus.inner_radius = 3.3
+	torus.outer_radius = 3.9
 	torus.ring_segments = 12
 	ring.mesh = torus
 	ring.position = Vector3(0, 0.45, 0)
-	ring.material_override = _flat_material(RING_COLOR)
+	ring.material_override = _flat_material(RING_COLOR, false)
 	ring.visible = false
 	root.add_child(ring)
 
-	var sprite := Sprite3D.new()
-	sprite.texture = _unit_texture(u.team, u.kind)
+	var sprite := AnimatedSprite3D.new()
+	sprite.sprite_frames = _frames_by_kind[u.kind]
 	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	sprite.pixel_size = SPRITE_PIXEL_SIZE
-	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 	sprite.shaded = false
-	sprite.position = Vector3(0, SPRITE_HEIGHT, 0)
+	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# Bottom of the cell on the ground (frames are drawn 2 px above it).
+	sprite.position = Vector3(0, (CELL * 0.5 - 2.0) * SPRITE_PIXEL_SIZE, 0)
 	root.add_child(sprite)
+	# Don't let everyone bob in sync.
+	sprite.play("idle")
+	sprite.frame = u.id % FRAMES
+	sprite.speed_scale = 0.85 + 0.3 * float((u.id * 37) % 10) / 10.0
 
-	_views[u.id] = {"root": root, "ring": ring}
+	_views[u.id] = {"root": root, "ring": ring, "sprite": sprite}
 
 
-func _flat_material(color: Color) -> StandardMaterial3D:
+func _build_frames(kind: int) -> SpriteFrames:
+	var frames := SpriteFrames.new()
+	frames.remove_animation("default")
+	for state_index in STATES.size():
+		var anim: String = STATES[state_index]
+		frames.add_animation(anim)
+		frames.set_animation_speed(anim, STATE_FPS[anim])
+		frames.set_animation_loop(anim, true)
+		var row: int = kind * 3 + state_index
+		for f in FRAMES:
+			var region := AtlasTexture.new()
+			region.atlas = ATLAS
+			region.region = Rect2(f * CELL, row * CELL, CELL, CELL)
+			frames.add_frame(anim, region)
+	return frames
+
+
+func _flat_material(color: Color, transparent: bool) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	if color.a < 1.0 or color == MARKER_COLOR:
+	if transparent:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	return m
-
-
-## Disc in the team colour with a simple icon for the unit type.
-func _unit_texture(team: int, kind: int) -> ImageTexture:
-	var key := "%d:%d" % [team, kind]
-	if _textures.has(key):
-		return _textures[key]
-	var size := 64
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	var c := Vector2(size, size) * 0.5
-	for y in size:
-		for x in size:
-			var p := Vector2(x + 0.5, y + 0.5)
-			var d: float = p.distance_to(c)
-			if d > c.x - 1.0:
-				continue
-			var color: Color = Color.WHITE if d > c.x - 5.0 else TEAM_COLORS[team]
-			if _icon_hit(kind, p - c):
-				color = ICON_COLOR
-			img.set_pixel(x, y, color)
-	var tex := ImageTexture.create_from_image(img)
-	_textures[key] = tex
-	return tex
-
-
-## Is point `p` (relative to the disc centre, pixels) part of the icon?
-func _icon_hit(kind: int, p: Vector2) -> bool:
-	match kind:
-		0:  # rock: a lumpy blob
-			return p.distance_to(Vector2(-4, 3)) < 11.0 or p.distance_to(Vector2(6, 1)) < 9.0 \
-					or p.distance_to(Vector2(1, -6)) < 8.0
-		1:  # paper: a sheet with two lines of "writing"
-			var inside := absf(p.x) <= 11.0 and absf(p.y) <= 14.0
-			var border := inside and (absf(p.x) >= 8.0 or absf(p.y) >= 11.0)
-			var lines := absf(p.x) <= 6.0 and (absf(p.y + 3.0) <= 1.2 or absf(p.y - 3.0) <= 1.2)
-			return border or lines
-		_:  # scissors: two crossed blades
-			var on_blade_a := absf(p.x - p.y) <= 3.5 and absf(p.x + p.y) <= 26.0
-			var on_blade_b := absf(p.x + p.y) <= 3.5 and absf(p.x - p.y) <= 26.0
-			return (on_blade_a or on_blade_b) and p.length() <= 15.0
