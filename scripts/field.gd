@@ -81,7 +81,6 @@ func _ready() -> void:
 	_build_sea()
 	_build_island()
 	_build_terrain()
-	_build_resources()
 
 
 ## Works out the island and its terrain. Safe to call more than once; the
@@ -323,55 +322,6 @@ func _poly_center(poly: PackedVector2Array) -> Vector2:
 	for p in poly:
 		sum += p
 	return sum / poly.size()
-
-
-func _build_resources() -> void:
-	var c := get_center()
-	for spot in STONES:
-		for i in 3:
-			var rock := MeshInstance3D.new()
-			var sphere := SphereMesh.new()
-			sphere.radius = 7.0 - i
-			sphere.height = 9.0 - i
-			sphere.radial_segments = 7
-			sphere.rings = 4
-			rock.mesh = sphere
-			rock.position = _ground(c + spot + Vector2(i * 9 - 9, (i % 2) * 7), 3.0)
-			rock.material_override = _material(STONE)
-			add_child(rock)
-	for spot in WOODS:
-		for i in 4:
-			_add_tree(c + spot + Vector2((i % 2) * 18 - 9, (i / 2) * 18 - 9))
-	for spot in METALS:
-		var crystal := MeshInstance3D.new()
-		var prism := PrismMesh.new()
-		prism.size = Vector3(8, 14, 8)
-		crystal.mesh = prism
-		crystal.position = _ground(c + spot, 7.3)
-		crystal.material_override = _material(METAL)
-		add_child(crystal)
-
-
-func _add_tree(at: Vector2) -> void:
-	var trunk := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 1.2
-	cyl.bottom_radius = 1.6
-	cyl.height = 8.0
-	trunk.mesh = cyl
-	trunk.position = _ground(at, 4.3)
-	trunk.material_override = _material(TRUNK)
-	add_child(trunk)
-	var crown := MeshInstance3D.new()
-	var ball := SphereMesh.new()
-	ball.radius = 5.5
-	ball.height = 9.0
-	ball.radial_segments = 10
-	ball.rings = 6
-	crown.mesh = ball
-	crown.position = _ground(at, 11.0)
-	crown.material_override = _material(LEAVES)
-	add_child(crown)
 
 
 # --- Helpers ---------------------------------------------------------------

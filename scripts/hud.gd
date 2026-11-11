@@ -38,6 +38,8 @@ var _train_button: Button
 var _progress: ProgressBar
 var _panel_building := 0
 var _over_label: Label
+var _toast: Label
+var _toast_tween: Tween
 
 
 func setup(simulation: Node, player_team: int) -> void:
@@ -52,6 +54,27 @@ func _ready() -> void:
 	_build_build_menu()
 	_build_building_panel()
 	_build_game_over()
+	_toast = UI.label("", 30)
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_toast.position.y = 90
+	_toast.add_theme_color_override("font_outline_color", Color.WHITE)
+	_toast.add_theme_constant_override("outline_size", 10)
+	_toast.modulate.a = 0.0
+	add_child(_toast)
+
+
+## A short message near the top of the screen that fades away.
+func toast(text: String) -> void:
+	_toast.text = text
+	_toast.reset_size()
+	_toast.position.x = (size.x - _toast.size.x) * 0.5
+	if _toast_tween != null:
+		_toast_tween.kill()
+	_toast.modulate.a = 1.0
+	_toast_tween = create_tween()
+	_toast_tween.tween_interval(2.2)
+	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.6)
 
 
 func _process(_delta: float) -> void:

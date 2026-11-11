@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://scripts/game_controller.gd" id="6_game"]
 [ext_resource type="Script" path="res://scripts/buildings_view.gd" id="7_buildings"]
 [ext_resource type="Script" path="res://scripts/hud.gd" id="8_hud"]
+[ext_resource type="Script" path="res://scripts/resources_view.gd" id="9_resources"]
 
 [node name="Main" type="Node"]
 
@@ -21,6 +22,10 @@ render_target_update_mode = 0
 
 [node name="Field" type="Node3D" parent="World"]
 script = ExtResource("1_field")
+
+[node name="Resources" type="Node3D" parent="World"]
+script = ExtResource("9_resources")
+sim_path = NodePath("../../Sim")
 
 [node name="Buildings" type="Node3D" parent="World"]
 script = ExtResource("7_buildings")

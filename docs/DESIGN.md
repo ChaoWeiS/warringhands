@@ -67,8 +67,13 @@
 - **Training:** tap your factory, then the + button: 60 of its resource, 5 s each, up to 5 queued. New units walk out towards the island centre.
 - Buildings block walking, push units out, can be attacked (10 per hit) and show HP bars. HQ 2000 HP, factories 800.
 - Destroying the enemy HQ = **Victory**; losing yours = **Defeat** (Play again).
-- Resource spots hold 2000 (stone, wood) / 1000 (metal) and disappear when empty.
-- Still to come: depleted spots should vanish visually; more drop-off points.
+- Resource spots (`scripts/resources_view.gd`), each on a tinted patch of ground with a floating badge (resource colour + amount left):
+  - **Stone**: a pile of lavender boulders.
+  - **Wood**: a lumber camp, golden trees with a log pile and a stump. Forests are scenery; tapping one shows a hint saying where wood comes from.
+  - **Metal**: a cluster of aqua crystals.
+- Tap anywhere on a spot's model (crystal tip, tree crown) or its ground patch to gather.
+- Spots hold 2000 (stone, wood) / 1000 (metal) and sink away when empty.
+- Still to come: more drop-off points.
 
 ## Enemy AI (prototype)
 - Plays the blue side by the same rules, giving the same kinds of orders a player can (so it stays lockstep-safe). Thinks once a second (`scripts/sim/ai.gd`).

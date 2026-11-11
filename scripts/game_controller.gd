@@ -24,6 +24,7 @@ extends Node
 const PLAYER_TEAM := 0
 ## How close (pixels) a tap must be to a unit to pick it.
 const TAP_RADIUS := 44.0
+const ResourcesView := preload("res://scripts/resources_view.gd")
 
 var selection: Array = []  # unit ids
 var selected_building := 0
@@ -89,11 +90,13 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		return
 	if ground == null:
 		return
-	var node := _resource_at(ground)
+	var node := _resource_at(camera, point)
 	if node != 0 and not bar.is_attack_armed():
 		sim.command_gather(selection, node)
 		view.show_move_marker(ground)
 		return
+	if _in_forest(ground):
+		hud.toast("Forests are scenery: gather wood at a lumber camp (golden trees, log pile)")
 	if bar.is_attack_armed():
 		sim.command_attack_move(selection, ground)
 		view.show_move_marker(ground, true)
@@ -190,10 +193,27 @@ func _building_at(ground: Variant, own: bool) -> int:
 	return 0
 
 
-## A resource spot under a ground point, or 0.
-func _resource_at(ground: Vector3) -> int:
-	var g: Vector2 = Vector2(ground.x, ground.z) * float(sim.SCALE)
+## The resource spot under a screen point, or 0: anywhere on its model
+## (from the ground up to its top) or its ground patch, with a finger's
+## width to spare. The nearest one wins.
+func _resource_at(camera: Camera3D, point: Vector2) -> int:
+	var best := 0
+	var best_dist := INF
 	for n in sim.nodes:
-		if g.distance_to(Vector2(n.x, n.z)) <= n.radius + 500:
-			return n.id
-	return 0
+		var at := Vector3(n.x, 0, n.z) / float(sim.SCALE)
+		var foot: Vector2 = camera.unproject_position(at)
+		var head: Vector2 = camera.unproject_position(at + Vector3(0, ResourcesView.top_of(n.res), 0))
+		var reach: float = (n.radius / float(sim.SCALE) + 3.0) / camera.units_per_pixel + TAP_RADIUS * 0.5
+		var d: float = point.distance_to(Geometry2D.get_closest_point_to_segment(point, foot, head))
+		if d <= reach and d < best_dist:
+			best = n.id
+			best_dist = d
+	return best
+
+
+func _in_forest(ground: Vector3) -> bool:
+	var g := Vector2(ground.x, ground.z)
+	for forest in sim.field.forests:
+		if g.distance_to(forest.center) <= forest.radius:
+			return true
+	return false

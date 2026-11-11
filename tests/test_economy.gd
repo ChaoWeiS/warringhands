@@ -3,6 +3,7 @@ extends SceneTree
 ## under attack, winning, lockstep, and the on-screen controls.
 ## Run: godot --headless -s res://tests/test_economy.gd
 
+const ResView := preload("res://scripts/resources_view.gd")
 const SimScript := preload("res://scripts/sim/sim.gd")
 const ROCK := 0
 const PAPER := 1
@@ -246,6 +247,39 @@ func _run() -> void:
 	queued = [] if sim._pending.is_empty() else sim._pending.values()[0]
 	check("tapping a resource spot with units selected sends them to gather", queued.size() == 1 and queued[0].type == "gather")
 	sim._pending.clear()
+	# Tapping the top of a spot's model (crystal tip, tree crown) works too.
+	var tops_ok := true
+	var tops_tried := 0
+	var leaf_rect := Rect2(Vector2.ZERO, leaf.rect.size)
+	cam.units_per_pixel = 0.2  # zoomed out to see several spots
+	cam.refit()
+	for n in sim.nodes:
+		var top := Vector3(n.x / 100.0, ResView.top_of(n.res) - 1.0, n.z / 100.0)
+		var p: Vector2 = cam.unproject_position(top)
+		if not leaf_rect.has_point(p):
+			continue
+		tops_tried += 1
+		game._on_tapped(cam, p)
+		queued = [] if sim._pending.is_empty() else sim._pending.values()[0]
+		tops_ok = tops_ok and queued.size() == 1 and queued[0].type == "gather" and queued[0].node == n.id
+		sim._pending.clear()
+	check("tapping the top of a resource spot's model gathers from it (%d on screen)" % tops_tried,
+			tops_ok and tops_tried >= 2)
+	cam.units_per_pixel = 0.08
+	cam.refit()
+	var res_view: Node3D = root.get_node("Main/World/Resources")
+	check("every resource spot is drawn with its amount", res_view._views.size() == sim.nodes.size()
+			and res_view._views[nearest_metal.id].label.text == str(nearest_metal.amount))
+	# Tapping a forest says where wood comes from.
+	var forest: Dictionary = sim.field.forests.front()
+	game._on_tapped(cam, cam.unproject_position(Vector3(forest.center.x, 0, forest.center.y)))
+	check("tapping a forest explains where wood comes from", hud._toast.modulate.a > 0.5 and "wood" in hud._toast.text)
+	sim._pending.clear()
+	# An emptied spot disappears.
+	nearest_metal.amount = 0
+	sim.nodes.erase(nearest_metal)
+	res_view._sync()
+	check("an emptied resource spot goes away", not res_view._views.has(nearest_metal.id))
 	sim._remove_building(sim.hq_of(1))
 	await frames(2)
 	check("destroying the enemy HQ shows Victory", hud.game_over_screen.visible and hud._over_label.text == "Victory!")
