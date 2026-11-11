@@ -446,13 +446,15 @@ func can_place(btype: String, ground: Vector2, team: int = -1) -> bool:
 	if team >= 0 and btype != "hq" and not in_build_range(team, x, z):
 		return false
 	var radius: int = BUILDINGS[btype].radius
-	# Not up on a plateau or its ramps (or hanging over one).
+	# All on one flat level (the grassland or a plateau top): not on a
+	# ramp or a cliff edge, and not hanging over one.
 	if field != null:
 		var c := Vector2(x, z) / float(SCALE)
 		var r: float = float(radius) / SCALE
+		var level: float = field.height_at(c)
 		for k in 9:
 			var p: Vector2 = c if k == 8 else c + Vector2.from_angle(k * TAU / 8.0) * r
-			if field.is_raised(p):
+			if field.is_slope_or_edge(p) or absf(field.height_at(p) - level) > 0.01:
 				return false
 	var grid = nav()
 	if grid != null and not grid.circle_is_open(x, z, radius + RADIUS):
@@ -994,6 +996,17 @@ func _spawn_from(b: Dictionary, kind: int) -> void:
 	var out: int = b.radius + RADIUS + 150
 	var at := Vector2i(b.x + dx * out / d, b.z + dz * out / d)
 	var grid = nav()
+	# On a plateau: step out onto the same level, not off the cliff.
+	if field != null and grid != null:
+		var level: float = field.height_at(Vector2(b.x, b.z) / float(SCALE))
+		var facing: float = atan2(float(dz), float(dx))
+		for k in 16:
+			var turn: float = facing + (k + 1) / 2 * (TAU / 16.0) * (1 if k % 2 == 0 else -1)
+			var p := Vector2i(b.x + roundi(cos(turn) * out), b.z + roundi(sin(turn) * out))
+			if grid.is_walkable_cell(grid.cell_of(p.x, p.y)) \
+					and absf(field.height_at(Vector2(p) / float(SCALE)) - level) < 0.01:
+				at = p
+				break
 	if grid != null:
 		var cell: Vector2i = grid.nearest_walkable(grid.cell_of(at.x, at.y))
 		if cell.x >= 0 and not grid.is_walkable_cell(grid.cell_of(at.x, at.y)):

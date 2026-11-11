@@ -92,6 +92,7 @@ func _make_batch(texture: Texture2D) -> MultiMeshInstance3D:
 
 func _make_tree(n: Dictionary) -> Dictionary:
 	var pos := Vector3(n.x, 0, n.z) / float(sim.SCALE)
+	pos.y = _height(Vector2(pos.x, pos.z))  # trees grow on plateaus too
 	# Picture and size vary per tree, fixed by position.
 	var h: int = absi(n.x * 31 + n.z * 17) / 7
 	var batch: int = h % PINES.size()
@@ -145,7 +146,8 @@ func _remove_tree(view: Dictionary) -> void:
 
 func _make(n: Dictionary) -> Dictionary:
 	var root := Node3D.new()
-	root.position = Vector3(n.x / float(sim.SCALE), 0, n.z / float(sim.SCALE))
+	var ground := Vector2(n.x, n.z) / float(sim.SCALE)
+	root.position = Vector3(ground.x, _height(ground), ground.y)
 	add_child(root)
 
 	match n.res:
@@ -208,6 +210,10 @@ func _remove(view: Dictionary) -> void:
 
 
 # --- Helpers ------------------------------------------------------------------
+
+func _height(at: Vector2) -> float:
+	return sim.field.height_at(at) if sim.field != null else 0.0
+
 
 ## A picture standing on the ground, facing the camera, `width` map units wide.
 func _picture(root: Node3D, tex: Texture2D, width: float, at: Vector3) -> Sprite3D:

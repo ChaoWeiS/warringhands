@@ -94,11 +94,21 @@ func _run() -> void:
 				ramps_ok = ramps_ok and not field.is_walkable(mid)
 				continue
 			var poly: PackedVector2Array = field.plateaus[i]
+			var want: float = field.plateau_info[i].height
+			# An open spot on this top (not under a tree or a higher tier).
 			var c: Vector2 = field._poly_center(poly)
-			var top_cell: Vector2i = grid.cell_of(roundi(c.x * 100), roundi(c.y * 100))
+			var spot := Vector2.INF
+			for ring in range(0, 40, 3):
+				for k in 12:
+					var q: Vector2 = c + Vector2.from_angle(k * TAU / 12) * ring
+					if spot == Vector2.INF and field.is_walkable(q) and is_equal_approx(field.height_at(q), want) \
+							and not field.is_slope_or_edge(q):
+						spot = q
 			var home: Dictionary = a if Vector2(a.x, a.z).distance_to(c * 100) <= Vector2(b.x, b.z).distance_to(c * 100) else b
-			var up: Array = grid.find_route(home.x + (1500 if home == a else -1500), home.z, top_cell.x * 0 + roundi(c.x * 100), roundi(c.y * 100))
-			tops_ok = tops_ok and field.is_walkable(c) and not up.is_empty() and is_equal_approx(field.height_at(c), field.PLATEAU_HEIGHT)
+			var up: Array = [] if spot == Vector2.INF else grid.find_route(home.x + (1500 if home == a else -1500), home.z, roundi(spot.x * 100), roundi(spot.y * 100))
+			if up.is_empty():
+				print("  no way up: plateau %d (level %d) at %s" % [i, field.plateau_info[i].level, c])
+			tops_ok = tops_ok and not up.is_empty()
 			# Halfway round the cliff from each ramp: blocked.
 			for k in 16:
 				var dir: Vector2 = Vector2.from_angle(k * TAU / 16)
@@ -107,10 +117,11 @@ func _run() -> void:
 					cliff_ok = cliff_ok and not field.is_walkable(edge)
 		check("%s: the plateaus with ramps (%d of %d) can be walked up to" % [name, field.climbable.size(), field.plateaus.size()], tops_ok)
 		check("%s: ...only by their ramps (%d); other cliffs and plateaus are blocked" % [name, field.ramps.size()], ramps_ok and cliff_ok)
-		var no_build := true
-		for poly in field.plateaus:
-			no_build = no_build and not sim.can_place("quarry", field._poly_center(poly))
-		check("%s: nothing can be built up on a plateau" % name, no_build)
+		# Building: not on a ramp; fine on a big enough flat top.
+		var no_ramp := true
+		for r in field.ramps:
+			no_ramp = no_ramp and not sim.can_place("quarry", r.edge + r.dir * r.length * 0.5)
+		check("%s: nothing can be built on a ramp" % name, no_ramp)
 		dump[id] = {
 			"coast": Array(field.coastline).map(func(p): return [p.x, p.y]),
 			"lakes": field.lakes.map(func(poly): return Array(poly).map(func(p): return [p.x, p.y])),

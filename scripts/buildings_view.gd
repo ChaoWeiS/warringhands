@@ -146,6 +146,10 @@ func screen_rect(camera: Camera3D, id: int) -> Rect2:
 
 ## Placing a building: a see-through preview where it would go (red if it
 ## can't go there).
+func _height(at: Vector2) -> float:
+	return sim.field.height_at(at) if sim.field != null else 0.0
+
+
 func show_ghost(btype: String, team: int, at: Vector2, ok: bool) -> void:
 	if _ghost == null or _ghost_type != btype:
 		hide_ghost()
@@ -181,7 +185,7 @@ func show_ghost(btype: String, team: int, at: Vector2, ok: bool) -> void:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		disc.material_override = mat
 		_ghost.add_child(disc)
-	_ghost.position = Vector3(at.x, 0, at.y)
+	_ghost.position = Vector3(at.x, _height(at), at.y)
 	_ghost.visible = true
 	var tint: Color = Color(1, 1, 1, GHOST_ALPHA) if ok else Color(1, 0.45, 0.45, GHOST_ALPHA)
 	(_ghost.get_node("Art") as Sprite3D).modulate = tint
@@ -212,7 +216,8 @@ func _on_added(id: int) -> void:
 		return
 	var r: float = b.radius / float(sim.SCALE)
 	var root := Node3D.new()
-	root.position = Vector3(b.x / float(sim.SCALE), 0, b.z / float(sim.SCALE))
+	var ground := Vector2(b.x, b.z) / float(sim.SCALE)
+	root.position = Vector3(ground.x, _height(ground), ground.y)  # up on a plateau, maybe
 	add_child(root)
 	var model := Node3D.new()
 	root.add_child(model)
