@@ -14,7 +14,7 @@ for test in tests/test_*.gd; do
 	timeout 120 godot --headless -s "res://$test" >"$log" 2>&1
 	code=$?
 	grep -E "^(PASS|FAIL)|SCRIPT ERROR|FAILURES" "$log"
-	if [ $code -ne 0 ] || grep -qE "^FAIL|SCRIPT ERROR" "$log"; then
+	if [ $code -ne 0 ] || grep -qE "^FAIL |SCRIPT ERROR" "$log"; then
 		echo "!!! $test failed (exit $code). Full log:"
 		cat "$log"
 		status=1

@@ -120,6 +120,10 @@ func _ground_at_in(point: Vector2, pane_size: Vector2) -> Vector3:
 
 
 ## Where a point on this pane's screen hits the ground, or null.
+func ground_at(screen_point: Vector2) -> Variant:
+	return _ground_at(screen_point)
+
+
 func _ground_at(screen_point: Vector2) -> Variant:
 	var origin: Vector3 = project_ray_origin(screen_point)
 	var dir: Vector3 = project_ray_normal(screen_point)

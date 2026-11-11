@@ -32,6 +32,14 @@
 - Groups: lasso then save to a numbered button; filter a selection by gesture type.
 - Tablet: two hands can work two panes at once (multi-touch per pane).
 
+## Units and orders (prototype)
+- Each side starts with 4 rocks, 4 papers, 4 scissors (placeholder discs with an icon: lump, sheet, X).
+- **One finger:** tap your unit to select it; draw a loop to lasso; tap the ground to move the selection there (they spread into a square formation).
+- Selection is shared by all panes: select in one pane, tap the destination in another.
+- Selection bar (bottom): R / P / S counts; tap one to keep only that type; Clear to deselect.
+- A second finger in the pane cancels a tap or lasso (it becomes a camera gesture).
+- Ground units stop at the shore.
+
 ## Economy
 - Resources: **stone** (rock), **wood** (paper), **metal** (scissors), scattered on the map.
 - All units can gather; each is best at its own resource. Gatherers carry back to base (StarCraft-style).
@@ -66,5 +74,7 @@
 - Godot 4.6, GL Compatibility renderer (Android, iOS, web).
 - Panes: each is a SubViewport sharing one 3D world, with its own camera. Layout is a tree of splits.
 - Multiplayer: deterministic lockstep (send commands only). Game logic uses integers / fixed point.
+- Sim (`scripts/sim/sim.gd`): 20 ticks/s, positions in whole sim units (100 per map unit), commands run 2 ticks after they are given. Tested: same orders give identical results. Still to do for online play: a whole-number land grid (the coastline test uses floats).
+- Tests: `tests/run_tests.sh` (panes, map stillness, units). CI runs them on every push.
 - Relay / matchmaking: Nakama (planned).
 - Builds: GitHub Actions exports Web (GitHub Pages) and an Android debug APK. iOS builds on the Mac with Xcode.

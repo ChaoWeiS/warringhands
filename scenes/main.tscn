@@ -2,8 +2,16 @@
 
 [ext_resource type="Script" path="res://scripts/field.gd" id="1_field"]
 [ext_resource type="Script" path="res://scripts/pane_layout.gd" id="2_panes"]
+[ext_resource type="Script" path="res://scripts/sim/sim.gd" id="3_sim"]
+[ext_resource type="Script" path="res://scripts/units_view.gd" id="4_units"]
+[ext_resource type="Script" path="res://scripts/selection_bar.gd" id="5_bar"]
+[ext_resource type="Script" path="res://scripts/game_controller.gd" id="6_game"]
 
 [node name="Main" type="Node"]
+
+[node name="Sim" type="Node" parent="."]
+script = ExtResource("3_sim")
+field_path = NodePath("../World/Field")
 
 [node name="World" type="SubViewport" parent="."]
 size = Vector2i(2, 2)
@@ -11,6 +19,10 @@ render_target_update_mode = 0
 
 [node name="Field" type="Node3D" parent="World"]
 script = ExtResource("1_field")
+
+[node name="Units" type="Node3D" parent="World"]
+script = ExtResource("4_units")
+sim_path = NodePath("../../Sim")
 
 [node name="Panes" type="Control" parent="."]
 layout_mode = 3
@@ -29,8 +41,19 @@ world_path = NodePath("../World")
 offset_left = 24.0
 offset_top = 16.0
 offset_right = 1100.0
-offset_bottom = 74.0
+offset_bottom = 100.0
 theme_override_colors/font_color = Color(0.35, 0.33, 0.44, 1)
 theme_override_font_sizes/font_size = 20
-text = "Grab a side tab and swipe across: cut  ·  Drag a divider: resize, all the way: merge
+text = "Tap a unit or draw a loop to select  ·  Tap the ground to move (any pane)
+Grab a side tab and swipe across: cut  ·  Drag a divider: resize, all the way: merge
 Two fingers: pan / pinch zoom"
+
+[node name="SelectionBar" type="HBoxContainer" parent="HUD"]
+script = ExtResource("5_bar")
+
+[node name="Game" type="Node" parent="."]
+script = ExtResource("6_game")
+panes_path = NodePath("../Panes")
+sim_path = NodePath("../Sim")
+view_path = NodePath("../World/Units")
+bar_path = NodePath("../HUD/SelectionBar")

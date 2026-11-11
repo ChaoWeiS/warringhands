@@ -6,7 +6,9 @@ extends Control
 ##     The cut follows your finger; release past the halfway-ish point.
 ##   - Drag a divider: resize. Drag it until a pane gets too small: merge.
 ##   - Two fingers inside a pane: pan (move together) and pinch zoom.
-##   - One finger inside a pane: reserved for units (not used yet).
+##   - One finger inside a pane: tap (emits `tapped`) or draw a loop to
+##     lasso (emits `lassoed`). A second finger turns either into a camera
+##     gesture. What a tap or lasso means is decided by game_controller.gd.
 ## Each pane tracks its own fingers, so two hands can work two panes at once.
 ##
 ## On a computer: left mouse acts as one finger (cut / resize), mouse wheel
@@ -16,6 +18,11 @@ extends Control
 ## split holding two children side by side or stacked.
 
 const CameraRig := preload("res://scripts/camera_rig.gd")
+
+## One finger tapped a pane. `point` is relative to that pane's top-left.
+signal tapped(camera: Camera3D, point: Vector2)
+## One finger drew a loop in a pane. Points are relative to that pane.
+signal lassoed(camera: Camera3D, polygon: PackedVector2Array)
 
 @export var world_path: NodePath
 ## Smallest a pane can be (width or height). Smaller panes snap shut.
@@ -37,6 +44,8 @@ const CameraRig := preload("res://scripts/camera_rig.gd")
 @export var tab_touch_size: Vector2 = Vector2(120, 72)
 ## How far across the pane (0-1) a swipe must travel to cut.
 @export var cut_commit: float = 0.45
+## A one-finger touch that moves less than this is a tap, more is a lasso.
+@export var tap_slop: float = 16.0
 
 const SNAPS := [1.0 / 3.0, 0.5, 2.0 / 3.0]
 const SNAP_RANGE := 0.03
@@ -49,6 +58,8 @@ const CUT_PENDING := Color("#fff3b0")
 const CUT_READY := Color.WHITE
 const CUT_BLOCKED := Color("#ff8a8a")
 const CLOSING_TINT := Color(1.0, 0.45, 0.45, 0.35)
+const LASSO_LINE := Color(1, 1, 1, 0.95)
+const LASSO_FILL := Color(1, 1, 1, 0.15)
 
 enum Side { LEFT, RIGHT, TOP, BOTTOM }
 enum Mode { PANE, CUT, DIVIDER }
@@ -79,6 +90,7 @@ var _root: PaneNode
 var _overlay: Control
 var _fingers: Dictionary = {}  # finger index -> Dictionary
 var _mouse_pan_leaf: PaneNode = null
+var _blockers: Array = []  # on-screen controls (buttons) panes must ignore
 
 
 func _ready() -> void:
@@ -97,6 +109,19 @@ func _ready() -> void:
 
 func pane_count() -> int:
 	return _leaves().size()
+
+
+## Touches on this control (e.g. the selection bar) won't reach the panes.
+func register_blocker(control: Control) -> void:
+	_blockers.append(control)
+
+
+func _blocked(p: Vector2) -> bool:
+	for control in _blockers:
+		if is_instance_valid(control) and control.is_visible_in_tree() \
+				and control.get_global_rect().has_point(p):
+			return true
+	return false
 
 
 # --- Input -------------------------------------------------------------------
@@ -125,6 +150,8 @@ func _input(event: InputEvent) -> void:
 func _on_touch(event: InputEventScreenTouch) -> void:
 	var p: Vector2 = event.position
 	if event.pressed:
+		if _blocked(p):
+			return
 		var finger := {"start": p, "pos": p}
 		# Dividers win first (wide grab zone), then cut tabs, then the pane.
 		var split: PaneNode = _divider_at(p)
@@ -142,11 +169,18 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 				return
 			finger.mode = Mode.PANE
 			finger.leaf = leaf
-			# A second finger in a pane means a camera gesture: if the first
-			# finger had started a cut by accident, turn it into a camera finger.
+			finger.solo = true  # still a possible tap / lasso
+			finger.lasso = false
+			finger.path = PackedVector2Array([p])
+			# A second finger in a pane means a camera gesture: cancel any tap,
+			# lasso or accidental cut the first finger had started.
 			for other in _fingers.values():
-				if other.mode == Mode.CUT and other.leaf == leaf:
-					other.mode = Mode.PANE
+				if other.has("leaf") and other.leaf == leaf:
+					if other.mode == Mode.CUT:
+						other.mode = Mode.PANE
+					other.solo = false
+					other.lasso = false
+					finger.solo = false
 		_fingers[event.index] = finger
 		if finger.mode == Mode.PANE:
 			_reset_pinch(finger.leaf)
@@ -164,6 +198,7 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 				_finish_divider(finger.split)
 			Mode.PANE:
 				_reset_pinch(finger.leaf)
+				_finish_solo(finger)
 	_overlay.queue_redraw()
 
 
@@ -183,6 +218,8 @@ func _on_drag(event: InputEventScreenDrag) -> void:
 			if points.size() == 2:
 				_pinch(finger.leaf, points)
 				get_viewport().set_input_as_handled()
+			elif finger.get("solo", false):
+				_track_lasso(finger)
 	_overlay.queue_redraw()
 
 
@@ -195,6 +232,34 @@ func _on_mouse_button(event: InputEventMouseButton) -> void:
 				leaf.camera.zoom_at(factor, event.position - leaf.rect.position)
 		MOUSE_BUTTON_RIGHT:
 			_mouse_pan_leaf = leaf if event.pressed else null
+
+
+# --- One-finger tap and lasso --------------------------------------------------
+
+func _track_lasso(finger: Dictionary) -> void:
+	var p: Vector2 = finger.pos
+	if not finger.lasso and p.distance_to(finger.start) > tap_slop:
+		finger.lasso = true
+	if finger.lasso:
+		var path: PackedVector2Array = finger.path
+		if path.is_empty() or path[path.size() - 1].distance_to(p) >= 6.0:
+			path.append(p)
+			finger.path = path
+
+
+func _finish_solo(finger: Dictionary) -> void:
+	if not finger.get("solo", false) or not _is_alive(finger.leaf):
+		return
+	var leaf: PaneNode = finger.leaf
+	if finger.lasso:
+		var path: PackedVector2Array = finger.path
+		if path.size() >= 3:
+			var local := PackedVector2Array()
+			for point in path:
+				local.append(point - leaf.rect.position)
+			lassoed.emit(leaf.camera, local)
+	else:
+		tapped.emit(leaf.camera, finger.pos - leaf.rect.position)
 
 
 # --- Camera gestures ---------------------------------------------------------
@@ -553,6 +618,9 @@ func _draw_overlay() -> void:
 				if not _is_alive(finger.leaf):
 					continue
 				_draw_cut_preview(finger)
+			Mode.PANE:
+				if finger.get("lasso", false) and finger.path.size() >= 2:
+					_draw_lasso(finger.path)
 
 
 func _draw_cut_preview(finger: Dictionary) -> void:
@@ -579,6 +647,13 @@ func _draw_cut_preview(finger: Dictionary) -> void:
 	else:
 		_overlay.draw_dashed_line(a, b, CUT_PENDING, 3.0, 18.0)
 		_overlay.draw_line(a, a.lerp(b, info.progress / cut_commit * 0.5), CUT_PENDING, 6.0)
+
+
+func _draw_lasso(path: PackedVector2Array) -> void:
+	if path.size() >= 3 and not Geometry2D.triangulate_polygon(path).is_empty():
+		_overlay.draw_colored_polygon(path, LASSO_FILL)
+	_overlay.draw_polyline(path, LASSO_LINE, 4.0, true)
+	_overlay.draw_dashed_line(path[path.size() - 1], path[0], LASSO_LINE, 2.0, 12.0)
 
 
 ## Grip knob in the middle of a divider, so it reads as "grab me".

@@ -1,6 +1,6 @@
 extends Node3D
-## Placeholder battlefield in 2.5D: a pastel 3D island in the sea, with
-## stone / wood / metal resource spots and a few billboard "units".
+## Battlefield in 2.5D: a pastel 3D island in the sea, with stone / wood /
+## metal resource spots. Units are drawn by units_view.gd.
 ##
 ## Ground positions are 2D (x, z). Game logic will work on that flat plane;
 ## only the visuals are 3D. The coastline is built from fixed numbers so every
@@ -25,7 +25,6 @@ const STONE := Color("#cbc5da")
 const TRUNK := Color("#d9b48f")
 const LEAVES := Color("#f6c3d8")
 const METAL := Color("#a9e7e2")
-const TEAM_COLORS := [Color("#ffb3ba"), Color("#bae1ff")]
 
 # Coastline wobble: [frequency, amplitude, phase]. Only EVEN frequencies, so
 # the island looks the same after a 180° turn (fair for two players).
@@ -38,7 +37,6 @@ const STONES := [Vector2(-170, -170), Vector2(170, 170)]
 const WOODS := [Vector2(-170, 170), Vector2(170, -170)]
 const METALS := [Vector2(0, -125), Vector2(0, 125), Vector2(-230, 0), Vector2(230, 0)]
 
-const UNIT_LETTERS := ["R", "P", "S"]
 
 var coastline: PackedVector2Array = PackedVector2Array()
 
@@ -49,7 +47,6 @@ func _ready() -> void:
 	_build_sea()
 	_build_island()
 	_build_resources()
-	_build_placeholder_units()
 
 
 ## True if a ground point (x, z) is on land. Ground units will use this to
@@ -92,7 +89,7 @@ func _build_environment() -> void:
 	sun.light_energy = 0.5
 	# Real-time shadows are off: in the Compatibility renderer they wash the
 	# pastel colours out to white, and they're costly on phones. Units get
-	# soft blob shadows instead (see _add_unit), like Ragnarok Online.
+	# soft blob shadows instead (see units_view.gd), like Ragnarok Online.
 	sun.shadow_enabled = false
 	add_child(sun)
 
@@ -166,54 +163,6 @@ func _add_tree(at: Vector2) -> void:
 	add_child(crown)
 
 
-## A few flat 2D markers standing on the 3D ground, always facing the camera.
-## Stand-ins until the hand-gesture sprites exist.
-func _build_placeholder_units() -> void:
-	var c := get_center()
-	var bases := [c + Vector2(-140, -40), c + Vector2(140, 40)]
-	for team in bases.size():
-		for i in UNIT_LETTERS.size():
-			var at: Vector2 = bases[team] + Vector2(i * 14 - 14, (i % 2) * 10)
-			if team == 1:
-				at = bases[team] - Vector2(i * 14 - 14, (i % 2) * 10)
-			_add_unit(at, UNIT_LETTERS[i], TEAM_COLORS[team])
-
-
-func _add_unit(at: Vector2, letter: String, color: Color) -> void:
-	var blob := MeshInstance3D.new()
-	var shadow_disc := CylinderMesh.new()
-	shadow_disc.top_radius = 3.2
-	shadow_disc.bottom_radius = 3.2
-	shadow_disc.height = 0.02
-	blob.mesh = shadow_disc
-	blob.position = _ground(at, 0.4)
-	var shadow_mat := StandardMaterial3D.new()
-	shadow_mat.albedo_color = Color(0.25, 0.22, 0.35, 0.25)
-	shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	blob.material_override = shadow_mat
-	add_child(blob)
-
-	var disc := Sprite3D.new()
-	disc.texture = _disc_texture(color)
-	disc.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	disc.pixel_size = 0.07
-	disc.shaded = false
-	disc.position = _ground(at, 4.8)
-	add_child(disc)
-	var label := Label3D.new()
-	label.text = letter
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.font_size = 96
-	label.outline_size = 0
-	label.modulate = Color("#5a5470")
-	label.pixel_size = 0.05
-	label.position = disc.position + Vector3(0, 0, 0.05)
-	label.no_depth_test = false
-	label.sorting_offset = 1.0  # draw the letter after (on top of) its disc
-	add_child(label)
-
-
 # --- Helpers ---------------------------------------------------------------
 
 func _ground(at: Vector2, height: float) -> Vector3:
@@ -270,15 +219,3 @@ func _add_skirt(polygon: PackedVector2Array, top: float, bottom: float, color: C
 	mi.mesh = st.commit()
 	mi.material_override = _material(color)
 	add_child(mi)
-
-
-func _disc_texture(color: Color) -> ImageTexture:
-	var size := 64
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	var r: float = size * 0.5
-	for y in size:
-		for x in size:
-			var d: float = Vector2(x + 0.5 - r, y + 0.5 - r).length()
-			if d <= r - 1.0:
-				img.set_pixel(x, y, Color.WHITE if d > r - 5.0 else color)
-	return ImageTexture.create_from_image(img)
