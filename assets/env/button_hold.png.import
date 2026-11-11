@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d1t16hiviwojf"
-path="res://.godot/imported/button_cancel.png-50aa1cd81a1c2915e9f9f17902281b0a.ctex"
+uid="uid://cklkdken3eujs"
+path="res://.godot/imported/button_hold.png-fa4cb0b86413e99a1b043bea4426fc2b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/env/button_cancel.png"
-dest_files=["res://.godot/imported/button_cancel.png-50aa1cd81a1c2915e9f9f17902281b0a.ctex"]
+source_file="res://assets/env/button_hold.png"
+dest_files=["res://.godot/imported/button_hold.png-fa4cb0b86413e99a1b043bea4426fc2b.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

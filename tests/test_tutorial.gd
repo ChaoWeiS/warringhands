@@ -71,10 +71,12 @@ func _run() -> void:
 	check("a loop around several moves on to step 3 (move)", tut.step == 3 and game.selection.size() > 2)
 	game._last_tap.camera = null
 	game._on_tapped(cam, cam.unproject_position(Vector3(hq.x / 100.0 + 30, 0, hq.z / 100.0 + 30)))
-	check("tapping the ground moves on to step 4 (camera)", tut.step == 4)
+	check("tapping the ground moves on to step 4 (hold)", tut.step == 4)
+	game.bar.hold_pressed.emit()
+	check("pressing Hold moves on to step 5 (camera)", tut.step == 5)
 	cam.target += Vector3(20, 0, 0)
 	await frames(2)
-	check("moving the camera moves on to step 5 (double tap)", tut.step == 5)
+	check("moving the camera moves on to step 6 (double tap)", tut.step == 6)
 	cam.target -= Vector3(20, 0, 0)
 	cam.refit()
 	sim.step_ticks(80)  # the army arrives and settles
@@ -82,10 +84,10 @@ func _run() -> void:
 	game._last_tap.camera = null
 	game._on_tapped(cam, px.call(mine[0]))
 	game._on_tapped(cam, px.call(mine[0]))
-	check("a double tap moves on to step 6 (gather)", tut.step == 6)
+	check("a double tap moves on to step 7 (gather)", tut.step == 7)
 	game._last_tap.camera = null
 	game._on_tapped(cam, cam.unproject_position(Vector3(hq.x / 100.0, 8.0, hq.z / 100.0)))
-	check("tapping the HQ with hands selected moves on to step 7 (build)", tut.step == 7)
+	check("tapping the HQ with hands selected moves on to step 8 (build)", tut.step == 8)
 	game._select([])
 	hud._build_toggle.button_pressed = true
 	hud._build_options.quarry.pressed.emit()
@@ -96,27 +98,27 @@ func _run() -> void:
 			if spot == Vector2.ZERO and sim.can_place("quarry", p, 0):
 				spot = p
 	game._on_tapped(cam, cam.unproject_position(Vector3(spot.x, 0, spot.y)))
-	check("placing a quarry moves on to step 8 (train)", tut.step == 8)
+	check("placing a quarry moves on to step 9 (train)", tut.step == 9)
 	sim.step_ticks(210)  # built
 	var quarry: Dictionary = sim.buildings.filter(func(b): return b.btype == "quarry").front()
 	game._select_buildings([quarry.id])
 	hud._process(0.0)
 	hud._rows.quarry.train.pressed.emit()
-	check("training moves on to step 9 (split the screen)", tut.step == 9)
+	check("training moves on to step 10 (split the screen)", tut.step == 10)
 	panes._split_leaf(panes._leaves()[0], true, 0.5)
 	await frames(2)
-	check("splitting the screen moves on to step 10 (merge)", tut.step == 10)
+	check("splitting the screen moves on to step 11 (merge)", tut.step == 11)
 	var split = panes._splits()[0]
 	panes._merge(split, split.a)
 	await frames(2)
-	check("merging moves on to step 11 (fight)", tut.step == 11)
+	check("merging moves on to step 12 (fight)", tut.step == 12)
 	check("...and enemies show up, one of each kind", tut._enemies.size() == 3
 			and tut._enemies.all(func(id): return sim.get_unit(id).team == 1))
 	for id in tut._enemies:
 		sim.get_unit(id).hp = 1
 	sim.step_ticks(400)
 	await frames(2)
-	check("beating them moves on to the last step", tut.step == 12 and tut._skip.text == "Continue Tutorial")
+	check("beating them moves on to the last step", tut.step == 13 and tut._skip.text == "Continue Tutorial")
 	var done := [false]
 	tut.finished.connect(func(): done[0] = true)
 	tut._skip.pressed.emit()

@@ -474,6 +474,12 @@ func command_harvest(ids: Array) -> void:
 	_queue({"type": "harvest", "ids": ids.duplicate()})
 
 
+## Units stop where they are and stay: they fight whatever comes within
+## reach, but don't chase or go back to work, until they get a new order.
+func command_hold(ids: Array) -> void:
+	_queue({"type": "hold", "ids": ids.duplicate()})
+
+
 ## Calls the team's units near a damaged building to repair it.
 func command_repair(team: int, building_id: int) -> void:
 	_queue({"type": "repair", "team": team, "building": building_id})
@@ -576,7 +582,14 @@ func _apply(command: Dictionary) -> void:
 				if not u.is_empty() and not u.has("btype") and u.team == command.by:
 					own.append(id)
 			command.ids = own
+	if command.has("ids") and command.type != "hold":
+		for id in command.ids:
+			var held: Dictionary = _by_id.get(id, {})
+			if not held.is_empty() and not held.has("btype"):
+				held.hold = false  # a new order lets a held unit go
 	match command.type:
+		"hold":
+			_apply_hold(command)
 		"move", "attack_move":
 			_apply_move(command)
 		"attack":
@@ -625,6 +638,19 @@ func _apply_move(command: Dictionary) -> void:
 		u.dest_x = tx
 		u.dest_z = tz
 		_route(u, tx, tz)
+
+
+func _apply_hold(command: Dictionary) -> void:
+	for id in command.ids:
+		var u: Dictionary = _by_id.get(id, {})
+		if u.is_empty() or u.has("btype"):
+			continue
+		_clear_orders(u)
+		u.job = ""
+		u.phase = ""
+		u.hold = true
+		u.dest_x = u.x
+		u.dest_z = u.z
 
 
 func _apply_attack(command: Dictionary) -> void:
@@ -690,6 +716,9 @@ func _fight() -> void:
 					u.path.clear()
 			elif u.attack_move and not u.moving:
 				u.attack_move = false  # arrived
+			continue
+		if u.hold and not _in_reach(u, target):
+			u.target = 0  # holding: only fight what's in reach, never chase
 			continue
 		u.target = target.id
 		if _in_reach(u, target):
@@ -878,6 +907,7 @@ func _assign_gather(u: Dictionary, node: Dictionary) -> void:
 
 
 func _clear_orders(u: Dictionary) -> void:
+	u.hold = false
 	u.ordered = false
 	u.attack_move = false
 	u.focus = false
@@ -1440,7 +1470,7 @@ func _add_unit(team: int, kind: int, at: Vector2i) -> void:
 		"hp": MAX_HP, "target": 0, "ordered": false, "next_attack": 0,
 		"attack_tick": -1000, "hurt_tick": -1000, "repath": 0,
 		"attack_move": false, "dest_x": at.x, "dest_z": at.y, "focus": false, "chasing": false,
-		"job": "", "node": 0, "phase": "", "timer": 0, "carry": 0, "carry_res": 0,
+		"hold": false, "job": "", "node": 0, "phase": "", "timer": 0, "carry": 0, "carry_res": 0,
 		"work_x": 0, "work_z": 0, "work_res": 0, "tries": 0,
 	}
 	_next_id += 1

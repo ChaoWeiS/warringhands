@@ -36,7 +36,7 @@ var fullscreen_button: Button
 var settings_button: Button
 ## Plays a sample sound (set by the game) when the effects volume changes.
 var preview_sfx: Callable = func(): pass
-## Shown just under Build (the selection's Attack / Clear), placed by us.
+## Shown just under Build (the selection's Attack / Hold), placed by us.
 var below_build: Control = null
 ## Shown on the right, level with Build (the selection's hand chips).
 var right_column: Control = null
@@ -118,7 +118,7 @@ func _process(_delta: float) -> void:
 
 ## Left column: the Build button about a third of the way down (lower if
 ## its options wouldn't fit above it), options stacking upwards from it, and
-## `below_build` (Attack / Clear) just under it.
+## `below_build` (Attack / Hold) just under it.
 func _layout_left() -> void:
 	var s: float = UI.ui_scale()
 	var margin: float = 24.0

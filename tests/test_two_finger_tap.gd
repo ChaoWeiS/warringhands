@@ -79,9 +79,6 @@ func _run() -> void:
 	touch(0, a, false)
 	check("...and it unselects buildings too", game.selected_buildings.is_empty())
 
-	game._select_buildings([sim.hq_of(0).id])
-	game.bar.clear_pressed.emit()
-	check("the cancel button unselects buildings as well", game.selected_buildings.is_empty())
 
 	print("FAILURES: ", failures)
 	quit(1 if failures > 0 else 0)

@@ -2,12 +2,13 @@ extends VBoxContainer
 ## What's selected, in a column on the right (placed by the HUD, level with
 ## Build): each unit type's hand icon with a count ("× 4"). Tap one to keep
 ## only that type. Attack (sword; then tap the ground: attack-move) and
-## Clear (the "no" sign: deselect) are in `actions`, a small stack the HUD
-## places on the left under Build.
+## Hold (open palm on a stop sign: stop and stay put) are in `actions`, a
+## small stack the HUD places on the left under Build. (Unselecting is a
+## two-finger tap.)
 ## Both are hidden when nothing is selected.
 
 signal filter_pressed(kind: int)
-signal clear_pressed
+signal hold_pressed
 ## Attack mode switched on / off.
 signal attack_toggled(armed: bool)
 
@@ -18,7 +19,7 @@ const TEXT_COLOR := Color("#4a4560")
 
 var _kind_buttons: Array = []
 var _attack: Button
-## Attack and Clear, stacked (placed on screen by the HUD).
+## Attack and Hold, stacked (placed on screen by the HUD).
 var actions := VBoxContainer.new()
 
 
@@ -38,10 +39,10 @@ func _ready() -> void:
 	_attack.toggle_mode = true
 	_attack.toggled.connect(func(on): attack_toggled.emit(on))
 	actions.add_child(_attack)
-	var clear := UI.icon_button("cancel")
-	clear.tooltip_text = "Clear"
-	clear.pressed.connect(func(): clear_pressed.emit())
-	actions.add_child(clear)
+	var hold := UI.icon_button("hold")
+	hold.tooltip_text = "Hold"
+	hold.pressed.connect(func(): hold_pressed.emit())
+	actions.add_child(hold)
 	add_sibling.call_deferred(actions)
 	visible = false
 	actions.visible = false

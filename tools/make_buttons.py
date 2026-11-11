@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Cancel and Settings buttons in the same frame as Build and Attack.
+"""Hold and Settings buttons in the same frame as Build and Attack.
 
 The Build button's frame (rounded border, soft cream face) is taken from
 assets/env/button_build.png, its pick and hammer painted over with the face
-colour, the border turned lilac, and a symbol put in the middle: the red
-"no" sign from the earlier cancel button (art_source/env/button_cancel_sign.png),
-or a gear.
+colour, the border turned lilac, and a symbol put in the middle: the
+paper hand's open palm on a red stop octagon (Hold), or a gear. (no_sign()
+makes the old cancel picture, from art_source/env/button_cancel_sign.png.)
 
 Run from the project root: python3 tools/make_buttons.py
 """
@@ -112,6 +112,47 @@ def gear() -> Image.Image:
     return img.resize((SIZE, SIZE), Image.LANCZOS)
 
 
+def stop_palm() -> Image.Image:
+    """Hold: the paper hand's open palm ("halt!") on a red stop octagon."""
+    import os
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))
+    import cut_hand_sprites as cutter
+    k = 4
+    big = SIZE * k
+    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    c = big / 2
+    def octagon(r):
+        return [(c + r * np.cos(np.pi / 8 + i * np.pi / 4), c + r * np.sin(np.pi / 8 + i * np.pi / 4)) for i in range(8)]
+    d = ImageDraw.Draw(img)
+    d.polygon(octagon(64 * k), fill=(92, 37, 28, 255))      # outline
+    d.polygon(octagon(60 * k), fill=(255, 255, 255, 255))   # white rim
+    d.polygon(octagon(54 * k), fill=(92, 37, 28, 255))
+    d.polygon(octagon(51 * k), fill=(246, 92, 80, 255))     # red face
+    # Soft shine on the upper left of the face.
+    hl = Image.new("L", (big, big), 0)
+    ImageDraw.Draw(hl).ellipse([c - 44 * k, c - 46 * k, c + 6 * k, c - 8 * k], fill=70)
+    hl = hl.filter(ImageFilter.GaussianBlur(8 * k))
+    face = Image.new("L", (big, big), 0)
+    ImageDraw.Draw(face).polygon(octagon(51 * k), fill=255)
+    shine = Image.new("RGBA", (big, big), (255, 255, 255, 255))
+    shine.putalpha(Image.fromarray((np.array(hl).astype(int) * (np.array(face) > 0)).astype(np.uint8)))
+    img.alpha_composite(shine)
+    img = img.resize((SIZE, SIZE), Image.LANCZOS)
+    # The open palm (paper idle frame 4: a thumb and four fingers).
+    ry0, ry1 = cutter.ROWS[1]
+    y0, y1 = ry0 + cutter.BADGE, ry1 - cutter.ROW_PAD
+    x0, x1 = cutter.cells(cutter.PANELS[0], y0, y1)[3]
+    rgba, _ = cutter.cut(x0, x1, y0, y1)
+    rgba = cutter.erase(rgba, cutter.ERASE[(1, 0, 3)], x0, y0)
+    hand = Image.fromarray(rgba, "RGBA")
+    hand = hand.crop(hand.getbbox())
+    h = 86
+    hand = hand.resize((round(hand.width * h / hand.height), h), Image.LANCZOS)
+    img.alpha_composite(hand, (round(SIZE / 2 - hand.width / 2), round(SIZE / 2 - h / 2) + 2))
+    return img
+
+
 def save(symbol: Image.Image, path: str) -> None:
     frame = Image.fromarray((empty_frame() * 255).round().astype(np.uint8), "RGBA")
     frame.alpha_composite(symbol)
@@ -120,5 +161,5 @@ def save(symbol: Image.Image, path: str) -> None:
 
 
 if __name__ == "__main__":
-    save(no_sign(), "assets/env/button_cancel.png")
+    save(stop_palm(), "assets/env/button_hold.png")
     save(gear(), "assets/env/button_settings.png")

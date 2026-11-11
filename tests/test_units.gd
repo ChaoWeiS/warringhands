@@ -227,8 +227,8 @@ func _run() -> void:
 	check("...or change the selection", game.selection == before)
 
 	# Clear, then start a lasso and put a second finger down: no selection.
-	bar.clear_pressed.emit()
-	check("clear deselects", game.selection.is_empty() and not bar.visible)
+	game._unselect_all()
+	check("unselecting clears the bar", game.selection.is_empty() and not bar.visible)
 	var pts := loop_points([lo, Vector2(hi.x, lo.y), hi, Vector2(lo.x, hi.y)])
 	touch(0, pts[0], true)
 	drag_path(0, pts.slice(1, pts.size() / 2))

@@ -110,7 +110,7 @@ static func fullscreen_icon() -> ImageTexture:
 const BUTTON_ICONS := {
 	"build": preload("res://assets/env/button_build.png"),
 	"attack": preload("res://assets/env/button_attack.png"),
-	"cancel": preload("res://assets/env/button_cancel.png"),
+	"hold": preload("res://assets/env/button_hold.png"),
 	"settings": preload("res://assets/env/button_settings.png"),
 }
 const ICON_BUTTON_SIZE := 96.0

@@ -28,7 +28,7 @@ extends Node
 ## Which team this device controls (online: the seat the server gave us).
 ## Something the player just did (for the tutorial): "select", "lasso",
 ## "move", "attack", "attack_move", "gather", "harvest", "build_<type>",
-## "train", "select_kind", "repair", "lasso_buildings", "sell".
+## "train", "select_kind", "repair", "lasso_buildings", "sell", "hold".
 signal did(action: String)
 
 var player_team := 0
@@ -111,7 +111,11 @@ func _ready() -> void:
 	for control in hud.blockers():
 		panes.register_blocker(control)
 	bar.filter_pressed.connect(_on_filter)
-	bar.clear_pressed.connect(_unselect_all)
+	bar.hold_pressed.connect(func():
+		if not selection.is_empty():
+			sim.command_hold(selection)
+			bar.set_attack_armed(false)
+			did.emit("hold"))
 	hud.train_pressed.connect(func(id):
 		sim.command_train(player_team, id)
 		did.emit("train"))
@@ -343,7 +347,7 @@ func _voice_for(action: String) -> void:
 	match action:
 		"select", "lasso", "select_kind":
 			sounds.respond("acknowledge", selection)
-		"move", "attack_move", "attack", "gather", "harvest":
+		"move", "attack_move", "attack", "gather", "harvest", "hold":
 			sounds.respond("objective", selection)
 
 
@@ -444,7 +448,7 @@ func _on_filter(kind: int) -> void:
 	_select(kept)
 
 
-## The cancel button and a two-finger tap: nothing selected, hands or buildings.
+## A two-finger tap: nothing selected, hands or buildings.
 func _unselect_all() -> void:
 	_select([])
 	_select_buildings([])
