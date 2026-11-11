@@ -132,18 +132,31 @@ func build() -> void:
 			climbable.append(plateaus.size() - 1)
 			_plateau_tops.append(_offset(poly, -CLIFF_BAND))
 			_plateau_outer.append(_offset(poly, UNIT_CLEARANCE))
-			# Each direction listed: a ramp that way and one on the far side.
-			var dirs: Array = []
-			for deg in angles:
-				var d: Vector2 = Vector2.from_angle(deg_to_rad(deg))
-				for way in [d, -d]:
-					var turned: Vector2 = way if i == 0 else -way  # the twin is turned
-					if not dirs.any(func(o): return o.distance_to(turned) < 0.01):
-						dirs.append(turned)
+			# Each ramp listed: one there and one on the far side (both turned
+			# with the twin). A ramp is a number (where round the plateau, in
+			# degrees: straight out from the cliff) or {"at": degrees,
+			# "slant": degrees}: turned off straight, up to a shoulder that
+			# runs along the cliff face.
+			var specs: Array = []
+			for spec in angles:
+				var at: float = spec if spec is float or spec is int else spec.at
+				var slant: float = 0.0 if spec is float or spec is int else spec.get("slant", 0.0)
+				for way in [at, at + 180.0]:
+					var turned: float = way if i == 0 else way + 180.0  # the twin is turned
+					if not specs.any(func(o): return absf(fposmod(o[0] - turned, 360.0)) < 0.5):
+						specs.append([fposmod(turned, 360.0), slant])
 			var info: Dictionary = plateau_info[plateau_info.size() - 1]
-			for dir in dirs:
-				ramps.append({"plateau": plateaus.size() - 1, "edge": _edge_point(poly, dir),
-						"dir": dir, "half_width": RAMP_HALF_WIDTH,
+			var middle: Vector2 = _poly_center(poly)
+			for spec in specs:
+				var edge: Vector2 = _edge_point(poly, Vector2.from_angle(deg_to_rad(spec[0])))
+				var out: Vector2 = (edge - middle).normalized()
+				var dir: Vector2 = out.rotated(deg_to_rad(spec[1]))
+				# Slanted ramps reach further back so their top still cuts
+				# right through the cliff edge onto the plateau.
+				var back: float = (CLIFF_BAND + 2.0) / maxf(cos(deg_to_rad(spec[1])), 0.3)
+				ramps.append({"plateau": plateaus.size() - 1, "edge": edge,
+						"dir": dir, "half_width": RAMP_HALF_WIDTH, "back": back,
+						"outer": _plateau_outer[_plateau_outer.size() - 1],
 						"length": RAMP_LENGTH if info.level == 1 else RAMP_LENGTH_TIER,
 						"top": info.height, "base": info.base})
 	for forest in FORESTS:
@@ -200,7 +213,7 @@ func _on_plateau_or_ramp(p: Vector2, margin: float) -> bool:
 	for r in ramps:
 		var rel: Vector2 = p - r.edge
 		var along: float = rel.dot(r.dir)
-		if along >= -CLIFF_BAND - 2.0 - margin and along <= r.length + margin \
+		if along >= -r.back - margin and along <= r.length + margin \
 				and absf(rel.dot(r.dir.orthogonal())) <= r.half_width + margin:
 			return true
 	for i in plateaus.size():
@@ -233,7 +246,11 @@ func ramp_at(p: Vector2) -> int:
 		var rel: Vector2 = p - r.edge
 		var along: float = rel.dot(r.dir)
 		var side: float = absf(rel.dot(r.dir.orthogonal()))
-		if along >= -CLIFF_BAND - 2.0 and along <= r.length and side <= r.half_width:
+		if along >= -r.back and along <= r.length and side <= r.half_width:
+			# Its top end only counts over the plateau (a slanted ramp's
+			# reaches back alongside the cliff, partly over open ground).
+			if along < 0.0 and not Geometry2D.is_point_in_polygon(p, r.outer):
+				continue
 			return i
 	return -1
 
@@ -308,7 +325,7 @@ func is_walkable(p: Vector2, cut_trees: Dictionary = {}) -> bool:
 		var rel: Vector2 = p - r.edge
 		var along: float = rel.dot(r.dir)
 		var side: float = absf(rel.dot(r.dir.orthogonal()))
-		if along > -CLIFF_BAND - 2.0 and along < r.length - 1.0 \
+		if along > 0.0 and along < r.length - 1.0 \
 				and side > r.half_width - 1.0 and side <= r.half_width + UNIT_CLEARANCE + 1.0:
 			return false
 	# Plateaus: the top is open, the cliff edge isn't, except on a ramp.
