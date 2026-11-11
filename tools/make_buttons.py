@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Hold and Settings buttons in the same frame as Build and Attack.
+"""Hold, Settings and Surrender buttons in the same frame as Build and Attack.
 
 The Build button's frame (rounded border, soft cream face) is taken from
 assets/env/button_build.png, its pick and hammer painted over with the face
 colour, the border turned lilac, and a symbol put in the middle: the
-paper hand's open palm on a red stop octagon (Hold), or a gear. (no_sign()
+paper hand's open palm on a red stop octagon (Hold), a gear, or a white
+flag (Surrender). (no_sign()
 makes the old cancel picture, from art_source/env/button_cancel_sign.png.)
 
 Run from the project root: python3 tools/make_buttons.py
@@ -153,6 +154,48 @@ def stop_palm() -> Image.Image:
     return img
 
 
+def white_flag() -> Image.Image:
+    """Surrender: a white flag on a wooden pole."""
+    k = 4
+    big = SIZE * k
+    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (92, 37, 28, 255)
+    # Pole (wood), with a round knob on top.
+    px, top, bottom = 62 * k, 40 * k, 156 * k
+    d.rounded_rectangle([px - 7 * k, top, px + 7 * k, bottom], radius=6 * k, fill=outline)
+    d.rounded_rectangle([px - 4 * k, top + 3 * k, px + 4 * k, bottom - 3 * k], radius=4 * k, fill=(214, 160, 104, 255))
+    d.ellipse([px - 11 * k, top - 14 * k, px + 11 * k, top + 8 * k], fill=outline)
+    d.ellipse([px - 8 * k, top - 11 * k, px + 8 * k, top + 5 * k], fill=(240, 196, 92, 255))
+    # The flag: a wavy white cloth from the pole.
+    def cloth(grow):
+        pts = []
+        x0, x1 = px + 4 * k, 150 * k
+        y_top, y_bot = 48 * k, 112 * k
+        n = 40
+        for i in range(n + 1):
+            t = i / n
+            x = x0 + (x1 - x0) * t
+            pts.append((x, y_top + np.sin(t * 2 * np.pi) * 7 * k * t - grow))
+        for i in range(n, -1, -1):
+            t = i / n
+            x = x0 + (x1 - x0) * t
+            pts.append((x, y_bot + np.sin(t * 2 * np.pi + 0.6) * 7 * k * t + grow))
+        return [(x + (grow if x > px + 10 * k else 0), y) for x, y in pts]
+    d.polygon(cloth(4 * k), fill=outline)
+    d.polygon(cloth(0), fill=(255, 255, 255, 255))
+    # A soft grey fold in the cloth.
+    fold = Image.new("L", (big, big), 0)
+    ImageDraw.Draw(fold).ellipse([100 * k, 60 * k, 135 * k, 110 * k], fill=60)
+    fold = fold.filter(ImageFilter.GaussianBlur(7 * k))
+    mask = Image.new("L", (big, big), 0)
+    ImageDraw.Draw(mask).polygon(cloth(0), fill=255)
+    shade = Image.new("RGBA", (big, big), (190, 186, 214, 255))
+    shade.putalpha(Image.fromarray((np.array(fold).astype(int) * (np.array(mask) > 0)).astype(np.uint8)))
+    img.alpha_composite(shade)
+    return img.resize((SIZE, SIZE), Image.LANCZOS)
+
+
 def save(symbol: Image.Image, path: str) -> None:
     frame = Image.fromarray((empty_frame() * 255).round().astype(np.uint8), "RGBA")
     frame.alpha_composite(symbol)
@@ -163,3 +206,4 @@ def save(symbol: Image.Image, path: str) -> None:
 if __name__ == "__main__":
     save(stop_palm(), "assets/env/button_hold.png")
     save(gear(), "assets/env/button_settings.png")
+    save(white_flag(), "assets/env/button_surrender.png")

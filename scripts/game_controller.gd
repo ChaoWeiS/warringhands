@@ -122,6 +122,7 @@ func _ready() -> void:
 	hud.sell_pressed.connect(func(ids):
 		sim.command_sell(player_team, ids)
 		did.emit("sell"))
+	hud.surrender_confirmed.connect(func(): sim.command_surrender(player_team))
 	hud.play_again_pressed.connect(func(): get_tree().reload_current_scene())
 	sim.unit_died.connect(_on_unit_died)
 	sim.building_destroyed.connect(func(id):
@@ -183,6 +184,7 @@ func start_tutorial() -> Control:
 			sim.units.erase(u)
 			sim._by_id.erase(u.id)
 			view.forget(u.id)
+	hud.surrender_button.visible = false  # the tutorial has its own Quit
 	var tutorial: Control = Tutorial.new()
 	tutorial.setup(self, sim, panes, hud)
 	hud.get_parent().add_child(tutorial)

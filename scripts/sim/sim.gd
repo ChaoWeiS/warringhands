@@ -474,6 +474,11 @@ func command_harvest(ids: Array) -> void:
 	_queue({"type": "harvest", "ids": ids.duplicate()})
 
 
+## Gives up: the other side wins.
+func command_surrender(team: int) -> void:
+	_queue({"type": "surrender", "team": team})
+
+
 ## Units stop where they are and stay: they fight whatever comes within
 ## reach, but don't chase or go back to work, until they get a new order.
 func command_hold(ids: Array) -> void:
@@ -590,6 +595,10 @@ func _apply(command: Dictionary) -> void:
 	match command.type:
 		"hold":
 			_apply_hold(command)
+		"surrender":
+			if winner < 0:
+				winner = 1 - int(command.team)
+				game_over.emit(winner)
 		"move", "attack_move":
 			_apply_move(command)
 		"attack":

@@ -135,6 +135,10 @@ func register_blocker(control: Control) -> void:
 
 
 func _blocked(p: Vector2) -> bool:
+	# A pop-up window (Settings, Surrender?) is open: the map waits.
+	for modal in get_tree().get_nodes_in_group("modal"):
+		if modal is CanvasItem and modal.is_visible_in_tree():
+			return true
 	for control in _blockers:
 		if is_instance_valid(control) and control.is_visible_in_tree() \
 				and control.get_global_rect().has_point(p):

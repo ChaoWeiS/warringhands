@@ -18,6 +18,8 @@ signal train_pressed(building_id: int)
 ## Cancel (still going up) or sell (finished) these buildings; confirmed.
 signal sell_pressed(building_ids: Array)
 signal play_again_pressed
+## The player confirmed giving up.
+signal surrender_confirmed
 
 const FACTORIES := ["quarry", "mill", "forge"]
 ## Prices shown in the Build menu (must match sim.gd BUILDINGS).
@@ -34,6 +36,9 @@ var team := 0
 var resource_bar: PanelContainer
 var fullscreen_button: Button
 var settings_button: Button
+## White flag, left of Settings: asks, then gives up the game.
+var surrender_button: Button
+var surrender_dialog: Control
 ## Plays a sample sound (set by the game) when the effects volume changes.
 var preview_sfx: Callable = func(): pass
 ## Shown just under Build (the selection's Attack / Hold), placed by us.
@@ -199,11 +204,14 @@ func show_message(text: String) -> void:
 	_over_label.text = text
 	_over_label.add_theme_font_size_override("font_size", 110 if text.length() < 12 else 64)
 	game_over_screen.visible = true
+	surrender_button.visible = false
+	if is_instance_valid(surrender_dialog):
+		surrender_dialog.queue_free()
 
 
 ## Controls that touches on the map should ignore.
 func blockers() -> Array:
-	return [resource_bar, fullscreen_button, settings_button, build_menu, building_panel, game_over_screen]
+	return [resource_bar, fullscreen_button, settings_button, surrender_button, build_menu, building_panel, game_over_screen]
 
 
 # --- Building the pieces ---------------------------------------------------------
@@ -254,6 +262,67 @@ func _build_fullscreen_button() -> void:
 	settings_button = UI.settings_button(self, 100, func(): preview_sfx.call())
 	if not fullscreen_button.visible:
 		settings_button.offset_right = -24
+	surrender_button = UI.icon_button("surrender")
+	var side: float = 72.0 * UI.ui_scale()
+	surrender_button.custom_minimum_size = Vector2(side, side)
+	surrender_button.anchor_left = 1.0
+	surrender_button.anchor_right = 1.0
+	surrender_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	surrender_button.offset_top = 100
+	surrender_button.offset_right = settings_button.offset_right - side - 12
+	surrender_button.tooltip_text = "Surrender"
+	surrender_button.pressed.connect(ask_surrender)
+	add_child(surrender_button)
+
+
+## "Surrender?" with Keep playing / Surrender (in case the flag was a slip).
+func ask_surrender() -> void:
+	if is_instance_valid(surrender_dialog):
+		return
+	var shade := ColorRect.new()
+	shade.color = Color(0.25, 0.2, 0.35, 0.35)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	surrender_dialog = shade
+	shade.add_to_group("modal")
+	add_child(shade)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UI.panel_box(Color(1, 1, 1, 0.96)))
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	shade.add_child(panel)
+	var s: float = UI.ui_scale()
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", roundi(18 * s))
+	panel.add_child(column)
+	var flag := UI.icon_rect(UI.BUTTON_ICONS.surrender, 96)
+	flag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	column.add_child(flag)
+	var title := UI.label("Surrender?", roundi(48 * s))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(title)
+	var text := UI.label("You'll lose this game.", roundi(28 * s))
+	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(text)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", roundi(16 * s))
+	var keep := UI.button(Color("#e7e1f5"), Color("#d6cdef"), 30)
+	keep.text = "Keep playing"
+	keep.custom_minimum_size.x = 240 * s
+	keep.pressed.connect(func(): shade.queue_free())
+	row.add_child(keep)
+	var give_up := UI.button(Color("#fbe3ea"), Color("#f2c4d2"), 30)
+	give_up.text = "Surrender"
+	give_up.custom_minimum_size.x = 240 * s
+	give_up.pressed.connect(func():
+		shade.queue_free()
+		surrender_confirmed.emit())
+	row.add_child(give_up)
+	column.add_child(row)
+	surrender_dialog.set_meta("keep", keep)
+	surrender_dialog.set_meta("give_up", give_up)
 
 
 func toggle_fullscreen() -> void:

@@ -92,6 +92,7 @@ static func _ensure_bus(name: String) -> void:
 
 
 func _ready() -> void:
+	add_to_group("modal")  # the map ignores touches while it's open
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var shade := ColorRect.new()

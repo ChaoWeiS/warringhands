@@ -112,6 +112,7 @@ const BUTTON_ICONS := {
 	"attack": preload("res://assets/env/button_attack.png"),
 	"hold": preload("res://assets/env/button_hold.png"),
 	"settings": preload("res://assets/env/button_settings.png"),
+	"surrender": preload("res://assets/env/button_surrender.png"),
 }
 const ICON_BUTTON_SIZE := 96.0
 
