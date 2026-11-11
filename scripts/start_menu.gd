@@ -12,6 +12,7 @@ signal online_ready(session: Node, seat: int)
 const UI := preload("res://scripts/ui_style.gd")
 const NetSession := preload("res://scripts/net/net_session.gd")
 const CODE_LENGTH := 4
+const BuildInfo := preload("res://scripts/build_info.gd")
 
 var _header: VBoxContainer     # title, subtitle, hands
 var _main: VBoxContainer       # the three big choices
@@ -23,6 +24,9 @@ var _wait_title: Label
 var _wait_text: Label
 var _typed := ""
 var _session: Node = null
+var _update_button: Button
+var _version_label: Label
+var _checking_update := false
 
 
 func _ready() -> void:
@@ -121,11 +125,70 @@ func _ready() -> void:
 			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if on else DisplayServer.WINDOW_MODE_FULLSCREEN))
 		add_child(full)
 
+	# Version, and an update button when the website has a newer one (the
+	# installed web app keeps a saved copy, which can lag behind).
+	var bottom := VBoxContainer.new()
+	bottom.anchor_top = 1.0
+	bottom.anchor_bottom = 1.0
+	bottom.anchor_left = 0.5
+	bottom.anchor_right = 0.5
+	bottom.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bottom.offset_bottom = -16
+	bottom.alignment = BoxContainer.ALIGNMENT_END
+	_update_button = _big_button("New version: tap to update", Color("#fbe3ea"), _update_now)
+	_update_button.visible = false
+	bottom.add_child(_update_button)
+	_version_label = UI.label("version " + BuildInfo.VERSION, 20)
+	_version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bottom.add_child(_version_label)
+	add_child(bottom)
+	_check_for_update()
+
 	_status = UI.label("", 28)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status.add_theme_color_override("font_color", Color("#c0506a"))
 	column.add_child(_status)
 	_show(_main)
+
+
+## Web only: asks the website (not the saved copy) which version is current.
+func _check_for_update() -> void:
+	if not OS.has_feature("web") or not Engine.has_singleton("JavaScriptBridge") or BuildInfo.VERSION == "dev":
+		return
+	JavaScriptBridge.eval("""window.__whLatest = undefined;
+		fetch('version.txt?t=' + Date.now(), {cache: 'no-store'})
+			.then(r => r.ok ? r.text() : '').then(t => window.__whLatest = t.trim())
+			.catch(() => window.__whLatest = '');""", true)
+	_checking_update = true
+
+
+func _process(_delta: float) -> void:
+	if not _checking_update:
+		return
+	var latest: Variant = JavaScriptBridge.eval("window.__whLatest === undefined ? null : window.__whLatest", true)
+	if latest == null:
+		return
+	_checking_update = false
+	if latest is String and latest != "" and latest != BuildInfo.VERSION:
+		_update_button.visible = true
+		_version_label.text = "version %s  ·  newest %s" % [BuildInfo.VERSION, latest]
+
+
+## Drops the saved copy of the game and loads the newest from the website.
+func _update_now() -> void:
+	if not OS.has_feature("web"):
+		return
+	JavaScriptBridge.eval("""(async () => {
+		try {
+			if (navigator.serviceWorker) {
+				for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+			}
+			if (window.caches) {
+				for (const k of await caches.keys()) await caches.delete(k);
+			}
+		} finally { location.reload(); }
+	})();""", true)
 
 
 func _big_button(text: String, color: Color, action: Callable) -> Button:

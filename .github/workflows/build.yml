@@ -42,11 +42,16 @@ jobs:
       - name: Import project
         run: godot --headless --import
 
+      - name: Stamp the version
+        run: sed -i "s/const VERSION := \"dev\"/const VERSION := \"${GITHUB_SHA::7}\"/" scripts/build_info.gd
+
       - name: Export Web
         run: |
           mkdir -p build/web
           godot --headless --export-release "Web" build/web/index.html
           test -f build/web/index.html
+          # The start menu compares this with its own version to offer updates.
+          echo "${GITHUB_SHA::7}" > build/web/version.txt
 
       - uses: actions/upload-pages-artifact@v4
         with:

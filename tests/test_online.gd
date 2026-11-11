@@ -60,6 +60,8 @@ func _run() -> void:
 	var got := {}
 	menu_a.online_ready.connect(func(session, seat): got.a = [session, seat])
 	menu_b.online_ready.connect(func(session, seat): got.b = [session, seat])
+	check("the menu shows the version", menu_a._version_label.text.begins_with("version ")
+			and not menu_a._update_button.visible)
 	menu_a._create()
 	var shown: bool = await until(func(): return menu_a._wait_text.text.length() == 4)
 	var code: String = menu_a._wait_text.text

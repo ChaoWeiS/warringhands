@@ -135,5 +135,6 @@
   - Still to come: reconnecting after a dropped connection, quick match, more than 2 players, chat / emotes.
 - Sim (`scripts/sim/sim.gd`): 20 ticks/s, positions in whole sim units (100 per map unit), commands run 2 ticks after they are given. Tested: same orders give identical results. Pathfinding uses a walkable grid (`scripts/sim/nav_grid.gd`) with whole-number routes. Still to do for online play: make sure every device builds the identical grid (it's derived from the island's shapes with decimals), e.g. ship it prebuilt or compare a checksum at match start.
 - Tests: `tests/run_tests.sh` (panes, map stillness, units). CI runs them on every push.
+- Updates: the installed web app keeps a saved copy of the game. Each web build is stamped with its commit (`scripts/build_info.gd`, `version.txt` on the site); the start menu shows the version and, when the site has a newer one, a "New version: tap to update" button that clears the saved copy and reloads.
 - Full screen: a button under the resource counter (browsers only allow full screen from a tap). The web build is also an installable web app (fullscreen, landscape, app icon `assets/icon.png`): "Add to Home Screen" opens it with no address bar, which is the only way on iPhone.
 - Builds: GitHub Actions exports Web (GitHub Pages) and an Android debug APK. iOS builds on the Mac with Xcode.
