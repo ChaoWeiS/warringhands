@@ -1,0 +1,17 @@
+# Godot cache and generated files
+.godot/
+/android/
+*.translation
+
+# Build output
+build/
+
+# Signing keys - never commit
+*.keystore
+*.jks
+export_credentials.cfg
+
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+.vscode/
