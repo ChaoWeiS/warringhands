@@ -8,8 +8,17 @@ extends Node
 ##   - Players never move units directly. They send commands, which run a
 ##     couple of ticks later (online, that's the time to reach the other player).
 ## The visuals (units_view.gd) only read from here and smooth between ticks.
+##
+## Combat: units have HP and hit enemies they're touching once a second.
+## Rock beats scissors, scissors beats paper, paper beats rock: a counter hit
+## does double damage, being countered does half. Idle units spot enemies in
+## sight, walk up and fight; a unit the player has ordered to move goes there
+## first and fights after.
 
 signal ticked
+## A unit was hit. strength: 1 = counter hit, 0 = even, -1 = countered.
+signal unit_hit(target_id: int, attacker_id: int, damage: int, strength: int)
+signal unit_died(id: int)
 
 const NavGrid := preload("res://scripts/sim/nav_grid.gd")
 
@@ -37,6 +46,23 @@ const STUCK_TICKS := 30
 
 enum Kind { ROCK, PAPER, SCISSORS }
 
+# --- Combat (placeholder numbers until balancing) ---
+const MAX_HP := 100
+## Damage per hit: even fight, counter (double), countered (half).
+const DAMAGE := 10
+const DAMAGE_COUNTER := 20
+const DAMAGE_COUNTERED := 5
+## Ticks between hits (20 = once a second).
+const ATTACK_COOLDOWN := 20
+## Centre-to-centre reach of a hit: bodies touching, plus a little.
+const ATTACK_RANGE := RADIUS * 2 + 180
+## How far an idle unit notices enemies.
+const SIGHT := 3500
+## Give up chasing a target further than this.
+const LEASH := 5000
+## How often a chasing unit re-plans its route to a moving target.
+const REPATH_TICKS := 10
+
 ## Movement per tick, by kind (placeholder numbers until balancing).
 const SPEED := [72, 85, 78]
 const UNITS_PER_KIND := 4
@@ -46,9 +72,14 @@ const UNITS_PER_KIND := 4
 
 var field: Node = null
 var tick: int = 0
-## Every unit: {id, team, kind, x, z, px, pz, tx, tz, moving, path}.
+## Off = units never fight (e.g. early tutorial steps, or testing movement).
+var combat_enabled: bool = true
+## Every unit: {id, team, kind, x, z, px, pz, tx, tz, moving, path, hp,
+## target, ordered, next_attack, attack_tick, hurt_tick, repath, stuck}.
 ## (px, pz) = position at the previous tick, for smooth drawing.
 ## path = waypoints (Vector2i, sim units) still to walk; the last is (tx, tz).
+## target = id of the enemy being fought (0 = none). ordered = walking
+## somewhere the player said (won't stop to fight until it gets there).
 var units: Array = []
 
 var _by_id: Dictionary = {}
@@ -115,6 +146,30 @@ func has_pending_commands() -> bool:
 	return not _pending.is_empty()
 
 
+## Does kind `a` beat kind `b`? (rock > scissors > paper > rock)
+static func beats(a: int, b: int) -> bool:
+	return (a - b + 3) % 3 == 1
+
+
+## Damage a hit from kind `a` does to kind `b`.
+static func damage_for(a: int, b: int) -> int:
+	if a == b:
+		return DAMAGE
+	return DAMAGE_COUNTER if beats(a, b) else DAMAGE_COUNTERED
+
+
+## Adds a unit at a ground point (map units). Returns its id.
+func add_unit(team: int, kind: int, ground: Vector2) -> int:
+	_add_unit(team, kind, Vector2i(roundi(ground.x * SCALE), roundi(ground.y * SCALE)))
+	return _next_id - 1
+
+
+## Removes every unit (used by tests and future scenarios).
+func clear_units() -> void:
+	units.clear()
+	_by_id.clear()
+
+
 ## The walkable grid (null if there's no island, e.g. in some tests).
 func nav():
 	if _nav == null and field != null:
@@ -142,6 +197,8 @@ func _step() -> void:
 	for u in units:
 		u.px = u.x
 		u.pz = u.z
+	_fight()
+	for u in units:
 		if u.moving:
 			_move(u)
 	for pass_index in PUSH_PASSES:
@@ -179,6 +236,8 @@ func _apply_move(command: Dictionary) -> void:
 		var r: int = i / cols
 		var tx: int = command.x + (c * 2 - (cols - 1)) * SPACING / 2
 		var tz: int = command.z + (r * 2 - (rows - 1)) * SPACING / 2
+		u.target = 0  # the player's order comes first
+		u.ordered = true
 		_route(u, tx, tz)
 
 
@@ -193,6 +252,80 @@ func _route(u: Dictionary, tx: int, tz: int) -> void:
 		u.tx = path[path.size() - 1].x
 		u.tz = path[path.size() - 1].y
 
+
+# --- Combat ----------------------------------------------------------------------
+
+## Every unit decides what to do about enemies, then all hits land together
+## (so neither side gets a free first hit just for having a lower id).
+func _fight() -> void:
+	var hits: Array = []  # [attacker, target, damage]
+	for u in units:
+		if u.ordered:
+			if u.moving:
+				continue  # following the player's order first
+			u.ordered = false
+		if not combat_enabled:
+			continue
+		var target: Dictionary = _by_id.get(u.target, {})
+		if not target.is_empty() and _dist2(u, target) > LEASH * LEASH:
+			target = {}
+		if target.is_empty():
+			target = _nearest_enemy(u, SIGHT)
+		u.target = 0 if target.is_empty() else target.id
+		if target.is_empty():
+			continue
+		if _dist2(u, target) <= ATTACK_RANGE * ATTACK_RANGE:
+			# In reach: stand and fight.
+			u.moving = false
+			u.path.clear()
+			if tick >= u.next_attack:
+				hits.append([u, target, damage_for(u.kind, target.kind)])
+				u.next_attack = tick + ATTACK_COOLDOWN
+				u.attack_tick = tick
+		elif not u.moving or tick >= u.repath:
+			# Chase, re-planning now and then as the target moves.
+			_route(u, target.x, target.z)
+			u.repath = tick + REPATH_TICKS
+	for hit in hits:
+		var attacker: Dictionary = hit[0]
+		var victim: Dictionary = hit[1]
+		victim.hp -= hit[2]
+		victim.hurt_tick = tick
+		var strength: int = 0
+		if attacker.kind != victim.kind:
+			strength = 1 if beats(attacker.kind, victim.kind) else -1
+		unit_hit.emit(victim.id, attacker.id, hit[2], strength)
+	var dead: Array = []
+	for u in units:
+		if u.hp <= 0:
+			dead.append(u)
+	for u in dead:
+		units.erase(u)
+		_by_id.erase(u.id)
+		unit_died.emit(u.id)
+
+
+## Closest enemy within `reach` (ties go to the lower id), or {}.
+func _nearest_enemy(u: Dictionary, reach: int) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d2: int = reach * reach + 1
+	for other in units:
+		if other.team == u.team:
+			continue
+		var d2: int = _dist2(u, other)
+		if d2 < best_d2:
+			best = other
+			best_d2 = d2
+	return best
+
+
+static func _dist2(a: Dictionary, b: Dictionary) -> int:
+	var dx: int = a.x - b.x
+	var dz: int = a.z - b.z
+	return dx * dx + dz * dz
+
+
+# --- Movement ----------------------------------------------------------------------
 
 ## Walks towards the next waypoint; on reaching it, moves on to the next.
 func _move(u: Dictionary) -> void:
@@ -448,6 +581,8 @@ func _add_unit(team: int, kind: int, at: Vector2i) -> void:
 		"id": _next_id, "team": team, "kind": kind,
 		"x": at.x, "z": at.y, "px": at.x, "pz": at.y,
 		"tx": at.x, "tz": at.y, "moving": false, "path": [], "stuck": 0,
+		"hp": MAX_HP, "target": 0, "ordered": false, "next_attack": 0,
+		"attack_tick": -1000, "hurt_tick": -1000, "repath": 0,
 	}
 	_next_id += 1
 	units.append(u)

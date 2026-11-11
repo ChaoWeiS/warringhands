@@ -47,6 +47,15 @@
   - A walker whose exact spot is already taken stops right beside it.
   - Whole-number maths in a fixed order, so it stays lockstep-safe.
 
+## Combat (prototype)
+- Every unit: **100 HP**, one hit per second against an enemy it's touching.
+- Damage: same type **10**; counter (rock > scissors > paper > rock) **20**; countered **5**. A counter duel ends in ~4 s with the winner on 75 HP.
+- Idle units spot enemies within sight (35 map units), walk up and fight; give up chasing beyond 50.
+- Units under a move order walk there first and only fight once they arrive (attack-move can come later).
+- All hits in a tick land at once (no first-strike advantage from unit ids).
+- Look: attack animation when swinging, crying defend animation when hit, HP bar once damaged, floating damage numbers (big red for counter hits), fade-out on death. Fallen units leave the selection.
+- `combat_enabled` switch on the sim (e.g. for early tutorial steps).
+
 ## Economy
 - Resources: **stone** (rock), **wood** (paper), **metal** (scissors), scattered on the map.
 - All units can gather; each is best at its own resource. Gatherers carry back to base (StarCraft-style).

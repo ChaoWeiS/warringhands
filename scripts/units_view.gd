@@ -2,9 +2,12 @@ extends Node3D
 ## Draws the units from the simulation: animated 2D hand sprites standing on
 ## the 3D world (always facing the camera), Ragnarok-style, with a soft
 ## team-coloured base under each, a selection ring, and a marker where a move
-## order was given.
+## order was given. In combat: attack animation when swinging, crying defend
+## animation when hit, HP bars once damaged, floating damage numbers, and a
+## fade-out when a unit dies.
 ##
-## It only reads the sim and smooths positions between ticks.
+## It only reads the sim (and listens to its hit / death signals) and smooths
+## positions between ticks. Units added mid-game get visuals automatically.
 ##
 ## Sprites: assets/units/hands.png, cut from art_source/hands_sheet.png by
 ## tools/cut_hand_sprites.py. 5 frames per row, 128 px cells;
@@ -38,18 +41,32 @@ const ROUTE_COLOR := Color(1, 1, 1, 0.75)
 const ROUTE_WIDTH := 0.6
 const ROUTE_DASH := 2.2
 const ROUTE_GAP := 1.6
+## Combat look.
+const HURT_TICKS := 12      # play "defend" this long after being hit
+const SWING_TICKS := 14     # play "attack" this long after swinging
+const HP_BAR_PX := Vector2(90, 10)   # in sprite pixels
+const HP_BAR_HEIGHT := 8.4           # above the ground (map units)
+const HP_BAR_BG := Color(0.25, 0.22, 0.33, 0.85)
+const DAMAGE_COLORS := {1: Color("#ff5a6e"), 0: Color("#ffffff"), -1: Color("#d9d4e6")}
+const DAMAGE_SIZES := {1: 115, 0: 85, -1: 68}
 
 var sim: Node
 var _views: Dictionary = {}  # unit id -> {root, ring, sprite, base, hop}
 var _selected: Dictionary = {}
 var _frames_by_kind: Array = []  # SpriteFrames per kind
 var _routes_mesh := ImmediateMesh.new()
+var _white: ImageTexture
 
 
 func _ready() -> void:
 	sim = get_node(sim_path)
+	var img := Image.create(int(HP_BAR_PX.x), int(HP_BAR_PX.y), false, Image.FORMAT_RGBA8)
+	img.fill(Color.WHITE)
+	_white = ImageTexture.create_from_image(img)
 	for kind in 3:
 		_frames_by_kind.append(_build_frames(kind))
+	sim.unit_hit.connect(_on_unit_hit)
+	sim.unit_died.connect(_on_unit_died)
 	for u in sim.units:
 		_make_view(u)
 	var routes := MeshInstance3D.new()
@@ -63,6 +80,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_update_positions()
 	_update_hops(delta)
+	_update_combat_look()
 	_draw_routes()
 
 
@@ -82,7 +100,8 @@ func set_selected(ids: Array) -> void:
 		_views[id].ring.visible = _selected.has(id)
 
 
-## Plays "idle", "attack" or "defend" for a unit (combat will use this).
+## Plays "idle", "attack" or "defend" for a unit right away. (During play the
+## animation follows combat automatically each frame.)
 func set_state(id: int, state: String) -> void:
 	var view: Dictionary = _views.get(id, {})
 	if not view.is_empty() and view.sprite.animation != state:
@@ -112,13 +131,80 @@ func _update_positions() -> void:
 	for u in sim.units:
 		var view: Dictionary = _views.get(u.id, {})
 		if view.is_empty():
-			continue
+			_make_view(u)  # a unit added mid-game
+			view = _views[u.id]
 		var x: float = lerpf(u.px, u.x, t) / scale_factor
 		var z: float = lerpf(u.pz, u.z, t) / scale_factor
 		view.root.position = Vector3(x, 0, z)
 		# Face the way we're walking (the art faces right).
 		if u.x != u.px:
 			view.sprite.flip_h = u.x < u.px
+
+
+## Attack / defend / idle animations, facing the enemy, and HP bars.
+func _update_combat_look() -> void:
+	for u in sim.units:
+		var view: Dictionary = _views.get(u.id, {})
+		if view.is_empty():
+			continue
+		var state := "idle"
+		if sim.tick - u.hurt_tick < HURT_TICKS:
+			state = "defend"
+		elif u.target != 0 and sim.tick - u.attack_tick < SWING_TICKS:
+			state = "attack"
+		if view.sprite.animation != state:
+			view.sprite.play(state)
+		var foe: Dictionary = sim.get_unit(u.target)
+		if not foe.is_empty() and not u.moving:
+			view.sprite.flip_h = foe.x < u.x
+		var damaged: bool = u.hp < sim.MAX_HP
+		view.hp_bg.visible = damaged
+		view.hp_fill.visible = damaged
+		if damaged:
+			var width: int = maxi(1, int(HP_BAR_PX.x * u.hp / sim.MAX_HP))
+			view.hp_fill.region_rect = Rect2(0, 0, width, HP_BAR_PX.y)
+
+
+## Floating damage number: big and red for a counter hit, small and pale
+## when countered.
+func _on_unit_hit(target_id: int, _attacker_id: int, damage: int, strength: int) -> void:
+	var view: Dictionary = _views.get(target_id, {})
+	if view.is_empty():
+		return
+	var label := Label3D.new()
+	label.text = "-%d" % damage
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.render_priority = 3
+	label.font_size = DAMAGE_SIZES[strength]
+	label.outline_size = 18
+	label.outline_modulate = Color(0.3, 0.22, 0.35)
+	label.modulate = DAMAGE_COLORS[strength]
+	label.pixel_size = 0.03
+	label.position = view.root.position + Vector3(randf_range(-1.5, 1.5), 7.5, 0)
+	add_child(label)
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(label, "position:y", label.position.y + 4.0, 0.8).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "modulate:a", 0.0, 0.8).set_delay(0.3)
+	tween.chain().tween_callback(label.queue_free)
+
+
+## A fallen unit shrinks and fades away.
+func _on_unit_died(id: int) -> void:
+	var view: Dictionary = _views.get(id, {})
+	if view.is_empty():
+		return
+	_views.erase(id)
+	_selected.erase(id)
+	view.ring.visible = false
+	view.hp_bg.visible = false
+	view.hp_fill.visible = false
+	view.sprite.play("defend")
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(view.sprite, "modulate:a", 0.0, 0.6)
+	tween.tween_property(view.sprite, "scale", Vector3(0.6, 0.3, 1.0), 0.6)
+	tween.tween_property(view.base, "scale", Vector3(0.2, 1.0, 0.2), 0.6)
+	tween.chain().tween_callback(view.root.queue_free)
 
 
 ## Dashed lines on the ground showing where selected units are headed,
@@ -239,14 +325,45 @@ func _make_view(u: Dictionary) -> void:
 	sprite.frame = u.id % FRAMES
 	sprite.speed_scale = 0.85 + 0.3 * float((u.id * 37) % 10) / 10.0
 
+	# HP bar (shown once damaged): dark back, team-coloured fill shrinking
+	# from the right.
+	var hp_bg := _hp_bar_sprite(HP_BAR_BG, true)
+	var hp_fill := _hp_bar_sprite(TEAM_COLORS[u.team].lightened(0.15), false)
+	hp_fill.render_priority = 2
+	root.add_child(hp_bg)
+	root.add_child(hp_fill)
+
 	_views[u.id] = {
 		"root": root, "ring": ring, "sprite": sprite, "base": base,
+		"hp_bg": hp_bg, "hp_fill": hp_fill,
 		"sprite_y": sprite.position.y,
 		"hop": 0.0,  # 0 = standing on the ground
 		# Slightly different hop speeds so a group drifts out of step
 		# instead of bouncing in unison.
 		"hop_speed": 0.88 + 0.24 * float((u.id * 53) % 11) / 10.0,
 	}
+
+
+func _hp_bar_sprite(color: Color, back: bool) -> Sprite3D:
+	var bar := Sprite3D.new()
+	bar.texture = _white
+	bar.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	bar.pixel_size = SPRITE_PIXEL_SIZE
+	bar.modulate = color
+	bar.shaded = false
+	bar.no_depth_test = true
+	bar.render_priority = 1
+	bar.position = Vector3(0, HP_BAR_HEIGHT, 0)
+	if back:
+		bar.region_enabled = false
+	else:
+		# Left-anchored so it shrinks from the right.
+		bar.centered = false
+		bar.offset = -HP_BAR_PX * 0.5
+		bar.region_enabled = true
+		bar.region_rect = Rect2(Vector2.ZERO, HP_BAR_PX)
+	bar.visible = false
+	return bar
 
 
 func _build_frames(kind: int) -> SpriteFrames:

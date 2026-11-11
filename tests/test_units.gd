@@ -391,6 +391,8 @@ func _run() -> void:
 
 	# Enemies hold their ground: walking into the enemy army doesn't push
 	# through it. Our unit is blocked, never overlaps them, and stops.
+	# (Combat off here, to test pure collision; fighting has its own tests.)
+	sim.combat_enabled = false
 	var theirs_before: Dictionary = {}
 	for id in theirs:
 		theirs_before[id] = sim.unit_ground(id)
@@ -415,6 +417,7 @@ func _run() -> void:
 	check("enemies held their ground (moved at most %.2f)" % enemy_shift, enemy_shift < 0.5)
 	check("blocked unit stopped at the enemy line", not sim.get_unit(intruder).moving
 			and sim.unit_ground(intruder).distance_to(enemy_centre) < 40.0)
+	sim.combat_enabled = true
 
 	# Lockstep: two simulations given the same orders end up identical.
 	var a: Node = SimScript.new()

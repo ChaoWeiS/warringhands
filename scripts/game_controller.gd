@@ -35,6 +35,7 @@ func _ready() -> void:
 	panes.register_blocker(bar)
 	bar.filter_pressed.connect(_on_filter)
 	bar.clear_pressed.connect(func(): _select([]))
+	sim.unit_died.connect(_on_unit_died)
 
 
 func _on_tapped(camera: Camera3D, point: Vector2) -> void:
@@ -61,6 +62,14 @@ func _on_lassoed(camera: Camera3D, polygon: PackedVector2Array) -> void:
 			ids.append(u.id)
 	if not ids.is_empty():
 		_select(ids)
+
+
+## Fallen units leave the selection.
+func _on_unit_died(id: int) -> void:
+	if selection.has(id):
+		var kept: Array = selection.duplicate()
+		kept.erase(id)
+		_select(kept)
 
 
 func _on_filter(kind: int) -> void:
