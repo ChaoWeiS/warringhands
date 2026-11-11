@@ -176,7 +176,9 @@ func _update_positions() -> void:
 			view = _views[u.id]
 		var x: float = lerpf(u.px, u.x, t) / scale_factor
 		var z: float = lerpf(u.pz, u.z, t) / scale_factor
-		view.root.position = Vector3(x, 0, z)
+		# Up on a plateau (or partway up a ramp): drawn that high.
+		var y: float = sim.field.height_at(Vector2(x, z)) if sim.field != null else 0.0
+		view.root.position = Vector3(x, y, z)
 		# Face the way we're walking (the art faces right).
 		if u.x != u.px:
 			view.sprite.flip_h = u.x < u.px

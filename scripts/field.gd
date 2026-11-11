@@ -45,6 +45,12 @@ var LAKES: Array = []
 var FORESTS: Array = []
 var PLATEAUS: Array = []
 const PLATEAU_HEIGHT := 5.0
+## Plateaus are walkable on top, reached by ramps cut into the cliff: two
+## per plateau (towards the island centre and away; mirrored like the rest).
+## The cliff edge (CLIFF_BAND wide) is blocked everywhere else.
+const RAMP_LENGTH := 14.0
+const RAMP_HALF_WIDTH := 5.5
+const CLIFF_BAND := 3.0
 # Shape wobble for lakes and plateaus (even frequencies only).
 const BLOB_WAVES := [[2, 0.12, 0.4], [4, 0.08, 1.7], [6, 0.05, 3.1]]
 
@@ -68,6 +74,11 @@ var coastline: PackedVector2Array = PackedVector2Array()
 var lakes: Array = []      # PackedVector2Array outlines
 var plateaus: Array = []   # PackedVector2Array outlines
 var forests: Array = []    # {center, radius, trees: Array[Vector2]}
+## Ramps up the plateaus: {plateau (index), edge: Vector2 (top of the ramp,
+## on the cliff), dir: Vector2 (downhill), half_width, length}.
+var ramps: Array = []
+var _plateau_tops: Array = []   # plateaus shrunk by CLIFF_BAND: walkable
+var _plateau_outer: Array = []  # plateaus grown by UNIT_CLEARANCE: cliff + top
 
 # Shapes ground units can't enter, already grown by UNIT_CLEARANCE.
 var _blocked_polys: Array = []    # {poly, box}
@@ -99,9 +110,19 @@ func build() -> void:
 			lakes.append(poly)
 			_block_poly(poly)
 	for plateau in PLATEAUS:
-		for poly in _mirrored_blob(plateau[0], plateau[1], plateau[2], plateau[3]):
+		var blobs: Array = _mirrored_blob(plateau[0], plateau[1], plateau[2], plateau[3])
+		# Ramp directions: towards the island centre and away (a plateau in
+		# the very middle uses its own rotation).
+		var towards: Vector2 = -plateau[0].normalized() if plateau[0] != Vector2.ZERO else Vector2.from_angle(plateau[3])
+		for i in blobs.size():
+			var poly: PackedVector2Array = blobs[i]
 			plateaus.append(poly)
-			_block_poly(poly)
+			_plateau_tops.append(_offset(poly, -CLIFF_BAND))
+			_plateau_outer.append(_offset(poly, UNIT_CLEARANCE))
+			var d: Vector2 = towards if i == 0 else -towards  # the twin is turned
+			for dir in [d, -d]:
+				ramps.append({"plateau": plateaus.size() - 1, "edge": _edge_point(poly, dir),
+						"dir": dir, "half_width": RAMP_HALF_WIDTH, "length": RAMP_LENGTH})
 	for forest in FORESTS:
 		var trees := _forest_trees(c + forest[0], forest[1], forest[2])
 		var mirrored: Array = []
@@ -149,6 +170,59 @@ func _with_twins(spots: Array) -> Array:
 	return out
 
 
+func _on_plateau_or_ramp(p: Vector2, margin: float) -> bool:
+	if ramp_at(p) >= 0:
+		return true
+	for poly in _plateau_outer:
+		if Geometry2D.is_point_in_polygon(p, _offset(poly, margin)):
+			return true
+	return false
+
+
+## Where a ray from the middle of a shape in direction `dir` leaves it.
+func _edge_point(poly: PackedVector2Array, dir: Vector2) -> Vector2:
+	var c: Vector2 = _poly_center(poly)
+	var far: Vector2 = c + dir * 1000.0
+	for i in poly.size():
+		var hit: Variant = Geometry2D.segment_intersects_segment(c, far, poly[i], poly[(i + 1) % poly.size()])
+		if hit != null:
+			return hit
+	return c
+
+
+## Which ramp (index) a point is on, or -1. On a ramp: from a little inside
+## the cliff edge to RAMP_LENGTH out, RAMP_HALF_WIDTH either side.
+func ramp_at(p: Vector2) -> int:
+	for i in ramps.size():
+		var r: Dictionary = ramps[i]
+		var rel: Vector2 = p - r.edge
+		var along: float = rel.dot(r.dir)
+		var side: float = absf(rel.dot(r.dir.orthogonal()))
+		if along >= -CLIFF_BAND - 2.0 and along <= r.length and side <= r.half_width:
+			return i
+	return -1
+
+
+## Height of the ground (map units): plateau tops are PLATEAU_HEIGHT up,
+## ramps slope down from there, everything else is 0.
+func height_at(p: Vector2) -> float:
+	build()
+	var r: int = ramp_at(p)
+	if r >= 0:
+		var ramp: Dictionary = ramps[r]
+		var along: float = (p - ramp.edge).dot(ramp.dir)
+		return PLATEAU_HEIGHT * clampf(1.0 - along / ramp.length, 0.0, 1.0)
+	for poly in plateaus:
+		if Geometry2D.is_point_in_polygon(p, poly):
+			return PLATEAU_HEIGHT
+	return 0.0
+
+
+## Is this point up on a plateau or a ramp (no building there)?
+func is_raised(p: Vector2) -> bool:
+	return height_at(p) > 0.01
+
+
 ## Resource spots on both sides: [{res, pos, radius}] (map units).
 ## res: 0 stone, 1 wood, 2 metal (matching rock, paper, scissors).
 func resource_spots() -> Array:
@@ -182,6 +256,12 @@ func is_walkable(p: Vector2, cut_trees: Dictionary = {}) -> bool:
 	for blocked in _blocked_polys:
 		if blocked.box.has_point(p) and Geometry2D.is_point_in_polygon(p, blocked.poly):
 			return false
+	# Plateaus: the top is open, the cliff edge isn't, except on a ramp.
+	for i in _plateau_outer.size():
+		if Geometry2D.is_point_in_polygon(p, _plateau_outer[i]) \
+				and not Geometry2D.is_point_in_polygon(p, _plateau_tops[i]):
+			if ramp_at(p) < 0:
+				return false
 	return true
 
 
@@ -237,6 +317,8 @@ func _forest_trees(center: Vector2, radius: float, seed_value: int) -> Array:
 		var p: Vector2 = center + Vector2.from_angle(a) * d
 		if not Geometry2D.is_point_in_polygon(p, inside_shore):
 			continue
+		if _on_plateau_or_ramp(p, 4.0):
+			continue  # trees stay off the plateaus and their ramps
 		var crowded := false
 		for t in trees:
 			if p.distance_to(t) < 7.0:
@@ -311,6 +393,42 @@ func _build_terrain() -> void:
 		_add_flat(_offset(plateau, 2.5), 0.34, CLIFF)
 		_add_skirt(plateau, PLATEAU_HEIGHT, 0.0, CLIFF, _poly_center(plateau))
 		_add_flat(plateau, PLATEAU_HEIGHT, PLATEAU_TOP)
+	for ramp in ramps:
+		_add_ramp(ramp)
+
+
+## A ramp: a sloped path from the plateau top down to the ground, with its
+## sides filled in down to the ground.
+func _add_ramp(r: Dictionary) -> void:
+	var side: Vector2 = r.dir.orthogonal() * r.half_width
+	var top_c: Vector2 = r.edge - r.dir * 1.5  # tucked into the plateau a little
+	var low_c: Vector2 = r.edge + r.dir * r.length
+	var h: float = PLATEAU_HEIGHT + 0.02
+	var t0 := Vector3(top_c.x + side.x, h, top_c.y + side.y)
+	var t1 := Vector3(top_c.x - side.x, h, top_c.y - side.y)
+	var b0 := Vector3(low_c.x + side.x, 0.45, low_c.y + side.y)
+	var b1 := Vector3(low_c.x - side.x, 0.45, low_c.y - side.y)
+	var g0 := Vector3(t0.x, 0.0, t0.z)
+	var g1 := Vector3(t1.x, 0.0, t1.z)
+	# The path (like the plateau top), then its two sides (cliff).
+	_add_tris([t0, b1, t1, t0, b0, b1], Vector3.UP, PLATEAU_TOP)
+	var out0: Vector3 = Vector3(side.x, 0, side.y).normalized()
+	_add_tris([t0, b0, g0], out0, CLIFF)
+	_add_tris([t1, g1, b1], -out0, CLIFF)
+
+
+## Triangles with one colour and normal (drawn from both sides, like the
+## rest of the terrain).
+func _add_tris(points: Array, normal: Vector3, color: Color) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(normal)
+	for v in points:
+		st.add_vertex(v)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = _material(color)
+	add_child(mi)
 
 
 func _multimesh(mesh: Mesh, count: int, material: Material) -> MultiMeshInstance3D:

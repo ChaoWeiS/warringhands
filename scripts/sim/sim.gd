@@ -446,6 +446,14 @@ func can_place(btype: String, ground: Vector2, team: int = -1) -> bool:
 	if team >= 0 and btype != "hq" and not in_build_range(team, x, z):
 		return false
 	var radius: int = BUILDINGS[btype].radius
+	# Not up on a plateau or its ramps (or hanging over one).
+	if field != null:
+		var c := Vector2(x, z) / float(SCALE)
+		var r: float = float(radius) / SCALE
+		for k in 9:
+			var p: Vector2 = c if k == 8 else c + Vector2.from_angle(k * TAU / 8.0) * r
+			if field.is_raised(p):
+				return false
 	var grid = nav()
 	if grid != null and not grid.circle_is_open(x, z, radius + RADIUS):
 		return false
