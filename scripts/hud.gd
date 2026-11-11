@@ -48,6 +48,9 @@ var right_column: Control = null
 var build_menu: VBoxContainer
 var building_panel: PanelContainer
 var game_over_screen: Control
+var _over_banner: TextureRect
+const VICTORY := preload("res://assets/ui/victory.png")
+const DEFEAT := preload("res://assets/ui/defeat.png")
 
 var _res_labels: Array = []
 var _build_toggle: Button
@@ -196,12 +199,30 @@ func show_buildings(ids: Array) -> void:
 
 
 func show_game_over(winner: int) -> void:
-	show_message("Victory!" if winner == team else "Defeat")
+	var won: bool = winner == team
+	show_message("Victory!" if won else "Defeat")
+	# The painted sign instead of the words, popping in.
+	var sign: Texture2D = VICTORY if won else DEFEAT
+	var screen: Vector2 = get_viewport_rect().size
+	var aspect: float = float(sign.get_height()) / sign.get_width()
+	var w: float = minf(minf(900.0, screen.x * 0.8), screen.y * 0.62 / aspect)
+	_over_banner.texture = sign
+	_over_banner.custom_minimum_size = Vector2(w, w * aspect)
+	_over_banner.visible = true
+	_over_label.visible = false
+	_over_banner.pivot_offset = _over_banner.custom_minimum_size * 0.5
+	_over_banner.scale = Vector2.ONE * 0.6
+	_over_banner.modulate.a = 0.0
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(_over_banner, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(_over_banner, "modulate:a", 1.0, 0.2)
 
 
 ## The end screen with any message (e.g. "Your opponent left").
 func show_message(text: String) -> void:
 	_over_label.text = text
+	_over_label.visible = true
+	_over_banner.visible = false
 	_over_label.add_theme_font_size_override("font_size", 110 if text.length() < 12 else 64)
 	game_over_screen.visible = true
 	surrender_button.visible = false
@@ -595,10 +616,7 @@ func _refresh_sell(spec: Dictionary, group: Array, r: Dictionary) -> void:
 	content.add_child(UI.cost_row(back, spec.res, 26, 36))
 	r.sell.custom_minimum_size.x = 0
 	UI.fill_button(r.sell, content)
-	for state in ["normal", "hover"]:
-		var box: StyleBoxFlat = r.sell.get_theme_stylebox(state).duplicate()
-		box.bg_color = Color("#ffc9d2") if sure else Color(1, 1, 1, 0.9)
-		r.sell.add_theme_stylebox_override(state, box)
+	UI.set_button_color(r.sell, Color("#ffc9d2") if sure else Color(1, 1, 1, 0.95), Color("#f2c4d2"))
 
 
 func _build_game_over() -> void:
@@ -617,8 +635,16 @@ func _build_game_over() -> void:
 	_over_label.add_theme_constant_override("outline_size", 18)
 	_over_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_over_label)
+	# Victory / Defeat: the painted signs (assets/ui/, made by tools/make_logo.py).
+	_over_banner = TextureRect.new()
+	_over_banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_over_banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_over_banner.visible = false
+	box.add_child(_over_banner)
 	var again := UI.button(Color("#fbe3ea"), Color("#f2c4d2"), 34)
 	again.text = "Play again"
+	again.custom_minimum_size.x = 420 * UI.ui_scale()
+	again.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	again.pressed.connect(func(): play_again_pressed.emit())
 	box.add_child(again)
 	game_over_screen.add_child(box)

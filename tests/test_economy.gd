@@ -611,7 +611,8 @@ func _run() -> void:
 			and not res_view._views.has(forest_tree.id))
 	sim._remove_building(sim.hq_of(1))
 	await frames(2)
-	check("destroying the enemy HQ shows Victory", hud.game_over_screen.visible and hud._over_label.text == "Victory!")
+	check("destroying the enemy HQ shows the Victory sign", hud.game_over_screen.visible and hud._over_label.text == "Victory!"
+			and hud._over_banner.visible and hud._over_banner.texture == hud.VICTORY)
 
 	print("FAILURES: ", failures)
 	quit(1 if failures > 0 else 0)

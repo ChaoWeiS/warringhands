@@ -54,7 +54,8 @@ func _run() -> void:
 	sim.step_ticks(4)
 	await frames(1)
 	check("Surrender loses the game: the other side wins", sim.winner == 1 - game.player_team)
-	check("...and shows Defeat", hud.game_over_screen.visible and hud._over_label.text == "Defeat")
+	check("...and shows the Defeat sign", hud.game_over_screen.visible and hud._over_label.text == "Defeat"
+			and hud._over_banner.visible and hud._over_banner.texture == hud.DEFEAT and not hud._over_label.visible)
 	check("...and the flag goes away", not flag.visible)
 
 	# Online, nobody can surrender for the other player.

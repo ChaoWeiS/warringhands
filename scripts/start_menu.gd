@@ -294,11 +294,13 @@ func _map_card(id: String) -> Button:
 	var s: float = UI.ui_scale()
 	var m: Dictionary = Maps.MAPS[id]
 	var b := UI.button(Color(1, 1, 1, 0.9), Color("#fff3b0"), 26)
-	b.custom_minimum_size = Vector2(250, 300) * s
+	b.custom_minimum_size = Vector2(250, 330) * s
 	var box := VBoxContainer.new()
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.offset_top = 10 * s
+	box.offset_bottom = -18 * s  # clear of the raised edge
 	box.add_theme_constant_override("separation", roundi(6 * s))
 	var pic := Control.new()
 	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -389,12 +391,10 @@ func _pick_difficulty(d: String) -> void:
 
 ## The picked choice: a warm fill and a thick border.
 func _highlight(b: Button, on: bool) -> void:
-	for state in ["normal", "hover"]:
-		var box: StyleBoxFlat = b.get_theme_stylebox(state).duplicate()
-		box.bg_color = Color("#fff3b0") if on else Color(1, 1, 1, 0.9)
-		box.border_color = Color("#e0a64e") if on else Color(0, 0, 0, 0)
-		box.set_border_width_all(4 if on else 0)
-		b.add_theme_stylebox_override(state, box)
+	if on:
+		UI.set_button_color(b, Color("#fff3b0"), Color("#ffe9a0"), Color("#d08a2e"))
+	else:
+		UI.set_button_color(b, Color(1, 1, 1, 0.95), Color("#d6cdef"))
 
 
 func _setup_confirmed() -> void:

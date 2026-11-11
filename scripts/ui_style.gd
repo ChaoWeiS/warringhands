@@ -60,24 +60,93 @@ static func button(color: Color, pressed_color: Color = Color.TRANSPARENT, font_
 	b.add_theme_constant_override("h_separation", 8)
 	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_disabled_color"]:
 		b.add_theme_color_override(state, TEXT_COLOR if state != "font_disabled_color" else Color(TEXT_COLOR, 0.45))
-	for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
-		var box := StyleBoxFlat.new()
-		var is_pressed: bool = state == "pressed" or state == "hover_pressed"
-		if is_pressed and pressed_color.a > 0.0:
-			box.bg_color = pressed_color
-		elif state == "disabled":
-			box.bg_color = Color(color, 0.55)
-		else:
-			box.bg_color = color.darkened(0.08) if is_pressed else color
-		box.set_corner_radius_all(22)
-		box.content_margin_left = 20
-		box.content_margin_right = 24
-		box.border_color = Color(1, 1, 1, 0.9)
-		box.set_border_width_all(3)
-		box.shadow_color = Color(0.3, 0.25, 0.4, 0.18)
-		box.shadow_size = 6
-		b.add_theme_stylebox_override(state, box)
+	set_button_color(b, color, pressed_color)
 	return b
+
+
+## Gives a button the plaque look in a colour (and its pressed colour).
+## `outline` other than the usual brown marks a picked choice.
+static func set_button_color(b: Button, color: Color, pressed_color: Color = Color.TRANSPARENT,
+		outline: Color = OUTLINE) -> void:
+	var down: Color = pressed_color if pressed_color.a > 0.0 else color.darkened(0.08)
+	b.add_theme_stylebox_override("normal", plaque(color, false, outline))
+	b.add_theme_stylebox_override("hover", plaque(color.lightened(0.06), false, outline))
+	b.add_theme_stylebox_override("pressed", plaque(down, true, outline))
+	b.add_theme_stylebox_override("hover_pressed", plaque(down, true, outline))
+	b.add_theme_stylebox_override("disabled", plaque(color.lerp(Color(0.85, 0.83, 0.88), 0.6), false, outline.lerp(Color(0.6, 0.57, 0.65), 0.6)))
+
+
+## Button plaque: a chunky rounded tile in the logo's style: dark brown
+## outline, a darker raised edge along the bottom (it sinks when pressed),
+## a soft gloss on top and a little shadow. Made once per colour and kept.
+const OUTLINE := Color("#5a3b2e")
+const PLAQUE_SIZE := 72
+const PLAQUE_RADIUS := 20.0
+const PLAQUE_LIP := 7
+static var _plaques := {}
+
+
+static func plaque(face: Color, pressed: bool, outline: Color = OUTLINE) -> StyleBoxTexture:
+	var key := "%s %s %s" % [face.to_html(), pressed, outline.to_html()]
+	if _plaques.has(key):
+		return _plaques[key]
+	var n: int = PLAQUE_SIZE
+	var lip: int = 2 if pressed else PLAQUE_LIP
+	var shade := 3  # shadow below
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var line: float = 3.5 if outline == OUTLINE else 5.0
+	var edge_color: Color = face.darkened(0.32)
+	var top: float = float(PLAQUE_LIP - lip)  # pressed: the face sits lower
+	for y in n:
+		for x in n:
+			var p := Vector2(x + 0.5, y + 0.5)
+			var c := Color(0, 0, 0, 0)
+			# Shadow, then outline, then the raised edge, then the face.
+			var d_shadow: float = _round_rect(p, Rect2(1, top + shade, n - 2, n - top - shade - 1), PLAQUE_RADIUS)
+			c = _over(c, Color(0.25, 0.18, 0.3, 0.22), clampf(0.5 - d_shadow / 2.0, 0, 1))
+			var body := Rect2(1, top + 1, n - 2, n - top - shade - 2)
+			c = _over(c, outline, clampf(0.5 - _round_rect(p, body, PLAQUE_RADIUS), 0, 1))
+			var inner := body.grow(-line)
+			c = _over(c, edge_color, clampf(0.5 - _round_rect(p, inner, PLAQUE_RADIUS - line), 0, 1))
+			var face_rect := Rect2(inner.position, inner.size - Vector2(0, lip))
+			var d_face: float = _round_rect(p, face_rect, PLAQUE_RADIUS - line)
+			var shine: float = clampf(1.0 - (p.y - face_rect.position.y) / (face_rect.size.y * 0.5), 0, 1)
+			var face_px: Color = face.lerp(face.lightened(0.45), shine * 0.55)
+			c = _over(c, face_px, clampf(0.5 - d_face, 0, 1))
+			# A thin light line just inside the top of the face.
+			var rim: float = clampf(0.5 - absf(d_face + 2.5) + 0.5, 0, 1) * clampf(1.0 - (p.y - face_rect.position.y) / 14.0, 0, 1)
+			c = _over(c, Color(1, 1, 1, 0.75), rim)
+			img.set_pixel(x, y, c)
+	var box := StyleBoxTexture.new()
+	box.texture = ImageTexture.create_from_image(img)
+	var corner: float = PLAQUE_RADIUS + 4
+	box.texture_margin_left = corner
+	box.texture_margin_right = corner
+	box.texture_margin_top = corner
+	box.texture_margin_bottom = corner + PLAQUE_LIP
+	box.content_margin_left = 22
+	box.content_margin_right = 24
+	box.content_margin_top = 8 + (PLAQUE_LIP - lip)
+	box.content_margin_bottom = 8 + lip + shade
+	_plaques[key] = box
+	return box
+
+
+## Signed distance from p to a rounded rectangle (negative inside).
+static func _round_rect(p: Vector2, r: Rect2, radius: float) -> float:
+	var half: Vector2 = r.size * 0.5
+	var q: Vector2 = (p - r.get_center()).abs() - half + Vector2(radius, radius)
+	return Vector2(maxf(q.x, 0), maxf(q.y, 0)).length() + minf(maxf(q.x, q.y), 0.0) - radius
+
+
+## `top` laid over `base` with this much coverage.
+static func _over(base: Color, top: Color, amount: float) -> Color:
+	var a: float = top.a * amount
+	var out_a: float = a + base.a * (1.0 - a)
+	if out_a <= 0.0:
+		return Color(0, 0, 0, 0)
+	var rgb: Color = (top * a + base * base.a * (1.0 - a)) / out_a
+	return Color(rgb.r, rgb.g, rgb.b, out_a)
 
 
 ## First idle frame of a unit type, cropped to the hand.
