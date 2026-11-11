@@ -4,22 +4,29 @@ extends Node3D
 ## team-coloured base under each, a selection ring, and a marker where a move
 ## order was given. In combat: attack animation when swinging, crying defend
 ## animation when hit, HP bars once damaged, floating damage numbers, and a
-## fade-out when a unit dies.
+## death animation (it keels over) then a fade-out when a unit dies.
 ##
 ## It only reads the sim (and listens to its hit / death signals) and smooths
 ## positions between ticks. Units added mid-game get visuals automatically.
 ##
-## Sprites: assets/units/hands.png, cut from art_source/hands_sheet.png by
-## tools/cut_hand_sprites.py. 5 frames per row, 128 px cells;
-## row = kind * 3 + state (kind: rock, paper, scissors; state: idle, attack, defend).
+## Sprites: assets/units/hands.png, 5 frames per row, 128 px cells;
+## row = kind * 3 + state (kind: rock, paper, scissors; state: idle, attack,
+## defend), then rows 9-11 = death per kind. Idle and defend are cut from
+## art_source/hands_sheet.png by tools/cut_hand_sprites.py; attack and death
+## from art_source/attack_sheet.png / death_sheet.png by tools/cut_grid_sprites.py.
 
 @export var sim_path: NodePath
 
 const ATLAS := preload("res://assets/units/hands.png")
 const CELL := 128
 const FRAMES := 5
+## Atlas rows: kind * 3 + (idle 0, attack 1, defend 2); death rows after those.
 const STATES := ["idle", "attack", "defend"]
-const STATE_FPS := {"idle": 6.0, "attack": 10.0, "defend": 8.0}
+const DEATH_ROW := 9  # + kind
+const STATE_FPS := {"idle": 6.0, "attack": 12.0, "defend": 8.0, "death": 9.0}
+## Attack and death play once (attack restarts on every swing); idle and
+## defend loop.
+const LOOPS := {"idle": true, "attack": false, "defend": true, "death": false}
 
 ## Team colours, used for the base under each unit.
 const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
@@ -44,7 +51,8 @@ const ROUTE_DASH := 2.2
 const ROUTE_GAP := 1.6
 ## Combat look.
 const HURT_TICKS := 12      # play "defend" this long after being hit
-const SWING_TICKS := 14     # play "attack" this long after swinging
+const SWING_TICKS := 10     # play "attack" this long after swinging (once, from the wind-up)
+const DEATH_HOLD := 0.5     # seconds the fallen hand lies there before fading
 const HP_BAR_PX := Vector2(90, 10)   # in sprite pixels
 const HP_BAR_HEIGHT := 8.4           # above the ground (map units)
 const HP_BAR_BG := Color(0.25, 0.22, 0.33, 0.85)
@@ -171,12 +179,17 @@ func _update_combat_look() -> void:
 		var view: Dictionary = _views.get(u.id, {})
 		if view.is_empty():
 			continue
+		# A swing beats a flinch, so a duel (both hit at once) shows punches.
 		var state := "idle"
-		if sim.tick - u.hurt_tick < HURT_TICKS:
-			state = "defend"
-		elif u.target != 0 and sim.tick - u.attack_tick < SWING_TICKS:
+		if u.target != 0 and sim.tick - u.attack_tick < SWING_TICKS:
 			state = "attack"
-		if view.sprite.animation != state:
+		elif sim.tick - u.hurt_tick < HURT_TICKS:
+			state = "defend"
+		if state == "attack" and view.swing != u.attack_tick:
+			view.swing = u.attack_tick  # a new swing: start from the wind-up
+			view.sprite.play("attack")
+			view.sprite.frame = 0
+		elif view.sprite.animation != state:
 			view.sprite.play(state)
 		var foe: Dictionary = sim.get_unit(u.target)
 		if not foe.is_empty() and not u.moving:
@@ -213,7 +226,8 @@ func _on_unit_hit(target_id: int, _attacker_id: int, damage: int, strength: int)
 	tween.chain().tween_callback(label.queue_free)
 
 
-## A fallen unit shrinks and fades away.
+## A fallen unit plays its death animation (it keels over, X eyes), lies
+## there a moment, then fades away.
 func _on_unit_died(id: int) -> void:
 	var view: Dictionary = _views.get(id, {})
 	if view.is_empty():
@@ -223,11 +237,17 @@ func _on_unit_died(id: int) -> void:
 	view.ring.visible = false
 	view.hp_bg.visible = false
 	view.hp_fill.visible = false
-	view.sprite.play("defend")
+	var sprite: AnimatedSprite3D = view.sprite
+	# Land from any hop, no squash.
+	sprite.position.y = view.sprite_y
+	sprite.scale = Vector3.ONE
+	sprite.speed_scale = 1.0
+	sprite.play("death")
+	var fall: float = FRAMES / STATE_FPS["death"]
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(view.sprite, "modulate:a", 0.0, 0.6)
-	tween.tween_property(view.sprite, "scale", Vector3(0.6, 0.3, 1.0), 0.6)
-	tween.tween_property(view.base, "scale", Vector3(0.2, 1.0, 0.2), 0.6)
+	tween.tween_property(view.base, "scale", Vector3(0.6, 1.0, 0.6), fall)
+	tween.tween_property(sprite, "modulate:a", 0.0, 0.6).set_delay(fall + DEATH_HOLD)
+	tween.tween_property(view.base, "scale", Vector3(0.2, 1.0, 0.2), 0.6).set_delay(fall + DEATH_HOLD)
 	tween.chain().tween_callback(view.root.queue_free)
 
 
@@ -362,6 +382,7 @@ func _make_view(u: Dictionary) -> void:
 		"hp_bg": hp_bg, "hp_fill": hp_fill,
 		"sprite_y": sprite.position.y,
 		"hop": 0.0,  # 0 = standing on the ground
+		"swing": u.attack_tick,  # last swing whose animation was started
 		# Slightly different hop speeds so a group drifts out of step
 		# instead of bouncing in unison.
 		"hop_speed": 0.88 + 0.24 * float((u.id * 53) % 11) / 10.0,
@@ -393,12 +414,14 @@ func _hp_bar_sprite(color: Color, back: bool) -> Sprite3D:
 func _build_frames(kind: int) -> SpriteFrames:
 	var frames := SpriteFrames.new()
 	frames.remove_animation("default")
+	var rows := {"death": DEATH_ROW + kind}
 	for state_index in STATES.size():
-		var anim: String = STATES[state_index]
+		rows[STATES[state_index]] = kind * 3 + state_index
+	for anim in rows:
 		frames.add_animation(anim)
 		frames.set_animation_speed(anim, STATE_FPS[anim])
-		frames.set_animation_loop(anim, true)
-		var row: int = kind * 3 + state_index
+		frames.set_animation_loop(anim, LOOPS[anim])
+		var row: int = rows[anim]
 		for f in FRAMES:
 			var region := AtlasTexture.new()
 			region.atlas = ATLAS

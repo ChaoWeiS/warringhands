@@ -252,6 +252,7 @@ func _run() -> void:
 	var spot_d: Vector2 = sim.unit_ground(doomed)
 	sim.add_unit(1, ROCK, spot_d + Vector2(7, 0))
 	sim.get_unit(doomed).hp = 20
+	var doomed_sprite: AnimatedSprite3D = view._views[doomed].sprite
 	sim.step_ticks(60)
 	check("the doomed unit fell", sim.get_unit(doomed).is_empty())
 	check("it left the selection", game.selection == [mine[0]] and bar.visible)
@@ -266,6 +267,26 @@ func _run() -> void:
 		if u.hp == sim.MAX_HP:
 			bars_ok = bars_ok and not view._views[u.id].hp_bg.visible
 	check("damaged units show an HP bar (and healthy ones don't)", bars_ok)
+	check("a fallen unit plays its death animation (once)", doomed_sprite.animation == "death"
+			and not doomed_sprite.sprite_frames.get_animation_loop("death"))
+
+	# Every swing plays the attack animation once, from the wind-up.
+	var swinger: Dictionary = sim.get_unit(mine[0])
+	var swing_view: Dictionary = view._views[mine[0]]
+	swinger.target = mine[1]  # any id; only "has a target" matters to the look
+	swinger.attack_tick = sim.tick
+	view._update_combat_look()
+	var first_ok: bool = swing_view.sprite.animation == "attack" and swing_view.sprite.frame == 0
+	swing_view.sprite.frame = 3  # mid-swing...
+	swinger.attack_tick = sim.tick - 1  # ...a new swing comes in
+	swinger.hurt_tick = sim.tick  # hit at the same moment: the swing still shows
+	view._update_combat_look()
+	check("each swing starts the attack animation from its wind-up (and beats a flinch)",
+			first_ok and swing_view.sprite.animation == "attack" and swing_view.sprite.frame == 0
+			and not swing_view.sprite.sprite_frames.get_animation_loop("attack"))
+	swinger.target = 0
+	swinger.attack_tick = -1000
+	swinger.hurt_tick = -1000
 
 	# Controls: Attack button then tap the ground = attack-move; tapping an
 	# enemy with units selected = attack it.

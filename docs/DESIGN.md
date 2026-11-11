@@ -34,7 +34,7 @@
 
 ## Units and orders (prototype)
 - Each side starts with 4 rocks, 4 papers, 4 scissors.
-- Unit art: animated hand sprites (idle / attack / defend, 5 frames each) on a team-coloured base (pink vs blue). Source sheet in `art_source/hands_sheet.png`; `tools/cut_hand_sprites.py` cuts it into `assets/units/hands.png`. Units face the way they walk and **hop** while walking (base shrinks like a shadow at the top of a hop, slight squash and stretch; each unit at its own pace; it finishes the hop and lands when it stops).
+- Unit art: animated hand sprites (idle / attack / defend / death, 5 frames each) on a team-coloured base (pink vs blue), all in `assets/units/hands.png`. Idle and defend come from `art_source/hands_sheet.png` (`tools/cut_hand_sprites.py`); attack (wind-up, lunge with a motion trail, recover) and death (keels over, X eyes) from `art_source/attack_sheet.png` and `death_sheet.png` (`tools/cut_grid_sprites.py`, for sheets with one kind per row on a white grid). Units face the way they walk and **hop** while walking (base shrinks like a shadow at the top of a hop, slight squash and stretch; each unit at its own pace; it finishes the hop and lands when it stops).
 - **One finger:** tap your unit to select it; draw a loop to lasso; tap the ground to move the selection there (they spread into a square formation).
 - Selection is shared by all panes: select in one pane, tap the destination in another.
 - Selection bar (bottom): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type; **Attack** arms an attack-move for the next ground tap; Clear to deselect.
@@ -57,7 +57,7 @@
   - **Attack** (tap an enemy with units selected; red ring on the enemy): hunt down that unit until it's dead.
 - Charging a mirrored army with attack-move is a roughly even trade; defenders keep a slight edge (they're already in position).
 - All hits in a tick land at once (no first-strike advantage from unit ids).
-- Look: attack animation when swinging, crying defend animation when hit, HP bar once damaged, floating damage numbers (big red for counter hits), fade-out on death. Fallen units leave the selection.
+- Look: every swing plays the attack animation once from its wind-up (a swing shows over a flinch), crying defend animation when hit, HP bar once damaged, floating damage numbers (big red for counter hits). A fallen unit plays its death animation, lies there half a second, then fades. Fallen units leave the selection.
 - `combat_enabled` switch on the sim (e.g. for early tutorial steps).
 
 ## Economy (prototype)
