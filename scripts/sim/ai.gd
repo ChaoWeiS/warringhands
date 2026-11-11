@@ -16,8 +16,9 @@ extends RefCounted
 ##   - attacks: sends waves at the enemy HQ, the first after FIRST_WAVE ticks,
 ##     each one bigger than the last.
 
-## Think once a second.
+## Think once a second, starting 2 seconds in.
 const INTERVAL := 20
+const START := 40
 ## First attack after 2.5 minutes, then every 45 s (if the army is big enough).
 const FIRST_WAVE := 3000
 const WAVE_GAP := 900

@@ -332,7 +332,7 @@ func _step() -> void:
 	var ai_teams: Array = _ais.keys()
 	ai_teams.sort()
 	for team in ai_teams:
-		if tick % AI.INTERVAL == team:
+		if tick >= AI.START and tick % AI.INTERVAL == team:
 			_ais[team].think(self)
 	for u in units:
 		u.px = u.x
