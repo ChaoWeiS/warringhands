@@ -18,6 +18,7 @@ bottom of the atlas cell.
 """
 from PIL import Image
 import numpy as np, sys
+from PIL import ImageDraw
 from scipy import ndimage as ndi
 
 CELL = 192
@@ -90,6 +91,24 @@ def cut(x0, x1, y0, y1):
     return np.dstack([rgb, alpha * 255]).astype(np.uint8), solid
 
 
+# Drawing mistakes to erase, per frame (kind, animation, frame): polygons in
+# sheet pixels. Paper idle 4: a stray sliver of a finger between the thumb
+# and the first finger.
+ERASE = {
+    (1, 0, 3): [[(501, 493), (511, 492), (511, 499), (511, 515), (513, 521), (513, 529), (508, 529), (502, 519), (501, 505)]],
+}
+
+
+def erase(rgba, polygons, x0, y0):
+    mask = Image.new('L', (rgba.shape[1], rgba.shape[0]), 0)
+    draw = ImageDraw.Draw(mask)
+    for poly in polygons:
+        draw.polygon([(x - x0, y - y0) for x, y in poly], fill=255)
+    out = rgba.copy()
+    out[np.array(mask) > 0] = 0
+    return out
+
+
 atlas = Image.new('RGBA', (CELL * 5, CELL * 15), (0, 0, 0, 0))
 clipped = []
 for k, (ry0, ry1) in enumerate(ROWS):
@@ -109,6 +128,8 @@ for k, (ry0, ry1) in enumerate(ROWS):
     for state, panel in enumerate(PANELS):
         for f, (x0, x1) in enumerate(cells(panel, y0, y1)):
             rgba, _ = cut(x0, x1, y0, y1)
+            if (k, state, f) in ERASE:
+                rgba = erase(rgba, ERASE[(k, state, f)], x0, y0)
             img = Image.fromarray(rgba, 'RGBA')
             img = img.resize((round(img.width * s), round(img.height * s)), Image.LANCZOS)
             # Cell centre on the atlas cell centre; ground line on GROUND.

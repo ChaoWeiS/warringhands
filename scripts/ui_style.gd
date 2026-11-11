@@ -131,10 +131,6 @@ static func icon_button(icon_name: String) -> Button:
 	return b
 
 
-static func set_button_icon(b: Button, icon_name: String) -> void:
-	b.icon = BUTTON_ICONS[icon_name]
-
-
 ## A small picture for inside a button's content.
 static func icon_rect(texture: Texture2D, size: float) -> TextureRect:
 	var t := TextureRect.new()

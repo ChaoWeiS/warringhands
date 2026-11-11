@@ -267,11 +267,11 @@ func _build_build_menu() -> void:
 	build_menu.alignment = BoxContainer.ALIGNMENT_END
 	# Placed each frame by _layout_left(): Build about a third of the way
 	# down on the left, its options stacking upwards.
-	# Hammer and pickaxe; the "no" sign while picking / placing (cancel).
+	# Hammer and pickaxe (grows a little while picking / placing; tap it
+	# again to stop).
 	_build_toggle = UI.icon_button("build")
 	_build_toggle.tooltip_text = "Build"
 	_build_toggle.toggle_mode = true
-	_build_toggle.toggled.connect(func(on): UI.set_button_icon(_build_toggle, "cancel" if on else "build"))
 	_build_toggle.toggled.connect(func(on):
 		if not on:
 			_armed_build = ""
@@ -313,7 +313,6 @@ func _show_build_options(on: bool) -> void:
 		_build_options[btype].visible = on
 	if not on and _armed_build == "" and _build_toggle.button_pressed:
 		_build_toggle.set_pressed_no_signal(false)
-		UI.set_button_icon(_build_toggle, "build")
 		_build_toggle.scale = Vector2.ONE
 
 
