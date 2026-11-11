@@ -6,8 +6,7 @@ extends Node3D
 ##                                    (pines with a log pile).
 ##   Metal (scissors gather fastest): crystal clusters on rocks.
 ##
-## Stone, metal and lumber camps sit on a tinted patch of ground with a
-## floating badge (resource colour + amount left). Forest trees are drawn in
+## Stone, metal and lumber camps carry a floating badge (resource colour + amount left). Forest trees are drawn in
 ## two batches (one per pine picture) so the hundreds of them stay cheap; a
 ## tree that's been cut down shrinks away, and its ground opens up.
 
@@ -156,20 +155,6 @@ func _make(n: Dictionary) -> Dictionary:
 	var root := Node3D.new()
 	root.position = Vector3(n.x / float(sim.SCALE), 0, n.z / float(sim.SCALE))
 	add_child(root)
-	var radius: float = n.radius / float(sim.SCALE)
-	var color: Color = UI.RES_COLORS[n.res]
-
-	# Tinted ground patch, so the spot reads as "something here".
-	var patch := MeshInstance3D.new()
-	var disc := CylinderMesh.new()
-	disc.top_radius = radius + 3.0
-	disc.bottom_radius = radius + 3.0
-	disc.height = 0.02
-	disc.radial_segments = 32
-	patch.mesh = disc
-	patch.position.y = 0.5  # above the inner grass (0.3)
-	patch.material_override = _material(Color(color, 0.3), true)
-	root.add_child(patch)
 
 	match n.res:
 		0: _make_stone(root)

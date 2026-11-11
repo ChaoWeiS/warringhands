@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Cancel and Settings buttons in the same frame as Build and Attack.
+
+The Build button's frame (rounded border, soft cream face) is taken from
+assets/env/button_build.png, its pick and hammer painted over with the face
+colour, the border turned lilac, and a symbol put in the middle: the red
+"no" sign from the earlier cancel button (art_source/env/button_cancel_sign.png),
+or a gear.
+
+Run from the project root: python3 tools/make_buttons.py
+"""
+import colorsys
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
+from scipy import ndimage as ndi
+
+SIZE = 192
+LILAC_HUE = 268 / 360.0
+
+
+def empty_frame() -> np.ndarray:
+    """The Build button with its tools painted out and its border lilac."""
+    im = np.array(Image.open("assets/env/button_build.png").convert("RGBA")).astype(float)
+    rgb = im[..., :3] / 255.0
+    hsv = np.array([colorsys.rgb_to_hsv(*p) for p in rgb.reshape(-1, 3)]).reshape(rgb.shape)
+    # Border: orange / dark-orange pixels joined to the outside of the button.
+    orange = (hsv[..., 1] > 0.33) & (hsv[..., 0] < 0.13) & (im[..., 3] > 0)
+    outside = im[..., 3] < 10
+    lab, _ = ndi.label(orange | outside)
+    edge_labels = set(np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))) - {0}
+    frame = np.isin(lab, list(edge_labels)) & ~outside
+    # Its antialiased inner edge too (a pixel or two of blend into the face).
+    frame_wide = ndi.binary_dilation(frame, iterations=2) & ~outside
+    face = ndi.binary_fill_holes(frame | outside) == False  # noqa: E712
+    face = ~(frame | outside)
+    # The face: soft cream, a touch darker towards the top (like the art).
+    cream_top = np.array([253, 236, 203]) / 255.0
+    cream = np.array([252, 240, 213]) / 255.0
+    ys = np.linspace(0, 1, SIZE)[:, None, None]
+    shade = np.clip((ys - 0.1) / 0.15, 0, 1)
+    face_rgb = cream_top * (1 - shade) + cream * shade
+    out = rgb.copy()
+    out[face] = np.broadcast_to(face_rgb, rgb.shape)[face]
+    # Blend pixels on the inner edge of the border towards the face.
+    blend = frame_wide & ~frame
+    out[blend] = (out[blend] + np.broadcast_to(face_rgb, rgb.shape)[blend]) / 2
+    # Border to lilac: same lightness pattern, lilac hue, softer colour.
+    for y, x in zip(*np.nonzero(frame | blend)):
+        h, s, v = colorsys.rgb_to_hsv(*out[y, x])
+        if s > 0.12:
+            out[y, x] = colorsys.hsv_to_rgb(LILAC_HUE, min(1.0, s * 0.42), min(1.0, v * (0.98 if s < 0.7 else 0.62)))
+    alpha = im[..., 3:4] / 255.0
+    return np.concatenate([out, alpha], axis=2)
+
+
+def no_sign() -> Image.Image:
+    """The red no sign (with its dark outline) from the old cancel art."""
+    src = Image.open("art_source/env/button_cancel_sign.png").convert("RGBA").resize((SIZE, SIZE), Image.LANCZOS)
+    a = np.array(src).astype(int)
+    red = (a[..., 0] > 200) & (a[..., 1] < 130) & (a[..., 2] < 130)
+    centre = np.zeros(red.shape, bool)
+    centre[40:152, 40:152] = True
+    red &= centre
+    ys, xs = np.nonzero(red)
+    cy, cx = ys.mean(), xs.mean()
+    r = np.percentile(np.sqrt((ys - cy) ** 2 + (xs - cx) ** 2), 99.5) + 4.0  # + the outline
+    mask = Image.new("L", (SIZE * 4, SIZE * 4), 0)
+    ImageDraw.Draw(mask).ellipse([(cx - r) * 4, (cy - r) * 4, (cx + r) * 4, (cy + r) * 4], fill=255)
+    mask = mask.resize((SIZE, SIZE), Image.LANCZOS)
+    # Cream inside the ring: make it the face's cream.
+    inside = (a[..., 0] > 235) & (a[..., 1] > 225) & (a[..., 2] > 190)
+    a[inside, :3] = [252, 240, 213]
+    sign = Image.fromarray(a.astype(np.uint8), "RGBA")
+    sign.putalpha(mask)
+    # Centre it on the button.
+    out = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    out.alpha_composite(sign, (round(SIZE / 2 - cx), round(SIZE / 2 - cy)))
+    return out
+
+
+def gear() -> Image.Image:
+    """A soft blue-grey gear with a dark outline, drawn big then shrunk."""
+    k = 4
+    big = SIZE * k
+    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    c = big / 2
+    teeth, r_out, r_in, r_hole = 8, 58 * k, 44 * k, 17 * k
+    pts = []
+    for i in range(teeth * 4):
+        ang = i / (teeth * 4) * 2 * np.pi
+        r = r_out if (i % 4) in (1, 2) else r_in
+        pts.append((c + r * np.cos(ang), c + r * np.sin(ang)))
+    outline = (92, 37, 28, 255)
+    d = ImageDraw.Draw(img)
+    d.polygon(pts, fill=outline)
+    inner = Image.new("L", (big, big), 0)
+    shrink = [(c + (x - c) * 0.9, c + (y - c) * 0.9) for x, y in pts]
+    ImageDraw.Draw(inner).polygon(shrink, fill=255)
+    body = Image.new("RGBA", (big, big), (176, 183, 214, 255))
+    img.paste(body, (0, 0), inner)
+    d = ImageDraw.Draw(img)
+    d.ellipse([c - r_hole - 5 * k, c - r_hole - 5 * k, c + r_hole + 5 * k, c + r_hole + 5 * k], fill=outline)
+    d.ellipse([c - r_hole, c - r_hole, c + r_hole, c + r_hole], fill=(252, 240, 213, 255))
+    # A highlight on the upper left.
+    hl = Image.new("L", (big, big), 0)
+    ImageDraw.Draw(hl).pieslice([c - r_in * 0.8, c - r_in * 0.8, c + r_in * 0.8, c + r_in * 0.8], 190, 260, fill=110)
+    hl = hl.filter(ImageFilter.GaussianBlur(6 * k))
+    shine = Image.new("RGBA", (big, big), (255, 255, 255, 255))
+    shine.putalpha(Image.fromarray((np.array(hl) * (np.array(inner) > 0)).astype(np.uint8)))
+    img.alpha_composite(shine)
+    return img.resize((SIZE, SIZE), Image.LANCZOS)
+
+
+def save(symbol: Image.Image, path: str) -> None:
+    frame = Image.fromarray((empty_frame() * 255).round().astype(np.uint8), "RGBA")
+    frame.alpha_composite(symbol)
+    frame.save(path)
+    print("wrote", path)
+
+
+if __name__ == "__main__":
+    save(no_sign(), "assets/env/button_cancel.png")
+    save(gear(), "assets/env/button_settings.png")

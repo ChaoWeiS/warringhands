@@ -11,9 +11,13 @@ signal closed
 const UI := preload("res://scripts/ui_style.gd")
 const FILE := "user://settings.cfg"
 const DEFAULTS := {"music": 0.5, "sfx": 1.0}
+## On / off options (saved under "options").
+const OPTION_DEFAULTS := {"minimap": true}
+static var _options := {}  # read once, then kept here
 
 var _music_slider: HSlider
 var _sfx_slider: HSlider
+var _minimap_toggle: CheckButton
 ## Called (with no arguments) to play a sample voice at the new volume.
 var preview_sfx: Callable = func(): pass
 
@@ -42,6 +46,24 @@ static func get_volume(which: String) -> float:
 	if cfg.load(FILE) != OK:
 		return DEFAULTS[which]
 	return clampf(float(cfg.get_value("audio", which, DEFAULTS[which])), 0.0, 1.0)
+
+
+static func get_option(which: String) -> bool:
+	if not _options.has(which):
+		var cfg := ConfigFile.new()
+		var saved: Variant = OPTION_DEFAULTS[which]
+		if cfg.load(FILE) == OK:
+			saved = cfg.get_value("options", which, saved)
+		_options[which] = bool(saved)
+	return _options[which]
+
+
+static func set_option(which: String, on: bool) -> void:
+	_options[which] = on
+	var cfg := ConfigFile.new()
+	cfg.load(FILE)
+	cfg.set_value("options", which, on)
+	cfg.save(FILE)
 
 
 static func set_volume(which: String, value: float, save: bool = true) -> void:
@@ -95,6 +117,7 @@ func _ready() -> void:
 	_music_slider = _slider_row(column, "Music", "music")
 	_sfx_slider = _slider_row(column, "Sound effects (voices, buildings)", "sfx")
 	_sfx_slider.drag_ended.connect(func(_changed): preview_sfx.call())
+	_minimap_toggle = _toggle_row(column, "Minimap in each pane", "minimap")
 	var done := UI.button(Color("#e7e1f5"), Color("#d6cdef"), 30)
 	done.text = "Done"
 	done.custom_minimum_size.x = 220 * s
@@ -143,6 +166,44 @@ func _slider_row(column: VBoxContainer, text: String, which: String) -> HSlider:
 	row.add_child(percent)
 	column.add_child(row)
 	return slider
+
+
+func _toggle_row(column: VBoxContainer, text: String, which: String) -> CheckButton:
+	var s: float = UI.ui_scale()
+	var toggle := CheckButton.new()
+	toggle.text = text
+	toggle.button_pressed = get_option(which)
+	toggle.focus_mode = Control.FOCUS_NONE
+	toggle.add_theme_font_size_override("font_size", roundi(28 * s))
+	toggle.add_theme_color_override("font_color", UI.TEXT_COLOR)
+	toggle.add_theme_color_override("font_pressed_color", UI.TEXT_COLOR)
+	toggle.add_theme_color_override("font_hover_color", UI.TEXT_COLOR)
+	toggle.add_theme_color_override("font_hover_pressed_color", UI.TEXT_COLOR)
+	toggle.add_theme_icon_override("checked", _switch(true, s))
+	toggle.add_theme_icon_override("unchecked", _switch(false, s))
+	toggle.toggled.connect(func(on): set_option(which, on))
+	column.add_child(toggle)
+	return toggle
+
+
+## A chunky on/off switch picture.
+static func _switch(on: bool, s: float) -> ImageTexture:
+	var w: int = roundi(88 * s)
+	var h: int = roundi(48 * s)
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var track: Color = Color("#ff9fb4") if on else Color(0.3, 0.27, 0.4, 0.25)
+	var r: float = h * 0.5
+	var knob_x: float = (w - r) if on else r
+	for y in h:
+		for x in w:
+			var p := Vector2(x + 0.5, y + 0.5)
+			var cx: float = clampf(p.x, r, w - r)
+			if p.distance_to(Vector2(cx, r)) <= r:
+				img.set_pixel(x, y, track)
+			var d: float = p.distance_to(Vector2(knob_x, r))
+			if d <= r - 4:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
 
 
 func close() -> void:

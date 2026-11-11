@@ -38,6 +38,7 @@ const Tutorial := preload("res://scripts/tutorial.gd")
 const Sounds := preload("res://scripts/sounds.gd")
 const Music := preload("res://scripts/music.gd")
 const Settings := preload("res://scripts/settings.gd")
+const Minimap := preload("res://scripts/minimap.gd")
 ## How close (pixels) a tap must be to a unit to pick it.
 const TAP_RADIUS := 44.0
 ## Two taps this close in time (ms) and space (px), in the same pane, make a
@@ -64,6 +65,7 @@ var view: Node3D
 var bar: Control
 var buildings_view: Node3D
 var hud: Control
+var minimap: Control
 
 
 func _ready() -> void:
@@ -74,6 +76,11 @@ func _ready() -> void:
 	buildings_view = get_node(buildings_path)
 	hud = get_node(hud_path)
 	hud.setup(sim, player_team)
+	# A small map in the corner of every pane (Settings can turn it off).
+	minimap = Minimap.new()
+	minimap.setup(sim, sim.field, panes)
+	hud.add_child(minimap)
+	hud.move_child(minimap, 0)
 	sim.enable_ai(1 - player_team)  # the computer plays the other side (vs Computer)
 	panes.tapped.connect(_on_tapped)
 	panes.lassoed.connect(_on_lassoed)
