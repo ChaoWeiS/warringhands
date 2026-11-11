@@ -26,15 +26,11 @@ world_path = NodePath("../World")
 [node name="HUD" type="CanvasLayer" parent="."]
 
 [node name="Hint" type="Label" parent="HUD"]
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -74.0
-offset_right = 1400.0
-offset_bottom = -16.0
-grow_vertical = 0
+offset_top = 16.0
+offset_right = 1100.0
+offset_bottom = 74.0
 theme_override_colors/font_color = Color(0.35, 0.33, 0.44, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Grab a side tab and swipe across: cut  ·  Drag a divider: resize, all the way: merge
 Two fingers: pan / pinch zoom"

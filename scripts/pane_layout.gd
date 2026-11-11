@@ -21,15 +21,20 @@ const CameraRig := preload("res://scripts/camera_rig.gd")
 ## Smallest a pane can be (width or height). Smaller panes snap shut.
 @export var min_pane_size: float = 240.0
 @export var max_panes: int = 8
-@export var divider_width: float = 8.0
+@export var divider_width: float = 12.0
 ## How far either side of a divider still counts as grabbing it.
-@export var divider_grab: float = 24.0
-## Grip tab look and size.
+@export var divider_grab: float = 40.0
+## Grip knob drawn in the middle of each divider.
+@export var knob_length: float = 110.0
+@export var knob_thickness: float = 24.0
+## Cut tab look and size.
 @export var tab_length: float = 72.0
 @export var tab_thickness: float = 12.0
-@export var tab_inset: float = 18.0
+## Tabs sit this far in from the pane edge, clear of the divider grab zone.
+@export var tab_inset: float = 58.0
 ## Touch area of a tab: x = along the pane side, y = into the pane.
-@export var tab_touch_size: Vector2 = Vector2(110, 64)
+## Starts just past the divider grab zone.
+@export var tab_touch_size: Vector2 = Vector2(120, 72)
 ## How far across the pane (0-1) a swipe must travel to cut.
 @export var cut_commit: float = 0.45
 
@@ -38,6 +43,7 @@ const SNAP_RANGE := 0.03
 
 const DIVIDER_COLOR := Color("#5f5873")
 const DIVIDER_ACTIVE := Color("#fff3b0")
+const KNOB_DOTS := Color(1, 1, 1, 0.85)
 const TAB_COLOR := Color(1, 1, 1, 0.75)
 const CUT_PENDING := Color("#fff3b0")
 const CUT_READY := Color.WHITE
@@ -120,21 +126,27 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 	var p: Vector2 = event.position
 	if event.pressed:
 		var finger := {"start": p, "pos": p}
-		var tab: Array = _tab_at(p)
-		var split: PaneNode = null if not tab.is_empty() else _divider_at(p)
-		if not tab.is_empty():
+		# Dividers win first (wide grab zone), then cut tabs, then the pane.
+		var split: PaneNode = _divider_at(p)
+		var tab: Array = [] if split != null else _tab_at(p)
+		if split != null:
+			finger.mode = Mode.DIVIDER
+			finger.split = split
+		elif not tab.is_empty() and not _has_other_finger_in(tab[0]):
 			finger.mode = Mode.CUT
 			finger.leaf = tab[0]
 			finger.side = tab[1]
-		elif split != null:
-			finger.mode = Mode.DIVIDER
-			finger.split = split
 		else:
 			var leaf := _leaf_at(p)
 			if leaf == null:
 				return
 			finger.mode = Mode.PANE
 			finger.leaf = leaf
+			# A second finger in a pane means a camera gesture: if the first
+			# finger had started a cut by accident, turn it into a camera finger.
+			for other in _fingers.values():
+				if other.mode == Mode.CUT and other.leaf == leaf:
+					other.mode = Mode.PANE
 		_fingers[event.index] = finger
 		if finger.mode == Mode.PANE:
 			_reset_pinch(finger.leaf)
@@ -186,6 +198,14 @@ func _on_mouse_button(event: InputEventMouseButton) -> void:
 
 
 # --- Camera gestures ---------------------------------------------------------
+
+## True if a finger is already down in this pane (camera or cut).
+func _has_other_finger_in(leaf: PaneNode) -> bool:
+	for finger in _fingers.values():
+		if finger.has("leaf") and finger.leaf == leaf:
+			return true
+	return false
+
 
 func _pane_finger_points(leaf: PaneNode) -> Array:
 	var points: Array = []
@@ -479,15 +499,18 @@ func _tabs(leaf: PaneNode) -> Array:
 	var thick := tab_thickness
 	var along := tab_touch_size.x
 	var into := tab_touch_size.y
+	# Touch areas start just past the divider's grab zone, so grabbing a
+	# divider can never start a cut by accident.
+	var gap: float = divider_grab - divider_width * 0.5 + 2.0
 	return [
 		[Side.LEFT, Rect2(r.position.x + tab_inset, c.y - long / 2, thick, long),
-			Rect2(r.position.x + 4, c.y - along / 2, into, along)],
+			Rect2(r.position.x + gap, c.y - along / 2, into, along)],
 		[Side.RIGHT, Rect2(r.end.x - tab_inset - thick, c.y - long / 2, thick, long),
-			Rect2(r.end.x - 4 - into, c.y - along / 2, into, along)],
+			Rect2(r.end.x - gap - into, c.y - along / 2, into, along)],
 		[Side.TOP, Rect2(c.x - long / 2, r.position.y + tab_inset, long, thick),
-			Rect2(c.x - along / 2, r.position.y + 4, along, into)],
+			Rect2(c.x - along / 2, r.position.y + gap, along, into)],
 		[Side.BOTTOM, Rect2(c.x - long / 2, r.end.y - tab_inset - thick, long, thick),
-			Rect2(c.x - along / 2, r.end.y - 4 - into, along, into)],
+			Rect2(c.x - along / 2, r.end.y - gap - into, along, into)],
 	]
 
 
@@ -513,6 +536,8 @@ func _draw_overlay() -> void:
 	for leaf in _leaves():
 		for tab in _tabs(leaf):
 			_draw_pill(tab[1], TAB_COLOR)
+	for split in _splits():
+		_draw_knob(split)
 
 	for finger in _fingers.values():
 		match finger.mode:
@@ -554,6 +579,21 @@ func _draw_cut_preview(finger: Dictionary) -> void:
 	else:
 		_overlay.draw_dashed_line(a, b, CUT_PENDING, 3.0, 18.0)
 		_overlay.draw_line(a, a.lerp(b, info.progress / cut_commit * 0.5), CUT_PENDING, 6.0)
+
+
+## Grip knob in the middle of a divider, so it reads as "grab me".
+func _draw_knob(split: PaneNode) -> void:
+	var line: Array = _divider_line(split)
+	var mid: Vector2 = (line[0] + line[1]) * 0.5
+	var along: Vector2 = Vector2(0, 1) if split.vertical else Vector2(1, 0)
+	var r: Rect2
+	if split.vertical:
+		r = Rect2(mid.x - knob_thickness / 2, mid.y - knob_length / 2, knob_thickness, knob_length)
+	else:
+		r = Rect2(mid.x - knob_length / 2, mid.y - knob_thickness / 2, knob_length, knob_thickness)
+	_draw_pill(r, DIVIDER_COLOR)
+	for i in [-1, 0, 1]:
+		_overlay.draw_circle(mid + along * (i * 18.0), 3.5, KNOB_DOTS)
 
 
 func _draw_pill(r: Rect2, color: Color) -> void:

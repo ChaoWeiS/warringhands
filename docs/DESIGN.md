@@ -19,8 +19,9 @@
 - **Resize**: drag a divider.
 - **Merge**: drag a divider until one pane closes. Panes too small snap shut.
 - Each pane has its own camera and zoom.
-- Grip tabs sit slightly inside the screen edge, clear of the OS back / home gestures.
-- Dividers can be grabbed anywhere except the tabs. Snap points at 1/3, 1/2, 2/3.
+- Dividers are wide with a dotted grip knob, and can be grabbed anywhere along them (about 40 px either side). Snap points at 1/3, 1/2, 2/3.
+- Cut tabs sit well inside each pane, clear of the divider grab zone (and of the OS back / home gestures at the screen edge).
+- If a finger starts a cut by accident and a second finger lands in the pane, it becomes a normal two-finger pan / zoom instead.
 - Cutting, resizing and merging never move the map: each pane keeps showing exactly what was already under it, and simply reveals or hides more at its edges, at the same zoom. Only the player's own pinch changes zoom, for better orientation.
 - Ideas to explore: drag units from one pane to a destination in another; pin a pane to a group.
 
