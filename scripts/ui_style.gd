@@ -56,6 +56,23 @@ static func kind_icon(kind: int) -> AtlasTexture:
 	return icon
 
 
+## Four corner brackets: the "full screen" sign.
+static func fullscreen_icon() -> ImageTexture:
+	var n := 40
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var c := TEXT_COLOR
+	var arm := 13
+	var w := 4
+	for corner in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+		var x0: int = 2 if corner.x == 0 else n - 2 - arm
+		var y0: int = 2 if corner.y == 0 else n - 2 - arm
+		var ex: int = 2 if corner.x == 0 else n - 2 - w   # vertical stroke x
+		var ey: int = 2 if corner.y == 0 else n - 2 - w   # horizontal stroke y
+		img.fill_rect(Rect2i(x0, ey, arm, w), c)
+		img.fill_rect(Rect2i(ex, y0, w, arm), c)
+	return ImageTexture.create_from_image(img)
+
+
 ## A resource's icon: rocks (stone), logs (wood), ingots (metal).
 static func res_icon(res: int) -> Texture2D:
 	return RES_ICONS[res]

@@ -1,6 +1,7 @@
 extends Control
 ## The economy part of the screen:
-##   - resource counter (top right): stone, wood, metal;
+##   - resource counter (top right): stone, wood, metal; full screen button
+##     under it;
 ##   - Build menu (bottom left): pick Quarry / Paper Mill / Forge, then tap
 ##     the ground to place it;
 ##   - building panel (beside the buildings, when your buildings are selected by
@@ -25,6 +26,7 @@ var sim: Node
 var team := 0
 
 var resource_bar: PanelContainer
+var fullscreen_button: Button
 var build_menu: VBoxContainer
 var building_panel: PanelContainer
 var game_over_screen: Control
@@ -51,6 +53,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_resource_bar()
+	_build_fullscreen_button()
 	_build_build_menu()
 	_build_building_panel()
 	_build_game_over()
@@ -147,7 +150,7 @@ func show_game_over(winner: int) -> void:
 
 ## Controls that touches on the map should ignore.
 func blockers() -> Array:
-	return [resource_bar, build_menu, building_panel, game_over_screen]
+	return [resource_bar, fullscreen_button, build_menu, building_panel, game_over_screen]
 
 
 # --- Building the pieces ---------------------------------------------------------
@@ -178,6 +181,28 @@ func _build_resource_bar() -> void:
 		row.add_child(chip)
 		_res_labels.append(l)
 	add_child(resource_bar)
+
+
+## Full screen on / off (top right, under the resource counter). In a
+## browser this hides the address bar; browsers only allow it from a tap.
+func _build_fullscreen_button() -> void:
+	fullscreen_button = UI.button(Color(1, 1, 1, 0.85), Color("#e7e1f5"))
+	fullscreen_button.icon = UI.fullscreen_icon()
+	fullscreen_button.custom_minimum_size = Vector2(72, 72)
+	fullscreen_button.anchor_left = 1.0
+	fullscreen_button.anchor_right = 1.0
+	fullscreen_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	fullscreen_button.offset_top = 100
+	fullscreen_button.offset_right = -24
+	fullscreen_button.pressed.connect(toggle_fullscreen)
+	# Native apps are full screen already.
+	fullscreen_button.visible = not (OS.has_feature("android") or OS.has_feature("ios"))
+	add_child(fullscreen_button)
+
+
+func toggle_fullscreen() -> void:
+	var full: bool = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 
 func _build_build_menu() -> void:
