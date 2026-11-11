@@ -7,7 +7,7 @@ A touch-first, multiplayer rock-paper-scissors RTS for tablets. Cut your screen 
 See [docs/DESIGN.md](docs/DESIGN.md) for the full design.
 
 ## Status
-Early prototype: an open field with a two-finger pan / pinch-zoom camera.
+Early prototype: an island map with a two-finger pan / pinch-zoom camera.
 
 ## Open the project
 1. Install [Godot 4.6](https://godotengine.org/download) (standard version, not .NET).

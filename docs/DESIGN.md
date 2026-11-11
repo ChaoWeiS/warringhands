@@ -35,11 +35,17 @@
 - **Defence buildings**: ranged attack; units can hide inside. (Idea: the building attacks as whatever gesture is inside.)
 - **Shifter**: change a unit's gesture, with a cooldown (and a short helpless moment while switching).
 
+## Map
+- An **island surrounded by sea** (8192 x 8192 world, sea included). No hard walls: the sea is the boundary.
+- The island looks the same when turned 180°, so two players starting on opposite sides get a fair coastline. Resource spots are mirrored too.
+- Ground units cannot enter the sea; flyers (wood upgrade) can cross it.
+- Later maps: several islands, rivers, cliffs.
+
 ## Matches
 - Win by destroying the enemy HQ, or when the opponent concedes.
 - 10-30 minutes. Ideas against stalemates: HQ armor decays after ~20 min; resource spots run out.
 - Tutorial introduces things gradually: open field, then gathering, factories, panes, upgrades, terrain, defences, Shifter.
-- Terrain ideas: water slows paper, rocky ground slows scissors.
+- Terrain ideas: shallow water slows paper, rocky ground slows scissors.
 
 ## Open questions
 - Who can hit flyers?

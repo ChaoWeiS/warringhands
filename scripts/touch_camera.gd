@@ -8,11 +8,11 @@ extends Camera2D
 ## On desktop (for testing): mouse wheel zooms, right-drag pans.
 
 ## Most zoomed out (smaller = see more of the map).
-@export var min_zoom: float = 0.25
+@export var min_zoom: float = 0.1
 ## Most zoomed in.
 @export var max_zoom: float = 2.5
 ## The playable map area. The camera never shows beyond it.
-@export var map_rect: Rect2 = Rect2(0, 0, 4096, 4096)
+@export var map_rect: Rect2 = Rect2(0, 0, 8192, 8192)
 
 var _touches: Dictionary = {}  # finger index -> screen position
 var _last_center: Vector2 = Vector2.ZERO
