@@ -23,7 +23,7 @@ const SPACING := 1000
 enum Kind { ROCK, PAPER, SCISSORS }
 
 ## Movement per tick, by kind (placeholder numbers until balancing).
-const SPEED := [110, 130, 120]
+const SPEED := [72, 85, 78]
 const UNITS_PER_KIND := 4
 
 ## The island, for "is this on land?".

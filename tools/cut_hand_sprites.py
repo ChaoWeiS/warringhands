@@ -20,6 +20,10 @@ skin = (R > 170) & (G > 110) & ((R - B) > 35) & (R >= G)
 OUTLINE = 80      # darker than this next to a hand = its outline
 SOFT = 110        # between OUTLINE and SOFT = half-transparent edge
 OUTLINE_RGB = np.array([45, 24, 20])
+# The outline is very dark (brown, or navy on some frames). Red anger marks
+# are dark by brightness but have a bright red channel, so they're excluded.
+# (Blue motion lines are much lighter, so they never count as outline.)
+outline_px = (lum < OUTLINE) & (np.max(im, axis=2) < 130)
 
 lab, n = ndi.label(strict)
 sizes = ndi.sum(strict, lab, range(1, n + 1)); objs = ndi.find_objects(lab)
@@ -62,15 +66,21 @@ for k, clusters in enumerate(frames_by_row):
         # The dark outline is the boundary: bright skin + nearby dark outline,
         # tiny gaps closed, then everything inside filled (shaded skin, faces).
         core = np.isin(lab, cl['ids'])
-        dark = (lum < OUTLINE) & ndi.binary_dilation(core, iterations=14) & mine
+        dark = outline_px & ndi.binary_dilation(core, iterations=14) & mine
         shape = ndi.binary_closing(core | dark, iterations=2)
         solid = ndi.binary_fill_holes(shape) & mine
         lb, nb = ndi.label(solid)
         if nb > 1:
             keep = np.unique(lb[core & solid]); keep = keep[keep > 0]
             solid = np.isin(lb, keep)
-        # Drop thin dark specks that aren't attached to the outline ring.
-        solid = ndi.binary_opening(solid, iterations=1) | (solid & ndi.binary_dilation(core, iterations=3))
+        # Trim thin strokes sticking out of the silhouette (motion curls,
+        # ghost marks): anything thinner than ~6 px that isn't hand.
+        disk = ndi.generate_binary_structure(2, 1)
+        opened = ndi.binary_opening(solid, structure=disk, iterations=3)
+        solid = opened | (solid & ndi.binary_dilation(core, iterations=2))
+        lb, nb = ndi.label(solid)
+        if nb > 1:
+            sz = ndi.sum(solid, lb, range(1, nb + 1)); solid = lb == (np.argmax(sz) + 1)
         # Rock (a convex fist): patch notches where the artwork's outline is
         # open, by filling to the convex outline, painting skin from the
         # surrounding hand and outline along the patch's edge.
@@ -97,6 +107,12 @@ for k, clusters in enumerate(frames_by_row):
             _, (iy, ix) = ndi.distance_transform_edt(~skin_px, return_indices=True)
             rgb[patch] = src[iy[patch], ix[patch]]
             rgb[patch_edge] = OUTLINE_RGB
+            # The art's own broken outline now sits inside the patched fist,
+            # doubling the line: paint it over with nearby skin.
+            band = solid & ~ndi.binary_erosion(solid, iterations=4)
+            near_patch = ndi.binary_dilation(patch | patch_edge, iterations=7)
+            stray = solid & ~band & near_patch & (lum < 120) & ~patch
+            rgb[stray] = src[iy[stray], ix[stray]]
         ys, xs = np.nonzero(alpha > 0)
         y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
         rgba = np.dstack([rgb[y0:y1, x0:x1], alpha[y0:y1, x0:x1] * 255]).astype(np.uint8)

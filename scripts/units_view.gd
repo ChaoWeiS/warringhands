@@ -28,7 +28,7 @@ const SPRITE_PIXEL_SIZE := 0.06
 const SPRITE_HEIGHT := 3.0
 ## Walking hops: how high (map units) and how many per second.
 const HOP_HEIGHT := 1.6
-const HOPS_PER_SECOND := 3.2
+const HOPS_PER_SECOND := 2.7
 ## How much the team base shrinks at the top of a hop (like a shadow).
 const HOP_BASE_SHRINK := 0.25
 ## A little squash on landing and stretch in the air.
