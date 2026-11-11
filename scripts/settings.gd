@@ -10,7 +10,7 @@ signal closed
 
 const UI := preload("res://scripts/ui_style.gd")
 const FILE := "user://settings.cfg"
-const DEFAULTS := {"music": 0.6, "sfx": 0.9}
+const DEFAULTS := {"music": 0.5, "sfx": 1.0}
 
 var _music_slider: HSlider
 var _sfx_slider: HSlider

@@ -55,7 +55,7 @@ const CHORUS_PITCH := 0.05
 ## Combat: at most this many sounds of one kind per window (s).
 const COMBAT_LIMIT := 4
 const COMBAT_WINDOW := 0.3
-const BASE_DB := -4.0
+const BASE_DB := 0.0
 
 ## Is a point in the world on screen (in any pane)? Set by the game.
 var on_screen: Callable = func(_pos: Vector3) -> bool: return true

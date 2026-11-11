@@ -94,9 +94,14 @@ def cut(x0, x1, y0, y1):
 
 # Drawing mistakes to erase, per frame (kind, animation, frame): polygons in
 # sheet pixels. Paper idle 4: a stray sliver of a finger between the thumb
-# and the first finger.
+# and the first finger. Paper idle 1, 3, 5: drawn with a thumb and five
+# fingers; the small extra finger above the thumb goes (the next finger's
+# outline is shared, so the hand stays outlined).
 ERASE = {
     (1, 0, 3): [[(501, 493), (511, 492), (511, 499), (511, 515), (513, 521), (513, 529), (508, 529), (502, 519), (501, 505)]],
+    (1, 0, 0): [[(143, 530), (152, 525), (160, 526), (163, 532), (164, 545), (165, 558), (166, 566), (158, 567), (150, 567), (143, 560)]],
+    (1, 0, 2): [[(377, 532), (386, 526), (394, 527), (397, 534), (398, 545), (399, 556), (400, 563), (392, 564), (383, 563), (377, 556)]],
+    (1, 0, 4): [[(613, 534), (621, 527), (629, 528), (632, 535), (633, 547), (634, 558), (635, 565), (626, 566), (617, 565), (612, 556)]],
 }
 
 

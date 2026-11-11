@@ -10,6 +10,8 @@ const TRACKS := {
 	"battle": preload("res://assets/music/antes_de_la_batalla.ogg"),
 }
 const FADE := 1.2
+## The music sits under the voices and effects (at slider 100%).
+const LEVEL_DB := -8.0
 
 var current := ""
 var _players: Array = []
@@ -40,7 +42,7 @@ func play(track: String) -> void:
 	new.volume_db = -40.0
 	new.play()
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(new, "volume_db", 0.0, FADE)
+	tween.tween_property(new, "volume_db", LEVEL_DB, FADE)
 	if old.playing:
 		tween.tween_property(old, "volume_db", -80.0, FADE)
 		tween.chain().tween_callback(old.stop)
