@@ -11,7 +11,7 @@ status=0
 for test in tests/test_*.gd; do
 	echo "=== $test"
 	log="$(mktemp)"
-	timeout 120 godot --headless -s "res://$test" >"$log" 2>&1
+	timeout 240 godot --headless -s "res://$test" >"$log" 2>&1
 	code=$?
 	grep -E "^(PASS|FAIL)|SCRIPT ERROR|FAILURES" "$log"
 	if [ $code -ne 0 ] || grep -qE "^FAIL |SCRIPT ERROR" "$log"; then

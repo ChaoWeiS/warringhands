@@ -20,26 +20,80 @@ const SCALE := 100
 const SIM_CELL := CELL * SCALE
 
 var size: int = 0
-var _walk := PackedByteArray()
+var _walk := PackedByteArray()        # terrain + buildings (1 = walkable)
+var _terrain := PackedByteArray()     # terrain only, to restore when a building goes
 var _astar := AStarGrid2D.new()
 
 
-func _init(field: Node, map_size: int) -> void:
+## Builds the grid from the island's shapes (slow-ish; done once per island,
+## then each game takes a copy() so its buildings don't leak into others).
+func _init(field: Node = null, map_size: int = 0) -> void:
+	if field == null:
+		return
 	size = map_size / CELL
 	_walk.resize(size * size)
+	for y in size:
+		for x in size:
+			var centre := Vector2((x + 0.5) * CELL, (y + 0.5) * CELL)
+			_walk[y * size + x] = 1 if field.is_walkable(centre) else 0
+	_terrain = _walk.duplicate()
+	_setup_astar()
+
+
+## A separate grid with the same terrain (for one game's buildings).
+func copy() -> RefCounted:
+	var other = get_script().new()
+	other.size = size
+	other._walk = _terrain.duplicate()
+	other._terrain = _terrain
+	other._setup_astar()
+	return other
+
+
+func _setup_astar() -> void:
 	_astar.region = Rect2i(0, 0, size, size)
 	_astar.cell_size = Vector2(1, 1)
 	_astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	_astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	_astar.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	_astar.update()
-	for y in size:
-		for x in size:
-			var centre := Vector2((x + 0.5) * CELL, (y + 0.5) * CELL)
-			var ok: bool = field.is_walkable(centre)
-			_walk[y * size + x] = 1 if ok else 0
-			if not ok:
-				_astar.set_point_solid(Vector2i(x, y), true)
+	for i in _walk.size():
+		if _walk[i] == 0:
+			_astar.set_point_solid(Vector2i(i % size, i / size), true)
+
+
+## Cells whose centre is within `radius` (sim units) of a point.
+func cells_in_circle(cx: int, cz: int, radius: int) -> Array:
+	var cells: Array = []
+	var c := cell_of(cx, cz)
+	var reach: int = radius / SIM_CELL + 1
+	for y in range(c.y - reach, c.y + reach + 1):
+		for x in range(c.x - reach, c.x + reach + 1):
+			if x < 0 or y < 0 or x >= size or y >= size:
+				continue
+			var centre := cell_centre(Vector2i(x, y))
+			var dx: int = centre.x - cx
+			var dz: int = centre.y - cz
+			if dx * dx + dz * dz <= radius * radius:
+				cells.append(Vector2i(x, y))
+	return cells
+
+
+## True if every cell in the circle is open terrain (no water, trees...).
+func circle_is_open(cx: int, cz: int, radius: int) -> bool:
+	for cell in cells_in_circle(cx, cz, radius):
+		if not is_walkable_cell(cell):
+			return false
+	return true
+
+
+## Marks a building's footprint as blocked (or open again when it's gone).
+func set_blocked(cx: int, cz: int, radius: int, blocked: bool) -> void:
+	for cell in cells_in_circle(cx, cz, radius):
+		var i: int = cell.y * size + cell.x
+		var open: bool = (not blocked) and _terrain[i] == 1
+		_walk[i] = 1 if open else 0
+		_astar.set_point_solid(cell, not open)
 
 
 func is_walkable_cell(cell: Vector2i) -> bool:

@@ -6,6 +6,8 @@
 [ext_resource type="Script" path="res://scripts/units_view.gd" id="4_units"]
 [ext_resource type="Script" path="res://scripts/selection_bar.gd" id="5_bar"]
 [ext_resource type="Script" path="res://scripts/game_controller.gd" id="6_game"]
+[ext_resource type="Script" path="res://scripts/buildings_view.gd" id="7_buildings"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="8_hud"]
 
 [node name="Main" type="Node"]
 
@@ -19,6 +21,10 @@ render_target_update_mode = 0
 
 [node name="Field" type="Node3D" parent="World"]
 script = ExtResource("1_field")
+
+[node name="Buildings" type="Node3D" parent="World"]
+script = ExtResource("7_buildings")
+sim_path = NodePath("../../Sim")
 
 [node name="Units" type="Node3D" parent="World"]
 script = ExtResource("4_units")
@@ -44,12 +50,16 @@ offset_right = 1100.0
 offset_bottom = 100.0
 theme_override_colors/font_color = Color(0.35, 0.33, 0.44, 1)
 theme_override_font_sizes/font_size = 20
-text = "Tap a unit or draw a loop to select  ·  Tap ground to move, an enemy to attack  ·  Attack button + tap: charge
-Grab a side tab and swipe across: cut  ·  Drag a divider: resize, all the way: merge
-Two fingers: pan / pinch zoom"
+text = "Tap a unit or draw a loop to select  ·  Tap ground to move, an enemy to attack, a resource to gather
+Attack button + tap: charge  ·  Build + pick + tap: place a factory  ·  Tap your factory to train
+Side tab swipe: cut  ·  Divider: resize / merge  ·  Two fingers: pan / zoom"
 
 [node name="SelectionBar" type="HBoxContainer" parent="HUD"]
 script = ExtResource("5_bar")
+
+[node name="Economy" type="Control" parent="HUD"]
+mouse_filter = 2
+script = ExtResource("8_hud")
 
 [node name="Game" type="Node" parent="."]
 script = ExtResource("6_game")
@@ -57,3 +67,5 @@ panes_path = NodePath("../Panes")
 sim_path = NodePath("../Sim")
 view_path = NodePath("../World/Units")
 bar_path = NodePath("../HUD/SelectionBar")
+buildings_path = NodePath("../World/Buildings")
+hud_path = NodePath("../HUD/Economy")

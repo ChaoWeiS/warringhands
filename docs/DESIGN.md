@@ -60,11 +60,15 @@
 - Look: attack animation when swinging, crying defend animation when hit, HP bar once damaged, floating damage numbers (big red for counter hits), fade-out on death. Fallen units leave the selection.
 - `combat_enabled` switch on the sim (e.g. for early tutorial steps).
 
-## Economy
-- Resources: **stone** (rock), **wood** (paper), **metal** (scissors), scattered on the map.
-- All units can gather; each is best at its own resource. Gatherers carry back to base (StarCraft-style).
-- Players build their own factories (not captured):
-  - Quarry: fists, Paper Mill: open hands, Forge: scissors.
+## Economy (prototype)
+- Each side has an **HQ** (lose it, lose the game) and starts with **300** stone, wood and metal.
+- **Gathering:** tap a resource spot with units selected. They gather 20 at a time and carry it to the HQ, then repeat. Own resource is twice as fast (2 s vs 4 s): rocks-stone, papers-wood, scissors-metal. Gatherers don't go looking for fights but fight back if attacked.
+- **Factories** (Build button, pick one, tap open ground): Quarry (150 stone, makes rocks), Paper Mill (150 wood, papers), Forge (150 metal, scissors). 10 s to build; can't train until finished.
+- **Training:** tap your factory, then the + button: 60 of its resource, 5 s each, up to 5 queued. New units walk out towards the island centre.
+- Buildings block walking, push units out, can be attacked (10 per hit) and show HP bars. HQ 2000 HP, factories 800.
+- Destroying the enemy HQ = **Victory**; losing yours = **Defeat** (Play again).
+- Resource spots hold 2000 (stone, wood) / 1000 (metal) and disappear when empty.
+- Still to come: depleted spots should vanish visually; more drop-off points.
 
 ## Upgrades and buildings
 - Upgrade with wood: **flight**. With stone: **tougher**. With metal: **hits harder**.

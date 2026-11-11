@@ -118,6 +118,20 @@ func build() -> void:
 		_blocked_circles.append({"center": c + spot, "radius": 5.0 + UNIT_CLEARANCE})
 
 
+## Resource spots on both sides: [{res, pos, radius}] (map units).
+## res: 0 stone, 1 wood, 2 metal (matching rock, paper, scissors).
+func resource_spots() -> Array:
+	var c := get_center()
+	var spots: Array = []
+	for spot in STONES:
+		spots.append({"res": 0, "pos": c + spot, "radius": 13.0})
+	for spot in WOODS:
+		spots.append({"res": 1, "pos": c + spot, "radius": 16.0})
+	for spot in METALS:
+		spots.append({"res": 2, "pos": c + spot, "radius": 5.0})
+	return spots
+
+
 ## Can a ground unit stand here? (On the island, away from the shore, and
 ## not in a lake, forest, plateau or resource prop.)
 func is_walkable(p: Vector2) -> bool:

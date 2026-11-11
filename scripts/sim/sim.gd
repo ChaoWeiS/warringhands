@@ -16,11 +16,21 @@ extends Node
 ##   - move: go there first, fight after (but fight back if attacked);
 ##   - attack-move: go there, fighting any enemy met on the way, then carry on;
 ##   - attack: go after one particular enemy until it's dead.
+##
+## Economy: each side has an HQ and a stock of stone / wood / metal. Units
+## gather from resource spots and carry it to their HQ (twice as fast for
+## their own resource: rock-stone, paper-wood, scissors-metal). Factories
+## (quarry, mill, forge) are built from resources and train rocks, papers and
+## scissors. Buildings block movement and can be attacked. Lose your HQ and
+## you lose the game.
 
 signal ticked
 ## A unit was hit. strength: 1 = counter hit, 0 = even, -1 = countered.
 signal unit_hit(target_id: int, attacker_id: int, damage: int, strength: int)
 signal unit_died(id: int)
+signal building_added(id: int)
+signal building_destroyed(id: int)
+signal game_over(winner: int)
 
 const NavGrid := preload("res://scripts/sim/nav_grid.gd")
 
@@ -65,6 +75,29 @@ const LEASH := 5000
 ## How often a chasing unit re-plans its route to a moving target.
 const REPATH_TICKS := 10
 
+# --- Economy (placeholder numbers until balancing) ---
+enum Res { STONE, WOOD, METAL }
+const START_RESOURCES := 300
+## Carried per trip, and ticks to gather it (own resource / other resource).
+const CARRY := 20
+const GATHER_TICKS_OWN := 40
+const GATHER_TICKS_OTHER := 80
+const NODE_AMOUNT := [2000, 2000, 1000]  # per spot: stone, wood, metal
+## Buildings: footprint radius (sim units), HP, cost, build time (ticks).
+## Factories make the unit of the same kind as their resource.
+const BUILDINGS := {
+	"hq": {"radius": 900, "hp": 2000, "cost": 0, "res": -1, "build": 0, "kind": -1},
+	"quarry": {"radius": 650, "hp": 800, "cost": 150, "res": Res.STONE, "build": 200, "kind": Kind.ROCK},
+	"mill": {"radius": 650, "hp": 800, "cost": 150, "res": Res.WOOD, "build": 200, "kind": Kind.PAPER},
+	"forge": {"radius": 650, "hp": 800, "cost": 150, "res": Res.METAL, "build": 200, "kind": Kind.SCISSORS},
+}
+const FACTORY_FOR_KIND := ["quarry", "mill", "forge"]
+const UNIT_COST := 60
+const TRAIN_TICKS := 100
+const QUEUE_MAX := 5
+## Where each HQ stands (offset from the island centre, mirrored for team 1).
+const HQ_OFFSET := Vector2i(-200, -30)
+
 ## Movement per tick, by kind (placeholder numbers until balancing).
 const SPEED := [72, 85, 78]
 const UNITS_PER_KIND := 4
@@ -85,8 +118,18 @@ var combat_enabled: bool = true
 ## heading to dest, fighting on the way. focus = target was picked by the
 ## player (chase it anywhere). chasing = current path leads to the target.
 var units: Array = []
+## Every building: {id, team, btype, x, z, radius, hp, max_hp, progress,
+## queue (kinds), train}. progress < build time = still under construction.
+var buildings: Array = []
+## Resource spots: {id, res, x, z, radius, amount}.
+var nodes: Array = []
+## Resources per team: [stone, wood, metal].
+var resources: Array = [[START_RESOURCES, START_RESOURCES, START_RESOURCES],
+		[START_RESOURCES, START_RESOURCES, START_RESOURCES]]
+## -1 while playing; then the winning team.
+var winner: int = -1
 
-var _by_id: Dictionary = {}
+var _by_id: Dictionary = {}  # units and buildings
 var _next_id: int = 1
 var _pending: Dictionary = {}  # tick -> Array of commands
 var _accum: float = 0.0
@@ -102,6 +145,8 @@ func _ready() -> void:
 		field = get_node(field_path)
 	if units.is_empty():
 		_spawn_armies()
+	if buildings.is_empty() and field != null:
+		_spawn_bases()
 
 
 func _process(delta: float) -> void:
@@ -185,19 +230,79 @@ func add_unit(team: int, kind: int, ground: Vector2) -> int:
 
 ## Removes every unit (used by tests and future scenarios).
 func clear_units() -> void:
+	for u in units:
+		_by_id.erase(u.id)
 	units.clear()
-	_by_id.clear()
 
 
-## The walkable grid (null if there's no island, e.g. in some tests).
+## Any unit or building, by id ({} if gone).
+func get_entity(id: int) -> Dictionary:
+	return _by_id.get(id, {})
+
+
+func get_node_by_id(id: int) -> Dictionary:
+	for n in nodes:
+		if n.id == id:
+			return n
+	return {}
+
+
+## The walkable grid (null if there's no island, e.g. in some tests). Each
+## game gets its own copy, so its buildings don't leak into other games.
 func nav():
 	if _nav == null and field != null:
 		var key: int = field.get_instance_id()
 		if not _nav_cache.has(key):
 			field.build()
 			_nav_cache[key] = NavGrid.new(field, int(field.map_size.x))
-		_nav = _nav_cache[key]
+		_nav = _nav_cache[key].copy()
+		for b in buildings:
+			_nav.set_blocked(b.x, b.z, b.radius, true)
 	return _nav
+
+
+func hq_of(team: int) -> Dictionary:
+	for b in buildings:
+		if b.team == team and b.btype == "hq":
+			return b
+	return {}
+
+
+func can_afford(team: int, res: int, amount: int) -> bool:
+	return res < 0 or resources[team][res] >= amount
+
+
+## Can `team` put a building of this type here (ground point, map units)?
+## Needs open ground (no water, trees, other buildings) and no units in the way.
+func can_place(btype: String, ground: Vector2) -> bool:
+	var x: int = roundi(ground.x * SCALE)
+	var z: int = roundi(ground.y * SCALE)
+	var radius: int = BUILDINGS[btype].radius
+	var grid = nav()
+	if grid != null and not grid.circle_is_open(x, z, radius + RADIUS):
+		return false
+	for u in units:
+		var dx: int = u.x - x
+		var dz: int = u.z - z
+		if dx * dx + dz * dz < (radius + RADIUS) * (radius + RADIUS):
+			return false
+	return true
+
+
+## Build a factory (or HQ) at a ground point. Paid when it happens.
+func command_build(team: int, btype: String, ground: Vector2) -> void:
+	_queue({"type": "build", "team": team, "btype": btype,
+			"x": roundi(ground.x * SCALE), "z": roundi(ground.y * SCALE)})
+
+
+## Queue a unit at a factory. Paid when queued.
+func command_train(team: int, building_id: int) -> void:
+	_queue({"type": "train", "team": team, "building": building_id})
+
+
+## Send units to gather from a resource spot.
+func command_gather(ids: Array, node_id: int) -> void:
+	_queue({"type": "gather", "ids": ids.duplicate(), "node": node_id})
 
 
 # --- Simulation ----------------------------------------------------------------
@@ -216,13 +321,17 @@ func _step() -> void:
 	for u in units:
 		u.px = u.x
 		u.pz = u.z
+	_construct_and_train()
+	_work()
 	_fight()
 	for u in units:
 		if u.moving:
 			_move(u)
 	for pass_index in PUSH_PASSES:
 		_separate()
+		_push_out_of_buildings()
 	_spread_idle()
+	_push_out_of_buildings()  # buildings always win over fanning out
 	_check_stuck()
 	tick += 1
 	ticked.emit()
@@ -234,6 +343,12 @@ func _apply(command: Dictionary) -> void:
 			_apply_move(command)
 		"attack":
 			_apply_attack(command)
+		"build":
+			_apply_build(command)
+		"train":
+			_apply_train(command)
+		"gather":
+			_apply_gather(command)
 
 
 ## Spreads the group into a square formation around the target point.
@@ -258,6 +373,7 @@ func _apply_move(command: Dictionary) -> void:
 		var tx: int = command.x + (c * 2 - (cols - 1)) * SPACING / 2
 		var tz: int = command.z + (r * 2 - (rows - 1)) * SPACING / 2
 		u.target = 0  # the player's order comes first
+		u.job = ""
 		u.focus = false
 		u.chasing = false
 		u.ordered = command.type == "move"
@@ -278,6 +394,7 @@ func _apply_attack(command: Dictionary) -> void:
 			continue
 		u.ordered = false
 		u.attack_move = false
+		u.job = ""
 		u.focus = true
 		u.chasing = false
 		u.target = command.target
@@ -308,6 +425,8 @@ func _fight() -> void:
 			u.ordered = false
 		if not combat_enabled:
 			continue
+		if u.job != "" and u.target == 0:
+			continue  # busy gathering (still fights back if attacked)
 		var target: Dictionary = _by_id.get(u.target, {})
 		if not target.is_empty() and not u.focus and _dist2(u, target) > LEASH * LEASH:
 			target = {}
@@ -329,13 +448,14 @@ func _fight() -> void:
 				u.attack_move = false  # arrived
 			continue
 		u.target = target.id
-		if _dist2(u, target) <= ATTACK_RANGE * ATTACK_RANGE:
+		if _in_reach(u, target):
 			# In reach: stand and fight.
 			u.moving = false
 			u.path.clear()
 			u.chasing = true
 			if tick >= u.next_attack:
-				hits.append([u, target, damage_for(u.kind, target.kind)])
+				var dmg: int = DAMAGE if target.has("btype") else damage_for(u.kind, target.kind)
+				hits.append([u, target, dmg])
 				u.next_attack = tick + ATTACK_COOLDOWN
 				u.attack_tick = tick
 		elif not u.moving or not u.chasing or tick >= u.repath:
@@ -348,9 +468,18 @@ func _fight() -> void:
 		var victim: Dictionary = hit[1]
 		victim.hp -= hit[2]
 		victim.hurt_tick = tick
+		if victim.has("btype"):
+			unit_hit.emit(victim.id, attacker.id, hit[2], 0)
+			continue
 		if victim.ordered:
 			# Attacked while on a plain move order: stop and fight back.
 			victim.ordered = false
+			victim.target = attacker.id
+			victim.moving = false
+			victim.path.clear()
+		if victim.job != "":
+			# Attacked while gathering: drop it and fight back.
+			victim.job = ""
 			victim.target = attacker.id
 			victim.moving = false
 			victim.path.clear()
@@ -366,9 +495,13 @@ func _fight() -> void:
 		units.erase(u)
 		_by_id.erase(u.id)
 		unit_died.emit(u.id)
+	var fallen: Array = buildings.filter(func(b): return b.hp <= 0)
+	for b in fallen:
+		_remove_building(b)
 
 
-## Closest enemy within `reach` (ties go to the lower id), or {}.
+## Closest enemy unit within `reach`, or failing that the closest enemy
+## building (measured to its edge). Ties go to the lower id. {} if none.
 func _nearest_enemy(u: Dictionary, reach: int) -> Dictionary:
 	var best: Dictionary = {}
 	var best_d2: int = reach * reach + 1
@@ -379,7 +512,240 @@ func _nearest_enemy(u: Dictionary, reach: int) -> Dictionary:
 		if d2 < best_d2:
 			best = other
 			best_d2 = d2
+	if not best.is_empty():
+		return best
+	for b in buildings:
+		if b.team == u.team:
+			continue
+		var edge: int = maxi(0, _isqrt(_dist2(u, b)) - b.radius)
+		if edge * edge < best_d2:
+			best = b
+			best_d2 = edge * edge
 	return best
+
+
+## Close enough to hit? (Buildings are hit from their edge.)
+func _in_reach(u: Dictionary, target: Dictionary) -> bool:
+	var reach: int = ATTACK_RANGE
+	if target.has("btype"):
+		reach = target.radius + RADIUS + 180
+	return _dist2(u, target) <= reach * reach
+
+
+# --- Economy ---------------------------------------------------------------------
+
+func _apply_build(command: Dictionary) -> void:
+	var spec: Dictionary = BUILDINGS[command.btype]
+	var ground := Vector2(command.x, command.z) / float(SCALE)
+	if winner >= 0 or not can_afford(command.team, spec.res, spec.cost) or not can_place(command.btype, ground):
+		return
+	if spec.res >= 0:
+		resources[command.team][spec.res] -= spec.cost
+	_add_building(command.team, command.btype, Vector2i(command.x, command.z), false)
+
+
+func _apply_train(command: Dictionary) -> void:
+	var b: Dictionary = _by_id.get(command.building, {})
+	if b.is_empty() or not b.has("btype") or b.team != command.team:
+		return
+	var spec: Dictionary = BUILDINGS[b.btype]
+	if spec.kind < 0 or b.progress < spec.build or b.queue.size() >= QUEUE_MAX \
+			or not can_afford(b.team, spec.res, UNIT_COST):
+		return
+	resources[b.team][spec.res] -= UNIT_COST
+	b.queue.append(spec.kind)
+
+
+func _apply_gather(command: Dictionary) -> void:
+	var node: Dictionary = get_node_by_id(command.node)
+	if node.is_empty():
+		return
+	var ids: Array = command.ids.duplicate()
+	ids.sort()
+	for id in ids:
+		var u: Dictionary = _by_id.get(id, {})
+		if u.is_empty() or u.has("btype"):
+			continue
+		u.ordered = false
+		u.attack_move = false
+		u.focus = false
+		u.target = 0
+		u.chasing = false
+		u.job = "gather"
+		u.node = node.id
+		u.phase = "to_node" if u.carry == 0 else "to_drop"
+		u.moving = false
+		u.path.clear()
+
+
+## Construction progress and factory production.
+func _construct_and_train() -> void:
+	for b in buildings:
+		var spec: Dictionary = BUILDINGS[b.btype]
+		if b.progress < spec.build:
+			b.progress += 1
+			continue
+		if b.queue.is_empty():
+			b.train = 0
+			continue
+		b.train += 1
+		if b.train >= TRAIN_TICKS:
+			b.train = 0
+			var kind: int = b.queue.pop_front()
+			_spawn_from(b, kind)
+
+
+## A newly trained unit steps out of its factory towards the island centre.
+func _spawn_from(b: Dictionary, kind: int) -> void:
+	var centre := Vector2i(410, 410) * SCALE
+	var dx: int = centre.x - b.x
+	var dz: int = centre.y - b.z
+	var d: int = maxi(1, _isqrt(dx * dx + dz * dz))
+	var out: int = b.radius + RADIUS + 150
+	var at := Vector2i(b.x + dx * out / d, b.z + dz * out / d)
+	var grid = nav()
+	if grid != null:
+		var cell: Vector2i = grid.nearest_walkable(grid.cell_of(at.x, at.y))
+		if cell.x >= 0 and not grid.is_walkable_cell(grid.cell_of(at.x, at.y)):
+			at = grid.cell_centre(cell)
+	_add_unit(b.team, kind, at)
+	var u: Dictionary = units[units.size() - 1]
+	var rally := Vector2i(b.x + dx * (out + 1200) / d, b.z + dz * (out + 1200) / d)
+	_route(u, rally.x, rally.y)
+
+
+## Gatherers: walk to the spot, gather, carry it home, repeat.
+func _work() -> void:
+	for u in units:
+		if u.job != "gather":
+			continue
+		var node: Dictionary = get_node_by_id(u.node)
+		match u.phase:
+			"to_node":
+				if node.is_empty():
+					u.job = ""
+					continue
+				if _near_edge(u, node.x, node.z, node.radius):
+					u.phase = "gathering"
+					u.timer = GATHER_TICKS_OWN if u.kind == node.res else GATHER_TICKS_OTHER
+					u.moving = false
+					u.path.clear()
+				elif not u.moving:
+					_route_to_edge(u, node.x, node.z, node.radius)
+			"gathering":
+				if node.is_empty():
+					u.phase = "to_drop" if u.carry > 0 else "to_node"
+					continue
+				u.timer -= 1
+				if u.timer <= 0:
+					var take: int = mini(CARRY, node.amount)
+					node.amount -= take
+					u.carry = take
+					u.carry_res = node.res
+					u.phase = "to_drop"
+					if node.amount <= 0:
+						nodes.erase(node)
+			"to_drop":
+				var hq: Dictionary = hq_of(u.team)
+				if hq.is_empty() or hq.progress < BUILDINGS[hq.btype].build:
+					u.job = ""
+					continue
+				if _near_edge(u, hq.x, hq.z, hq.radius):
+					resources[u.team][u.carry_res] += u.carry
+					u.carry = 0
+					u.phase = "to_node"
+					u.moving = false
+					u.path.clear()
+					if node.is_empty():
+						u.job = ""
+				elif not u.moving:
+					_route_to_edge(u, hq.x, hq.z, hq.radius)
+
+
+## Close enough to work at something round of `radius`?
+func _near_edge(u: Dictionary, x: int, z: int, radius: int) -> bool:
+	var reach: int = radius + RADIUS * 2 + 400
+	var dx: int = u.x - x
+	var dz: int = u.z - z
+	return dx * dx + dz * dz <= reach * reach
+
+
+## Walk to the edge of something round, on the side facing the unit (so a
+## group spreads around it instead of queueing for one spot).
+func _route_to_edge(u: Dictionary, x: int, z: int, radius: int) -> void:
+	var dx: int = u.x - x
+	var dz: int = u.z - z
+	var d: int = _isqrt(dx * dx + dz * dz)
+	if d == 0:
+		dx = 1
+		d = 1
+	var out: int = radius + RADIUS + 100
+	_route(u, x + dx * out / d, z + dz * out / d)
+
+
+## Units can't stand inside buildings: push them out to the edge.
+func _push_out_of_buildings() -> void:
+	for b in buildings:
+		var clear: int = b.radius + RADIUS
+		for u in units:
+			var dx: int = u.x - b.x
+			var dz: int = u.z - b.z
+			if absi(dx) >= clear or absi(dz) >= clear:
+				continue
+			var d2: int = dx * dx + dz * dz
+			if d2 >= clear * clear:
+				continue
+			var d: int = _isqrt(d2)
+			if d == 0:
+				dx = 1
+				d = 1
+			var push: int = clear - d
+			if not _nudge(u, dx * push / d, dz * push / d):
+				u.x = b.x + dx * clear / d
+				u.z = b.z + dz * clear / d
+
+
+func _remove_building(b: Dictionary) -> void:
+	buildings.erase(b)
+	_by_id.erase(b.id)
+	var grid = nav()
+	if grid != null:
+		grid.set_blocked(b.x, b.z, b.radius, false)
+	building_destroyed.emit(b.id)
+	if b.btype == "hq" and winner < 0:
+		winner = 1 - b.team
+		game_over.emit(winner)
+
+
+func _add_building(team: int, btype: String, at: Vector2i, finished: bool) -> Dictionary:
+	var spec: Dictionary = BUILDINGS[btype]
+	var b := {
+		"id": _next_id, "team": team, "btype": btype, "x": at.x, "z": at.y,
+		"radius": spec.radius, "hp": spec.hp, "max_hp": spec.hp,
+		"progress": spec.build if finished else 0, "queue": [], "train": 0,
+	}
+	_next_id += 1
+	buildings.append(b)
+	_by_id[b.id] = b
+	var grid = nav()
+	if grid != null:
+		grid.set_blocked(b.x, b.z, b.radius, true)
+	building_added.emit(b.id)
+	return b
+
+
+## HQs (mirrored) and the resource spots.
+func _spawn_bases() -> void:
+	var centre := Vector2i(410, 410) * SCALE
+	_add_building(0, "hq", centre + HQ_OFFSET * SCALE, true)
+	_add_building(1, "hq", centre - HQ_OFFSET * SCALE, true)
+	for spot in field.resource_spots():
+		nodes.append({
+			"id": _next_id, "res": spot.res,
+			"x": roundi(spot.pos.x * SCALE), "z": roundi(spot.pos.y * SCALE),
+			"radius": roundi(spot.radius * SCALE), "amount": NODE_AMOUNT[spot.res],
+		})
+		_next_id += 1
 
 
 static func _dist2(a: Dictionary, b: Dictionary) -> int:
@@ -647,6 +1013,7 @@ func _add_unit(team: int, kind: int, at: Vector2i) -> void:
 		"hp": MAX_HP, "target": 0, "ordered": false, "next_attack": 0,
 		"attack_tick": -1000, "hurt_tick": -1000, "repath": 0,
 		"attack_move": false, "dest_x": at.x, "dest_z": at.y, "focus": false, "chasing": false,
+		"job": "", "node": 0, "phase": "", "timer": 0, "carry": 0, "carry_res": 0,
 	}
 	_next_id += 1
 	units.append(u)
