@@ -109,36 +109,41 @@ func _run() -> void:
 			if up.is_empty():
 				print("  no way up: plateau %d (level %d) at %s" % [i, field.plateau_info[i].level, c])
 			tops_ok = tops_ok and not up.is_empty()
-			# Halfway round the cliff from each ramp: blocked.
-			for k in 16:
-				var dir: Vector2 = Vector2.from_angle(k * TAU / 16)
+			# Round the cliff (away from the hillsides): blocked.
+			for k in 32:
+				var dir: Vector2 = Vector2.from_angle(k * TAU / 32)
 				var edge: Vector2 = field._edge_point(poly, dir)
-				if field.ramp_at(edge) < 0 and field.ramp_at(edge + dir * 2.0) < 0:
+				if field._gentleness(edge + dir) <= 0.0:
 					cliff_ok = cliff_ok and not field.is_walkable(edge)
-		# Every ramp's foot lands on open ground at its base level (a tier's
-		# ramp stays on the lower plateau, not over its edge).
+		# Every hillside's foot lands on open ground at its base level, and
+		# the middle of every hillside can be walked.
 		var feet_ok := true
-		for r in field.ramps:
-			var foot: Vector2 = r.edge + r.dir * (r.length + 4.0)
-			var ok: bool = is_equal_approx(field.height_at(foot), r.base) and not field.is_slope_or_edge(foot)
-			if not ok:
-				print("  ramp foot off its level at %s (height %.1f, wants %.1f)" % [foot, field.height_at(foot), r.base])
-			feet_ok = feet_ok and ok
-		check("%s: every ramp's foot lands on open ground at its level" % name, feet_ok)
+		for h in field.ramps:
+			for arc in h.arcs:
+				var foot: Vector2 = field.hillside_foot(h, arc)
+				var dir := Vector2.from_angle(arc[0])
+				var mid: Vector2 = field._edge_point(h.poly, dir) + dir * h.width * 0.4
+				var ok: bool = is_equal_approx(field.height_at(foot), h.base) and not field.is_slope_or_edge(foot) \
+						and field.on_slope(mid)
+				if not ok:
+					print("  hillside foot off its level at %s (height %.1f, wants %.1f; middle walkable %s)" % [foot, field.height_at(foot), h.base, field.on_slope(mid)])
+				feet_ok = feet_ok and ok
+		check("%s: every hillside reaches open ground at its foot, and can be walked" % name, feet_ok)
 		check("%s: the plateaus with ramps (%d of %d) can be walked up to" % [name, field.climbable.size(), field.plateaus.size()], tops_ok)
 		check("%s: ...only by their ramps (%d); other cliffs and plateaus are blocked" % [name, field.ramps.size()], ramps_ok and cliff_ok)
-		# Building: not on a ramp; fine on a big enough flat top.
+		# Building: not on a hillside; fine on a big enough flat top.
 		var no_ramp := true
-		for r in field.ramps:
-			no_ramp = no_ramp and not sim.can_place("quarry", r.edge + r.dir * r.length * 0.5)
-		check("%s: nothing can be built on a ramp" % name, no_ramp)
+		for h in field.ramps:
+			for arc in h.arcs:
+				var dir := Vector2.from_angle(arc[0])
+				no_ramp = no_ramp and not sim.can_place("quarry", field._edge_point(h.poly, dir) + dir * h.width * 0.5)
+		check("%s: nothing can be built on a hillside" % name, no_ramp)
 		dump[id] = {
 			"coast": Array(field.coastline).map(func(p): return [p.x, p.y]),
 			"lakes": field.lakes.map(func(poly): return Array(poly).map(func(p): return [p.x, p.y])),
 			"plateaus": field.plateaus.map(func(poly): return Array(poly).map(func(p): return [p.x, p.y])),
 			"trees": field.forests.reduce(func(acc, f): return acc + f.trees.map(func(t): return [t.x, t.y]), []),
 			"nodes": sim.nodes.filter(func(n): return not n.tree).map(func(n): return [n.res, n.x / 100.0, n.z / 100.0]),
-			"ramps": field.ramps.map(func(r): return [r.edge.x, r.edge.y, r.dir.x, r.dir.y]),
 			"hqs": hqs.map(func(h): return [h.x / 100.0, h.z / 100.0]),
 			"units": sim.units.map(func(u): return [u.team, u.x / 100.0, u.z / 100.0]),
 		}

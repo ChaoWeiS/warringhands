@@ -45,15 +45,20 @@ var LAKES: Array = []
 var FORESTS: Array = []
 var PLATEAUS: Array = []
 const PLATEAU_HEIGHT := 5.0
-## Plateaus with ramps (the map says where) are walkable on top, reached by
-## those ramps (one on each side for every direction listed); the cliff edge
-## (CLIFF_BAND wide) is blocked everywhere else. A level 2 plateau sits on a
-## level 1 one (twice as high), its ramps coming up from the lower top.
-## Plateaus without ramps are solid scenery.
-const RAMP_LENGTH := 20.0
-## Ramps up to a level 2 tier are shorter (they land on the lower top).
-const RAMP_LENGTH_TIER := 11.0
-const RAMP_HALF_WIDTH := 5.5
+## Hills: plateaus you can climb have hillsides (the map says where): broad
+## grassy slopes easing down from the edge to the ground over HILLSIDE_WIDTH
+## (steepening into cliff at their ends); the rest of the edge is cliff
+## (CLIFF_BAND wide, blocked). A level 2 tier sits on a level 1 hill (twice
+## as high), its hillsides coming down onto the lower top. Plateaus without
+## hillsides are solid scenery.
+const HILLSIDE_WIDTH := 24.0
+const HILLSIDE_WIDTH_TIER := 12.0
+## A hillside's default span round the hill (degrees), and how far at each
+## end it steepens into cliff.
+const HILLSIDE_SPAN := 70.0
+const HILLSIDE_TAPER := 18.0
+## Gentle enough to walk: this share of the full width or more.
+const WALKABLE_SLOPE := 0.55
 const CLIFF_BAND := 3.0
 # Shape wobble for lakes and plateaus (even frequencies only).
 const BLOB_WAVES := [[2, 0.12, 0.4], [4, 0.08, 1.7], [6, 0.05, 3.1]]
@@ -132,33 +137,25 @@ func build() -> void:
 			climbable.append(plateaus.size() - 1)
 			_plateau_tops.append(_offset(poly, -CLIFF_BAND))
 			_plateau_outer.append(_offset(poly, UNIT_CLEARANCE))
-			# Each ramp listed: one there and one on the far side (both turned
-			# with the twin). A ramp is a number (where round the plateau, in
-			# degrees: straight out from the cliff) or {"at": degrees,
-			# "slant": degrees}: turned off straight, up to a shoulder that
-			# runs along the cliff face.
-			var specs: Array = []
+			# Each hillside listed (degrees round the hill, or {"at", "span"}):
+			# one there and one on the far side, all turned with the twin.
+			var arcs: Array = []
 			for spec in angles:
 				var at: float = spec if spec is float or spec is int else spec.at
-				var slant: float = 0.0 if spec is float or spec is int else spec.get("slant", 0.0)
+				var span: float = HILLSIDE_SPAN if spec is float or spec is int else spec.get("span", HILLSIDE_SPAN)
 				for way in [at, at + 180.0]:
-					var turned: float = way if i == 0 else way + 180.0  # the twin is turned
-					if not specs.any(func(o): return absf(fposmod(o[0] - turned, 360.0)) < 0.5):
-						specs.append([fposmod(turned, 360.0), slant])
+					var turned: float = fposmod(way if i == 0 else way + 180.0, 360.0)
+					if not arcs.any(func(o): return absf(angle_difference(o[0], deg_to_rad(turned))) < 0.01):
+						arcs.append([deg_to_rad(turned), deg_to_rad(span) * 0.5])
 			var info: Dictionary = plateau_info[plateau_info.size() - 1]
+			var width: float = HILLSIDE_WIDTH_TIER if info.level > 1 else HILLSIDE_WIDTH
 			var middle: Vector2 = _poly_center(poly)
-			for spec in specs:
-				var edge: Vector2 = _edge_point(poly, Vector2.from_angle(deg_to_rad(spec[0])))
-				var out: Vector2 = (edge - middle).normalized()
-				var dir: Vector2 = out.rotated(deg_to_rad(spec[1]))
-				# Slanted ramps reach further back so their top still cuts
-				# right through the cliff edge onto the plateau.
-				var back: float = (CLIFF_BAND + 2.0) / maxf(cos(deg_to_rad(spec[1])), 0.3)
-				ramps.append({"plateau": plateaus.size() - 1, "edge": edge,
-						"dir": dir, "half_width": RAMP_HALF_WIDTH, "back": back,
-						"outer": _plateau_outer[_plateau_outer.size() - 1],
-						"length": RAMP_LENGTH if info.level == 1 else RAMP_LENGTH_TIER,
-						"top": info.height, "base": info.base})
+			var reach: float = 0.0
+			for q in poly:
+				reach = maxf(reach, q.distance_to(middle))
+			ramps.append({"plateau": plateaus.size() - 1, "poly": poly, "center": middle,
+					"top": info.height, "base": info.base, "width": width, "arcs": arcs,
+					"reach": reach + width + 2.0})
 	for forest in FORESTS:
 		var trees := _forest_trees(c + forest[0], forest[1], forest[2])
 		var mirrored: Array = []
@@ -206,24 +203,22 @@ func _with_twins(spots: Array) -> Array:
 	return out
 
 
-## No tree here? Ramps (with a margin), the cliff edges of climbable
-## plateaus, and the whole of scenery plateaus. (Tops are fine: trees grow
-## up there like on the grassland.)
+## No tree here? The cliff edges of climbable hills, their steep hillside
+## ends, and the whole of scenery plateaus. (Tops and gentle hillsides are
+## fine: trees grow there like on the grassland.)
 func _on_plateau_or_ramp(p: Vector2, margin: float) -> bool:
-	for r in ramps:
-		var rel: Vector2 = p - r.edge
-		var along: float = rel.dot(r.dir)
-		if along >= -r.back - margin and along <= r.length + margin \
-				and absf(rel.dot(r.dir.orthogonal())) <= r.half_width + margin:
-			return true
 	for i in plateaus.size():
 		var poly: PackedVector2Array = plateaus[i]
 		if not Geometry2D.is_point_in_polygon(p, _offset(poly, UNIT_CLEARANCE + margin)):
 			continue
 		if not climbable.has(i):
 			return true  # scenery
-		if not Geometry2D.is_point_in_polygon(p, _offset(poly, -CLIFF_BAND - margin)):
+		if not Geometry2D.is_point_in_polygon(p, _offset(poly, -CLIFF_BAND - margin)) \
+				and _gentleness(p) < WALKABLE_SLOPE:
 			return true  # on its cliff edge
+	var hs: Dictionary = hillside_at(p)
+	if not hs.is_empty() and hs.w < WALKABLE_SLOPE + 0.1:
+		return true  # too steep
 	return false
 
 
@@ -238,53 +233,130 @@ func _edge_point(poly: PackedVector2Array, dir: Vector2) -> Vector2:
 	return c
 
 
-## Which ramp (index) a point is on, or -1. On a ramp: from a little inside
-## the cliff edge to RAMP_LENGTH out, RAMP_HALF_WIDTH either side.
+## How much of a hillside the direction from hill `h`'s middle towards `p`
+## is on: 1 well inside one, easing to 0 at its ends, 0 on the cliffs.
+static func _arc_weight(h: Dictionary, p: Vector2) -> float:
+	var ang: float = (p - h.center).angle()
+	var best := 0.0
+	for arc in h.arcs:
+		var off: float = absf(angle_difference(arc[0], ang))
+		var taper: float = deg_to_rad(HILLSIDE_TAPER)
+		if off <= arc[1] - taper:
+			return 1.0
+		if off < arc[1]:
+			var x: float = (arc[1] - off) / taper
+			best = maxf(best, x * x * (3.0 - 2.0 * x))
+	return best
+
+
+## Where the hill's edge is, straight out from its middle towards `p`.
+func _rim(h: Dictionary, p: Vector2) -> Vector2:
+	return _edge_point(h.poly, (p - h.center).normalized())
+
+
+## The hillside a point outside a hill is on: {hill, w (gentleness 0..1),
+## d (how far out from the edge), width (of the slope there), height}, or
+## {} (not on one). The slope eases down from the top at the edge to the
+## base `width` out.
+func hillside_at(p: Vector2) -> Dictionary:
+	var found := {}
+	for h in ramps:
+		if p.distance_to(h.center) > h.reach:
+			continue
+		if Geometry2D.is_point_in_polygon(p, h.poly):
+			continue
+		var w: float = _arc_weight(h, p)
+		if w <= 0.0:
+			continue
+		var rim: Vector2 = _rim(h, p)
+		var d: float = p.distance_to(h.center) - rim.distance_to(h.center)
+		var width: float = h.width * w
+		if d < 0.0 or d >= width:
+			continue
+		var height: float = lerpf(h.base, h.top, 0.5 + 0.5 * cos(PI * d / width))
+		if found.is_empty() or height > found.height:
+			found = {"hill": h, "w": w, "d": d, "width": width, "height": height}
+	return found
+
+
+## On the steep side of a hillside (where it narrows into cliff), out to
+## the hillside's full width: you can't walk there, so the gentle part is
+## only reached from the top or across its foot.
+func _on_flank(p: Vector2) -> bool:
+	for h in ramps:
+		if p.distance_to(h.center) > h.reach:
+			continue
+		var w: float = _arc_weight(h, p)
+		if w <= 0.0 or w >= WALKABLE_SLOPE:
+			continue
+		if Geometry2D.is_point_in_polygon(p, h.poly):
+			continue
+		var d: float = p.distance_to(h.center) - _rim(h, p).distance_to(h.center)
+		if d >= 0.0 and d < h.width:
+			return true
+	return false
+
+
+## How gentle the hill edge is at `p` (on or near a climbable hill's edge):
+## the hillside weight in that direction, 0 on cliffs.
+func _gentleness(p: Vector2) -> float:
+	var g := 0.0
+	for h in ramps:
+		if p.distance_to(h.center) <= h.reach:
+			g = maxf(g, _arc_weight(h, p))
+	return g
+
+
+## On a hillside gentle enough to walk (returns its hill index), or -1.
 func ramp_at(p: Vector2) -> int:
-	for i in ramps.size():
-		var r: Dictionary = ramps[i]
-		var rel: Vector2 = p - r.edge
-		var along: float = rel.dot(r.dir)
-		var side: float = absf(rel.dot(r.dir.orthogonal()))
-		if along >= -r.back and along <= r.length and side <= r.half_width:
-			# Its top end only counts over the plateau (a slanted ramp's
-			# reaches back alongside the cliff, partly over open ground).
-			if along < 0.0 and not Geometry2D.is_point_in_polygon(p, r.outer):
-				continue
-			return i
-	return -1
+	var hs: Dictionary = hillside_at(p)
+	if hs.is_empty() or hs.w < WALKABLE_SLOPE:
+		return -1
+	return hs.hill.plateau
 
 
-## Height of the ground (map units): a plateau top is PLATEAU_HEIGHT per
-## level up, ramps slope between a plateau's top and its base, everything
+## Where a hillside (hill `h`, arc `arc`) meets the ground: a point just
+## beyond its foot, and its base level there.
+func hillside_foot(h: Dictionary, arc: Array) -> Vector2:
+	var dir := Vector2.from_angle(arc[0])
+	var rim: Vector2 = _edge_point(h.poly, dir)
+	return rim + dir * (h.width + 3.0)
+
+
+## Height of the ground (map units): a hill top is PLATEAU_HEIGHT per
+## level up, hillsides ease down from there to the hill's base, everything
 ## else is 0.
 func height_at(p: Vector2) -> float:
 	build()
-	var r: int = ramp_at(p)
-	if r >= 0:
-		var ramp: Dictionary = ramps[r]
-		return ramp_height(ramp, (p - ramp.edge).dot(ramp.dir))
 	var h := 0.0
 	for i in plateaus.size():
 		if plateau_info[i].height > h and Geometry2D.is_point_in_polygon(p, plateaus[i]):
 			h = plateau_info[i].height
+	var hs: Dictionary = hillside_at(p)
+	if not hs.is_empty():
+		h = maxf(h, hs.height)
 	return h
 
 
-## Is this point up on a plateau or a ramp?
+## Is this point up on a plateau or a hillside?
 func is_raised(p: Vector2) -> bool:
 	return height_at(p) > 0.01
 
 
-## Is this point on a ramp, or on a plateau's cliff edge?
+## Is this point on a hillside, or on a hill's cliff edge? (No building.)
 func is_slope_or_edge(p: Vector2) -> bool:
-	if ramp_at(p) >= 0:
+	if not hillside_at(p).is_empty():
 		return true
 	for i in _plateau_outer.size():
 		if Geometry2D.is_point_in_polygon(p, _plateau_outer[i]) \
 				and not Geometry2D.is_point_in_polygon(p, _plateau_tops[i]):
 			return true
 	return false
+
+
+## On a hillside you can walk (for tests and the view).
+func on_slope(p: Vector2) -> bool:
+	return ramp_at(p) >= 0
 
 
 ## Resource spots on both sides: [{res, pos, radius}] (map units).
@@ -320,19 +392,15 @@ func is_walkable(p: Vector2, cut_trees: Dictionary = {}) -> bool:
 	for blocked in _blocked_polys:
 		if blocked.box.has_point(p) and Geometry2D.is_point_in_polygon(p, blocked.poly):
 			return false
-	# Ramps have walls: you get on at the bottom or the top, not the side.
-	for r in ramps:
-		var rel: Vector2 = p - r.edge
-		var along: float = rel.dot(r.dir)
-		var side: float = absf(rel.dot(r.dir.orthogonal()))
-		if along > 0.0 and along < r.length - 1.0 \
-				and side > r.half_width - 1.0 and side <= r.half_width + UNIT_CLEARANCE + 1.0:
-			return false
-	# Plateaus: the top is open, the cliff edge isn't, except on a ramp.
+	# Steep hillside ends and their flanks: no.
+	if _on_flank(p):
+		return false
+	# Hills: the top is open, the cliff edge isn't (except where a gentle
+	# hillside comes up to it).
 	for i in _plateau_outer.size():
 		if Geometry2D.is_point_in_polygon(p, _plateau_outer[i]) \
 				and not Geometry2D.is_point_in_polygon(p, _plateau_tops[i]):
-			if ramp_at(p) < 0:
+			if _gentleness(p) < WALKABLE_SLOPE:
 				return false
 	return true
 
@@ -468,67 +536,36 @@ func _build_terrain() -> void:
 		_add_flat(_offset(plateau, 2.5), info.base + (0.34 if info.base == 0.0 else 0.04), CLIFF)
 		_add_skirt(plateau, info.height, info.base, CLIFF, _poly_center(plateau))
 		_add_flat(plateau, info.height, top_color)
-	for ramp in ramps:
-		_add_ramp(ramp)
+	for hill in ramps:
+		_add_hillsides(hill)
 
 
 ## A ramp: a sloped path from the plateau top down to the ground, with its
 ## sides filled in down to the ground.
-func _add_ramp(r: Dictionary) -> void:
-	# A gentle, natural slope: eased at both ends (ramp_height), widening
-	# towards the foot so it melts into the ground, built from many small
-	# pieces with smoothed shading. Its sides drop to the ground below.
-	var along_n := 14
-	var across_n := 6
-	var start: float = -1.5  # tucked into the plateau a little
-	var end: float = r.length + 2.0  # and run out onto the ground
-	var lift: float = 0.45 if r.base == 0.0 else 0.03  # above the ground layers
-	var across: Vector2 = r.dir.orthogonal()
-	var rows: Array = []
-	for i in along_n + 1:
-		var a: float = lerpf(start, end, float(i) / along_n)
-		var t: float = clampf(a / r.length, 0.0, 1.0)
-		var hw: float = r.half_width * (1.0 + 0.7 * t * t)  # flares at the foot
-		var y: float = ramp_height(r, a) + (0.02 if t < 0.999 else lift)
-		y = maxf(y, r.base + lift)
-		var row: Array = []
-		for k in across_n + 1:
-			var s: float = lerpf(-1.0, 1.0, float(k) / across_n)
-			var p: Vector2 = r.edge + r.dir * a + across * hw * s
-			# Edges round off a touch lower, like a worn path.
-			row.append(Vector3(p.x, y - 0.25 * s * s * (y - r.base) * 0.15, p.y))
-		rows.append(row)
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in along_n:
-		for k in across_n:
-			var a0: Vector3 = rows[i][k]
-			var a1: Vector3 = rows[i][k + 1]
-			var b0: Vector3 = rows[i + 1][k]
-			var b1: Vector3 = rows[i + 1][k + 1]
-			for v in _up_facing([a0, b1, a1]) + _up_facing([a0, b0, b1]):
-				st.add_vertex(v)
-	st.generate_normals()
-	var path := MeshInstance3D.new()
-	path.mesh = st.commit()
-	path.material_override = _material(PLATEAU_TOP)
-	add_child(path)
-	# The two sides, from the slope's edge down to the ground below it.
-	var sides := SurfaceTool.new()
-	sides.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for edge_k in [0, across_n]:
-		for i in along_n:
-			var e0: Vector3 = rows[i][edge_k]
-			var e1: Vector3 = rows[i + 1][edge_k]
-			var g0 := Vector3(e0.x, r.base, e0.z)
-			var g1 := Vector3(e1.x, r.base, e1.z)
-			for v in [e0, e1, g1, e0, g1, g0]:
-				sides.add_vertex(v)
-	sides.generate_normals()
-	var walls := MeshInstance3D.new()
-	walls.mesh = sides.commit()
-	walls.material_override = _material(CLIFF)
-	add_child(walls)
+func _add_hillsides(h: Dictionary) -> void:
+	# Each hillside: rows from the hill's edge (a touch inside, at the top)
+	# out to the ground, easing down; the slope narrows (steepens) into the
+	# cliff at both ends. Smooth shading, grassy colour.
+	var lift: float = 0.45 if h.base == 0.0 else 0.03
+	var color: Color = PLATEAU_TOP.lerp(GRASS, 0.45) if h.base == 0.0 else PLATEAU_TOP.lightened(0.06)
+	for arc in h.arcs:
+		var rows: Array = []
+		var steps := 28
+		for k in steps + 1:
+			var ang: float = arc[0] + lerpf(-arc[1], arc[1], float(k) / steps)
+			var dir := Vector2.from_angle(ang)
+			var rim: Vector2 = _edge_point(h.poly, dir)
+			var w: float = _arc_weight(h, rim + dir)
+			var width: float = maxf(h.width * w, 0.4)
+			var row: Array = []
+			for j in 9:
+				var f: float = j / 8.0
+				var p: Vector2 = rim + dir * (lerpf(-0.8, width, f))
+				var y: float = lerpf(h.base, h.top, 0.5 + 0.5 * cos(PI * clampf(f, 0.0, 1.0)))
+				y = h.top + 0.02 if j == 0 else maxf(y, h.base + lift)
+				row.append(Vector3(p.x, y, p.y))
+			rows.append(row)
+		_strip_mesh(rows, color)
 
 
 ## The triangle's corners in the order that makes it face up.
@@ -537,11 +574,26 @@ static func _up_facing(tri: Array) -> Array:
 	return tri if n.y > 0 else [tri[0], tri[2], tri[1]]
 
 
-## Height on a ramp, `along` map units down it from the cliff edge: eased
-## (gentle at the top and the foot, steepest in the middle).
-static func ramp_height(r: Dictionary, along: float) -> float:
-	var t: float = clampf(along / r.length, 0.0, 1.0)
-	return lerpf(r.top, r.base, 0.5 - 0.5 * cos(t * PI))
+## A smooth-shaded surface through rows of points (each row across, the
+## rows following on).
+func _strip_mesh(rows: Array, color: Color) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in rows.size() - 1:
+		var a_row: Array = rows[i]
+		var b_row: Array = rows[i + 1]
+		for k in a_row.size() - 1:
+			var a0: Vector3 = a_row[k]
+			var a1: Vector3 = a_row[k + 1]
+			var b0: Vector3 = b_row[k]
+			var b1: Vector3 = b_row[k + 1]
+			for v in _up_facing([a0, b1, a1]) + _up_facing([a0, b0, b1]):
+				st.add_vertex(v)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = _material(color)
+	add_child(mi)
 
 
 ## Triangles with one colour and normal (drawn from both sides, like the

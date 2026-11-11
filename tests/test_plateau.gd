@@ -1,5 +1,5 @@
 extends SceneTree
-## A hand sent onto a plateau walks up a ramp (not through the cliff) and is
+## A hand sent onto a hill walks up a hillside (not through the cliff) and is
 ## drawn up there; on to the higher tier by its own ramp; and back down.
 ## Run: godot --headless -s res://tests/test_plateau.gd
 
@@ -50,7 +50,7 @@ func walk(id: int, to: Vector2) -> Dictionary:
 		sim.step_ticks(1)
 		var u: Dictionary = sim.get_unit(id)
 		var p := Vector2(u.x, u.z) / 100.0
-		on_ramp = on_ramp or field.ramp_at(p) >= 0
+		on_ramp = on_ramp or field.on_slope(p)
 		# Up or down a cliff = the ground height jumps between steps.
 		var h: float = field.height_at(p)
 		if absf(h - last_h) > 1.0:
