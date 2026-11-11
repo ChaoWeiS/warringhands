@@ -273,6 +273,7 @@ func _run() -> void:
 	var game: Node = root.get_node("Main/Game")
 	var hud: Control = root.get_node("Main/HUD/Economy")
 	var buildings_view: Node3D = root.get_node("Main/World/Buildings")
+	var view_units: Node3D = root.get_node("Main/World/Units")
 	var panes: Control = root.get_node("Main/Panes")
 	var leaf = panes._leaves()[0]
 	var cam = leaf.camera
@@ -316,6 +317,39 @@ func _run() -> void:
 	var mine: Array = sim.units.filter(func(u): return u.team == 0).map(func(u): return u.id)
 	game._select(mine.slice(0, 2))
 	check("selecting units closes the factory panel", game.selected_building == 0)
+	# Tapping high up on a building's picture (not its ground circle) selects it.
+	var pic: Rect2 = buildings_view.screen_rect(cam, built.id)
+	var high_up: Vector2 = pic.position + Vector2(pic.size.x * 0.5, pic.size.y * 0.15)
+	var footprint_px: float = cam.unproject_position(Vector3(built.x / 100.0, 0, built.z / 100.0)).distance_to(high_up)
+	game._on_tapped(cam, high_up)
+	check("tapping the top of a building's picture selects it (%d px above its base)" % footprint_px,
+			game.selected_buildings == [built.id] and footprint_px > 60)
+	game._select([])
+	game._select_buildings([])
+	# Lasso around the HQ and the quarry (a thin band from one to the other,
+	# clear of the army): both get selected, one panel row each.
+	var a_pt: Vector2 = cam.unproject_position(Vector3(my_hq.x / 100.0, 10.0, my_hq.z / 100.0))
+	var b_pt: Vector2 = cam.unproject_position(Vector3(built.x / 100.0, 10.0, built.z / 100.0))
+	var across: Vector2 = (b_pt - a_pt).orthogonal().normalized() * 12.0
+	var along: Vector2 = (b_pt - a_pt).normalized() * 20.0
+	var band := PackedVector2Array([a_pt - along - across, b_pt + along - across, b_pt + along + across, a_pt - along + across])
+	var unit_inside := false
+	for id in mine:
+		unit_inside = unit_inside or Geometry2D.is_point_in_polygon(cam.unproject_position(view_units.world_position(id)), band)
+	game._on_lassoed(cam, band)
+	hud._process(0.0)
+	check("lassoing your buildings selects them", not unit_inside and game.selected_buildings.size() == 2
+			and game.selected_buildings.has(my_hq.id) and game.selected_buildings.has(built.id))
+	check("...with a panel row for each type", hud._rows.size() == 2 and hud._rows.has("hq") and hud._rows.has("quarry")
+			and buildings_view._views[my_hq.id].ring.visible and buildings_view._views[built.id].ring.visible)
+	sim._pending.clear()
+	hud._rows.quarry.train.pressed.emit()
+	queued = [] if sim._pending.is_empty() else sim._pending.values()[0]
+	check("...and the quarry row trains at the quarry", queued.size() == 1 and queued[0].type == "train"
+			and queued[0].building == built.id)
+	sim._pending.clear()
+	game._select(mine.slice(0, 2))
+	check("lassoing units after that drops the buildings", game.selected_buildings.is_empty())
 	var node: Dictionary = sim.nodes.filter(func(n): return n.res == 2).front()
 	var nearest_metal: Dictionary = node
 	for n in sim.nodes:

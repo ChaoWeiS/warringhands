@@ -3,8 +3,9 @@ extends Control
 ##   - resource counter (top right): stone, wood, metal;
 ##   - Build menu (bottom left): pick Quarry / Paper Mill / Forge, then tap
 ##     the ground to place it;
-##   - factory panel (bottom centre, when one of your buildings is selected):
-##     train units, see the queue and progress;
+##   - building panel (bottom centre, when your buildings are selected by
+##     tap or lasso): a row per type with HP, and for factories a train
+##     button (queues at the least busy one), the queue and progress;
 ##   - victory / defeat screen with Play Again.
 ## It shows things and reports button presses; game_controller.gd decides
 ## what they mean.
@@ -32,11 +33,10 @@ var _res_labels: Array = []
 var _build_toggle: Button
 var _build_options: Dictionary = {}  # btype -> Button
 var _armed_build := ""
-var _panel_title: Label
-var _panel_info: Label
-var _train_button: Button
-var _progress: ProgressBar
-var _panel_building := 0
+var _panel_rows: VBoxContainer
+var _rows: Dictionary = {}        # building type -> row controls
+var _train_button: Button         # first row's train button (for tests)
+var _panel_buildings: Array = []  # selected building ids
 var _over_label: Label
 var _toast: Label
 var _toast_tween: Tween
@@ -99,8 +99,9 @@ func clear_build() -> void:
 	_show_build_options(false)
 
 
-func show_building(id: int) -> void:
-	_panel_building = id
+## Shows the panel for these buildings (one row per type), or hides it.
+func show_buildings(ids: Array) -> void:
+	_panel_buildings = ids.duplicate()
 	_refresh_building_panel()
 
 
@@ -202,63 +203,130 @@ func _build_building_panel() -> void:
 	building_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	building_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	building_panel.offset_bottom = -104
+	_panel_rows = VBoxContainer.new()
+	_panel_rows.add_theme_constant_override("separation", 10)
+	building_panel.add_child(_panel_rows)
+	building_panel.visible = false
+	add_child(building_panel)
+
+
+## One row of the panel: a building type with how many are selected, its
+## state, and (for factories) a train button and progress bar.
+func _make_row(btype: String) -> Dictionary:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
-	building_panel.add_child(row)
 	var text := VBoxContainer.new()
-	_panel_title = UI.label("", 30)
-	_panel_info = UI.label("", 22)
-	text.add_child(_panel_title)
-	text.add_child(_panel_info)
+	text.custom_minimum_size = Vector2(230, 0)
+	var title := UI.label("", 30)
+	var info := UI.label("", 22)
+	text.add_child(title)
+	text.add_child(info)
 	row.add_child(text)
-	_train_button = UI.button(Color("#fbe3ea"), Color("#f2c4d2"), 26)
-	_train_button.pressed.connect(func(): train_pressed.emit(_panel_building))
-	row.add_child(_train_button)
-	_progress = ProgressBar.new()
-	_progress.custom_minimum_size = Vector2(160, 22)
-	_progress.show_percentage = false
-	_progress.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var train := UI.button(Color("#fbe3ea"), Color("#f2c4d2"), 26)
+	train.pressed.connect(func(): _on_train(btype))
+	row.add_child(train)
+	var progress := ProgressBar.new()
+	progress.custom_minimum_size = Vector2(160, 22)
+	progress.show_percentage = false
+	progress.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = Color("#ff9fb4")
 	fill.set_corner_radius_all(10)
 	var back := StyleBoxFlat.new()
 	back.bg_color = Color(0.3, 0.27, 0.4, 0.2)
 	back.set_corner_radius_all(10)
-	_progress.add_theme_stylebox_override("fill", fill)
-	_progress.add_theme_stylebox_override("background", back)
-	row.add_child(_progress)
-	building_panel.visible = false
-	add_child(building_panel)
+	progress.add_theme_stylebox_override("fill", fill)
+	progress.add_theme_stylebox_override("background", back)
+	row.add_child(progress)
+	_panel_rows.add_child(row)
+	return {"row": row, "title": title, "info": info, "train": train, "progress": progress}
+
+
+## Selected buildings of a type that still stand.
+func _standing(btype: String) -> Array:
+	var out: Array = []
+	for id in _panel_buildings:
+		var b: Dictionary = sim.get_entity(id)
+		if not b.is_empty() and b.has("btype") and b.btype == btype:
+			out.append(b)
+	return out
+
+
+## Train at the least busy finished factory of this type in the selection.
+func _on_train(btype: String) -> void:
+	var spec: Dictionary = sim.BUILDINGS[btype]
+	var best: Dictionary = {}
+	for b in _standing(btype):
+		if b.progress < spec.build or b.queue.size() >= sim.QUEUE_MAX:
+			continue
+		if best.is_empty() or b.queue.size() < best.queue.size():
+			best = b
+	if not best.is_empty():
+		train_pressed.emit(best.id)
 
 
 func _refresh_building_panel() -> void:
-	var b: Dictionary = {} if sim == null else sim.get_entity(_panel_building)
-	if b.is_empty() or not b.has("btype"):
-		building_panel.visible = false
-		_panel_building = 0
+	if sim == null:
 		return
-	building_panel.visible = true
-	var spec: Dictionary = sim.BUILDINGS[b.btype]
-	_panel_title.text = UI.BUILDING_NAMES[b.btype]
-	var info := "HP %d / %d" % [b.hp, b.max_hp]
-	var building_now: bool = b.progress < spec.build
-	if building_now:
-		info += "  ·  building…"
-	_panel_info.text = info
+	# Rows in a fixed order, one per type still standing in the selection.
+	var types: Array = []
+	for btype in ["hq"] + FACTORIES:
+		if not _standing(btype).is_empty():
+			types.append(btype)
+	building_panel.visible = not types.is_empty()
+	for btype in _rows.keys():
+		if not types.has(btype):
+			_rows[btype].row.queue_free()
+			_rows.erase(btype)
+	for btype in types:
+		if not _rows.has(btype):
+			_rows[btype] = _make_row(btype)
+		_panel_rows.move_child(_rows[btype].row, types.find(btype))
+		_refresh_row(btype, _rows[btype])
+	_train_button = _rows[types[0]].train if not types.is_empty() else null
+
+
+func _refresh_row(btype: String, r: Dictionary) -> void:
+	var spec: Dictionary = sim.BUILDINGS[btype]
+	var group: Array = _standing(btype)
+	var hp := 0
+	var max_hp := 0
+	var going_up := 0
+	var queued := 0
+	var ready := 0
+	var best_train := 0
+	var best_build := 0
+	for b in group:
+		hp += b.hp
+		max_hp += b.max_hp
+		queued += b.queue.size()
+		if b.progress < spec.build:
+			going_up += 1
+			best_build = maxi(best_build, b.progress)
+		else:
+			ready += 1
+			if not b.queue.is_empty():
+				best_train = maxi(best_train, b.train)
+	var name: String = UI.BUILDING_NAMES[btype]
+	r.title.text = name if group.size() == 1 else "%s  × %d" % [name, group.size()]
+	var info := "HP %d / %d" % [hp, max_hp]
+	if going_up > 0:
+		info += "  ·  building…" if group.size() == 1 else "  ·  %d building…" % going_up
+	r.info.text = info
 	var factory: bool = spec.kind >= 0
-	_train_button.visible = factory
-	_progress.visible = factory or building_now
-	if building_now:
-		_progress.max_value = spec.build
-		_progress.value = b.progress
+	r.train.visible = factory
+	r.progress.visible = factory or going_up > 0
+	if ready == 0 and going_up > 0:
+		r.progress.max_value = spec.build
+		r.progress.value = best_build
 	elif factory:
-		_progress.max_value = sim.TRAIN_TICKS
-		_progress.value = b.train
+		r.progress.max_value = sim.TRAIN_TICKS
+		r.progress.value = best_train
 	if factory:
-		_train_button.icon = UI.kind_icon(spec.kind)
-		var queued: String = "" if b.queue.is_empty() else "  (%d queued)" % b.queue.size()
-		_train_button.text = "+  %d %s%s" % [sim.UNIT_COST, UI.RES_NAMES[spec.res], queued]
-		_train_button.disabled = building_now or b.queue.size() >= sim.QUEUE_MAX \
+		r.train.icon = UI.kind_icon(spec.kind)
+		var q: String = "" if queued == 0 else "  (%d queued)" % queued
+		r.train.text = "+  %d %s%s" % [sim.UNIT_COST, UI.RES_NAMES[spec.res], q]
+		r.train.disabled = ready == 0 or queued >= sim.QUEUE_MAX * ready \
 				or not sim.can_afford(team, spec.res, sim.UNIT_COST)
 
 

@@ -27,7 +27,7 @@ const ART_WIDTH := {"hq": 30.0, "quarry": 23.0, "mill": 23.0, "forge": 23.0}
 
 var sim: Node
 var _views: Dictionary = {}  # building id -> {root, model, ring, hp_bg, hp_fill, sails}
-var _selected_id := 0
+var _selected_ids: Array = []
 var _ranges := Node3D.new()   # build range circles, shown while placing
 var _range_key := ""          # which buildings the circles were drawn for
 const RANGE_COLOR := Color(1, 1, 1, 0.16)
@@ -116,10 +116,24 @@ func show_build_range(team: int, on: bool) -> void:
 		_ranges.add_child(ring)
 
 
-func set_selected_building(id: int) -> void:
-	_selected_id = id
+## Where a building's picture is on screen in a pane (empty if none).
+func screen_rect(camera: Camera3D, id: int) -> Rect2:
+	var view: Dictionary = _views.get(id, {})
+	if view.is_empty() or view.art == null:
+		return Rect2()
+	var art: Sprite3D = view.art
+	var size: Vector2 = Vector2(art.texture.get_size()) * art.pixel_size  # map units
+	var base: Vector3 = art.global_position
+	var foot: Vector2 = camera.unproject_position(base)
+	var head: Vector2 = camera.unproject_position(base + Vector3(0, size.y, 0))
+	var half: float = size.x * 0.5 / camera.units_per_pixel
+	return Rect2(foot.x - half, head.y, half * 2.0, foot.y - head.y)
+
+
+func set_selected_buildings(ids: Array) -> void:
+	_selected_ids = ids.duplicate()
 	for bid in _views:
-		_views[bid].ring.visible = bid == id
+		_views[bid].ring.visible = _selected_ids.has(bid)
 
 
 func _on_added(id: int) -> void:
@@ -134,12 +148,13 @@ func _on_added(id: int) -> void:
 	root.add_child(model)
 	var roof: Color = TEAM_COLORS[b.team]
 	var sails: Node3D = null
+	var art: Sprite3D = null
 	match b.btype:
 		"hq", "quarry", "mill", "forge":
 			# Painted art, standing up and facing the camera, on a patch of
 			# the team's colour.
 			var tex: Texture2D = HQ_RED if b.btype == "hq" and b.team == 0 else ART[b.btype]
-			var art := Sprite3D.new()
+			art = Sprite3D.new()
 			art.texture = tex
 			art.pixel_size = ART_WIDTH[b.btype] / tex.get_width()
 			art.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -179,7 +194,7 @@ func _on_added(id: int) -> void:
 	ring.mesh = sel
 	ring.position.y = 0.5
 	ring.material_override = _mat(Color.WHITE)
-	ring.visible = id == _selected_id
+	ring.visible = _selected_ids.has(id)
 	root.add_child(ring)
 	var hp_bg := _bar(HP_BAR_BG, true, 33.0 if b.btype == "hq" else 25.0)
 	var hp_fill := _bar(TEAM_COLORS[b.team].lightened(0.15), false, 33.0 if b.btype == "hq" else 25.0)
@@ -187,7 +202,7 @@ func _on_added(id: int) -> void:
 	root.add_child(hp_bg)
 	root.add_child(hp_fill)
 	_views[id] = {"root": root, "model": model, "ring": ring, "scaffold": scaffold,
-			"hp_bg": hp_bg, "hp_fill": hp_fill, "sails": sails}
+			"hp_bg": hp_bg, "hp_fill": hp_fill, "sails": sails, "art": art}
 
 
 func _on_destroyed(id: int) -> void:

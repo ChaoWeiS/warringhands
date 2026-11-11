@@ -24,10 +24,13 @@ extends Node
 const PLAYER_TEAM := 0
 ## How close (pixels) a tap must be to a unit to pick it.
 const TAP_RADIUS := 44.0
+## Height (map units) of a building's middle, for lassoing it.
+const BUILDING_MIDDLE := 10.0
 const ResourcesView := preload("res://scripts/resources_view.gd")
 
 var selection: Array = []  # unit ids
-var selected_building := 0
+var selected_buildings: Array = []
+var selected_building := 0  # the first of them (0 = none)
 
 var panes: Control
 var sim: Node
@@ -57,8 +60,10 @@ func _ready() -> void:
 	hud.play_again_pressed.connect(func(): get_tree().reload_current_scene())
 	sim.unit_died.connect(_on_unit_died)
 	sim.building_destroyed.connect(func(id):
-		if id == selected_building:
-			_select_building(0))
+		if selected_buildings.has(id):
+			var kept: Array = selected_buildings.duplicate()
+			kept.erase(id)
+			_select_buildings(kept))
 	sim.game_over.connect(func(winner): hud.show_game_over(winner))
 
 
@@ -77,7 +82,7 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 	if id != -1 and not bar.is_attack_armed():
 		_select([id])
 		return
-	var own_building := _building_at(ground, true)
+	var own_building := _building_at(camera, point, ground, true)
 	if own_building != 0 and not bar.is_attack_armed():
 		_select_building(own_building)
 		return
@@ -86,7 +91,7 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		return
 	var enemy := _unit_at(camera, point, false)
 	if enemy == -1:
-		enemy = _building_at(ground, false)
+		enemy = _building_at(camera, point, ground, false)
 	if enemy > 0:
 		sim.command_attack(selection, enemy)
 		view.show_attack_marker(enemy)
@@ -125,6 +130,8 @@ func _place(btype: String, ground: Vector2) -> void:
 		view.show_move_marker(Vector3(ground.x, 0, ground.y), true)
 
 
+## A loop selects your units inside it; if there are none, your buildings
+## inside it (their middle, or their base).
 func _on_lassoed(camera: Camera3D, polygon: PackedVector2Array) -> void:
 	var ids: Array = []
 	for u in sim.units:
@@ -135,6 +142,18 @@ func _on_lassoed(camera: Camera3D, polygon: PackedVector2Array) -> void:
 			ids.append(u.id)
 	if not ids.is_empty():
 		_select(ids)
+		return
+	var bids: Array = []
+	for b in sim.buildings:
+		if b.team != PLAYER_TEAM:
+			continue
+		var base := Vector3(b.x, 0, b.z) / float(sim.SCALE)
+		for height in [0.0, BUILDING_MIDDLE]:
+			if Geometry2D.is_point_in_polygon(camera.unproject_position(base + Vector3(0, height, 0)), polygon):
+				bids.append(b.id)
+				break
+	if not bids.is_empty():
+		_select_buildings(bids)
 
 
 ## Fallen units leave the selection.
@@ -160,15 +179,20 @@ func _select(ids: Array) -> void:
 	for id in ids:
 		counts[sim.get_unit(id).kind] += 1
 	bar.show_counts(counts)
-	if not ids.is_empty() and selected_building != 0:
-		_select_building(0)
+	if not ids.is_empty() and not selected_buildings.is_empty():
+		_select_buildings([])
 
 
 func _select_building(id: int) -> void:
-	selected_building = id
-	buildings_view.set_selected_building(id)
-	hud.show_building(id)
-	if id != 0 and not selection.is_empty():
+	_select_buildings([] if id == 0 else [id])
+
+
+func _select_buildings(ids: Array) -> void:
+	selected_buildings = ids.duplicate()
+	selected_building = 0 if ids.is_empty() else ids[0]
+	buildings_view.set_selected_buildings(ids)
+	hud.show_buildings(ids)
+	if not ids.is_empty() and not selection.is_empty():
 		_select([])
 
 
@@ -188,10 +212,21 @@ func _unit_at(camera: Camera3D, point: Vector2, own: bool) -> int:
 	return best
 
 
-## A building (yours if `own`, else an enemy's) under a ground point, or 0.
-func _building_at(ground: Variant, own: bool) -> int:
-	if ground == null:
-		return 0
+## A building (yours if `own`, else an enemy's) under a pane point, or 0.
+func _building_at(camera: Camera3D, point: Vector2, ground: Variant, own: bool) -> int:
+	# On its picture: the one whose base is lowest on screen (in front) wins.
+	var best := 0
+	var best_foot := -INF
+	for b in sim.buildings:
+		if (b.team == PLAYER_TEAM) != own:
+			continue
+		var rect: Rect2 = buildings_view.screen_rect(camera, b.id)
+		if rect.has_area() and rect.grow(6).has_point(point) and rect.end.y > best_foot:
+			best = b.id
+			best_foot = rect.end.y
+	if best != 0 or ground == null:
+		return best
+	# Or on its footprint on the ground.
 	var g: Vector2 = Vector2(ground.x, ground.z) * float(sim.SCALE)
 	for b in sim.buildings:
 		if (b.team == PLAYER_TEAM) != own:
