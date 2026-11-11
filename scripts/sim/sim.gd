@@ -11,6 +11,8 @@ extends Node
 
 signal ticked
 
+const NavGrid := preload("res://scripts/sim/nav_grid.gd")
+
 ## Sim units per map unit.
 const SCALE := 100
 const TICK_RATE := 20
@@ -26,19 +28,25 @@ enum Kind { ROCK, PAPER, SCISSORS }
 const SPEED := [72, 85, 78]
 const UNITS_PER_KIND := 4
 
-## The island, for "is this on land?".
+## The island, for where units can walk.
 @export var field_path: NodePath
 
 var field: Node = null
 var tick: int = 0
-## Every unit: {id, team, kind, x, z, px, pz, tx, tz, moving}.
+## Every unit: {id, team, kind, x, z, px, pz, tx, tz, moving, path}.
 ## (px, pz) = position at the previous tick, for smooth drawing.
+## path = waypoints (Vector2i, sim units) still to walk; the last is (tx, tz).
 var units: Array = []
 
 var _by_id: Dictionary = {}
 var _next_id: int = 1
 var _pending: Dictionary = {}  # tick -> Array of commands
 var _accum: float = 0.0
+var _nav = null  # NavGrid, built on first use
+
+## One walkable grid per island, shared by every sim using it (building it
+## takes a moment).
+static var _nav_cache: Dictionary = {}
 
 
 func _ready() -> void:
@@ -94,6 +102,17 @@ func has_pending_commands() -> bool:
 	return not _pending.is_empty()
 
 
+## The walkable grid (null if there's no island, e.g. in some tests).
+func nav():
+	if _nav == null and field != null:
+		var key: int = field.get_instance_id()
+		if not _nav_cache.has(key):
+			field.build()
+			_nav_cache[key] = NavGrid.new(field, int(field.map_size.x))
+		_nav = _nav_cache[key]
+	return _nav
+
+
 # --- Simulation ----------------------------------------------------------------
 
 func _queue(command: Dictionary) -> void:
@@ -141,42 +160,43 @@ func _apply_move(command: Dictionary) -> void:
 		var u: Dictionary = group[i]
 		var c: int = i % cols
 		var r: int = i / cols
-		u.tx = command.x + (c * 2 - (cols - 1)) * SPACING / 2
-		u.tz = command.z + (r * 2 - (rows - 1)) * SPACING / 2
-		u.moving = true
+		var tx: int = command.x + (c * 2 - (cols - 1)) * SPACING / 2
+		var tz: int = command.z + (r * 2 - (rows - 1)) * SPACING / 2
+		_route(u, tx, tz)
 
 
+## Plans a unit's way to (tx, tz) around lakes, forests and the like. If the
+## spot itself is blocked (e.g. in a lake), it goes to the nearest open spot.
+func _route(u: Dictionary, tx: int, tz: int) -> void:
+	var grid = nav()
+	var path: Array = [Vector2i(tx, tz)] if grid == null else grid.find_route(u.x, u.z, tx, tz)
+	u.path = path
+	u.moving = not path.is_empty()
+	if u.moving:
+		u.tx = path[path.size() - 1].x
+		u.tz = path[path.size() - 1].y
+
+
+## Walks towards the next waypoint; on reaching it, moves on to the next.
 func _move(u: Dictionary) -> void:
-	var dx: int = u.tx - u.x
-	var dz: int = u.tz - u.z
-	var dist: int = _isqrt(dx * dx + dz * dz)
-	var speed: int = SPEED[u.kind]
-	var nx: int
-	var nz: int
-	var arrived := false
-	if dist <= speed:
-		nx = u.tx
-		nz = u.tz
-		arrived = true
-	else:
-		nx = u.x + dx * speed / dist
-		nz = u.z + dz * speed / dist
-	# Ground units stop at the shore.
-	# TODO(lockstep): the land test uses floats; replace with a whole-number
-	# land grid before online play so every device agrees at the coastline.
-	if not _on_land(nx, nz):
+	var path: Array = u.path
+	if path.is_empty():
 		u.moving = false
 		return
-	u.x = nx
-	u.z = nz
-	if arrived:
-		u.moving = false
-
-
-func _on_land(x: int, z: int) -> bool:
-	if field == null:
-		return true
-	return field.is_on_land(Vector2(x, z) / float(SCALE))
+	var next: Vector2i = path[0]
+	var dx: int = next.x - u.x
+	var dz: int = next.y - u.z
+	var dist: int = _isqrt(dx * dx + dz * dz)
+	var speed: int = SPEED[u.kind]
+	if dist <= speed:
+		u.x = next.x
+		u.z = next.y
+		path.pop_front()
+		if path.is_empty():
+			u.moving = false
+	else:
+		u.x += dx * speed / dist
+		u.z += dz * speed / dist
 
 
 ## Whole-number square root (same result on every device).
@@ -210,7 +230,7 @@ func _add_unit(team: int, kind: int, at: Vector2i) -> void:
 	var u := {
 		"id": _next_id, "team": team, "kind": kind,
 		"x": at.x, "z": at.y, "px": at.x, "pz": at.y,
-		"tx": at.x, "tz": at.y, "moving": false,
+		"tx": at.x, "tz": at.y, "moving": false, "path": [],
 	}
 	_next_id += 1
 	units.append(u)

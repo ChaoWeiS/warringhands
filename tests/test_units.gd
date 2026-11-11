@@ -235,23 +235,61 @@ func _run() -> void:
 	touch(0, Vector2(r.get_center().x, r.end.y - 40), false)
 	check("screen cut into two side-by-side panes", panes.pane_count() == 2)
 	var right = panes._leaves()[1]
-	var far := Vector2(410 + 60, 410 + 90)  # land, away from both armies
+	var far := Vector2(410 + 20, 410 + 190)  # open ground, away from both armies
+	check("cross-pane destination is open ground", field.is_walkable(far))
 	right.camera.target = Vector3(far.x, 0, far.y)
 	right.camera.refit()
 	await frames(3)
 	tap(right.rect.get_center())
 	check("selection survives tapping in another pane", game.selection.size() == 12)
-	sim.step_ticks(400)
+	sim.step_ticks(900)
 	var mean := Vector2.ZERO
 	for id in mine:
 		mean += sim.unit_ground(id)
 	mean /= mine.size()
 	check("army walked to the spot tapped in the other pane (%.1f away)" % mean.distance_to(far), mean.distance_to(far) < 3.0)
+	var all_stopped := true
+	for id in mine:
+		all_stopped = all_stopped and not sim.get_unit(id).moving
+	check("...and every unit has arrived", all_stopped)
 	await shot("units_3_cross_pane")
+
+	# Pathfinding: walk around the central lake. The straight line between
+	# the two points crosses the lake; the unit must go around it, never
+	# stepping onto blocked ground, and arrive.
+	var nav = sim.nav()
+	var walker: int = mine[2]
+	var west := Vector2(410 - 80, 410)
+	var east := Vector2(410 + 75, 410 + 20)
+	check("lake test points are open ground", field.is_walkable(west) and field.is_walkable(east))
+	check("the straight line between them crosses the lake", not field.is_walkable(Vector2(410, 410)))
+	sim.command_move([walker], Vector3(west.x, 0, west.y))
+	sim.step_ticks(1200)
+	check("walker reached the west side of the lake", sim.unit_ground(walker).distance_to(west) < 1.0)
+	sim.command_move([walker], Vector3(east.x, 0, east.y))
+	sim.step_ticks(sim.COMMAND_DELAY + 1)  # orders take effect after the delay
+	var waypoints: int = sim.get_unit(walker).path.size()
+	check("route around the lake has turns (%d waypoints)" % waypoints, waypoints >= 2)
+	var stayed_clear := true
+	for i in 600:
+		sim.step_ticks(1)
+		var w: Dictionary = sim.get_unit(walker)
+		stayed_clear = stayed_clear and nav.is_walkable_cell(nav.cell_of(w.x, w.z))
+	check("walker never stepped on water or other blocked ground", stayed_clear)
+	check("walker reached the far side of the lake (%.1f away)" % sim.unit_ground(walker).distance_to(east),
+			sim.unit_ground(walker).distance_to(east) < 1.0)
+
+	# An order into the middle of a lake: go to the nearest shore and stop.
+	sim.command_move([walker], Vector3(410, 0, 410))
+	sim.step_ticks(600)
+	var at: Vector2 = sim.unit_ground(walker)
+	check("ordered into the lake: stops at the shore (%.1f from centre)" % at.distance_to(Vector2(410, 410)),
+			not sim.get_unit(walker).moving and nav.is_walkable_cell(nav.cell_of(sim.get_unit(walker).x, sim.get_unit(walker).z))
+			and at.distance_to(Vector2(410, 410)) < 70.0)
 
 	# Ordering a unit into the sea: it stops at the shore.
 	sim.command_move([first], Vector3(20, 0, 20))
-	sim.step_ticks(800)
+	sim.step_ticks(1500)
 	var u: Dictionary = sim.get_unit(first)
 	check("unit sent to sea stops on land", field.is_on_land(sim.unit_ground(first)) and not u.moving)
 

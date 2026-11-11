@@ -11,6 +11,7 @@ Early prototype:
 - A pastel 2.5D island (3D world, placeholder billboard units)
 - Screen panes: grab a side tab and swipe across to **cut**, drag a divider to **resize**, drag it all the way to **merge**
 - Each pane has its own camera: two fingers to pan and pinch-zoom
+- Terrain: lakes, forests and plateaus; units find their way around them (selected units show their route)
 - Units: tap or lasso to select, tap the ground (in any pane) to move; selection bar with hand icons and counts
 
 ## Open the project

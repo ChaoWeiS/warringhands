@@ -1,6 +1,11 @@
 extends Node3D
-## Battlefield in 2.5D: a pastel 3D island in the sea, with stone / wood /
-## metal resource spots. Units are drawn by units_view.gd.
+## Battlefield in 2.5D: a pastel 3D island in the sea, with lakes, forests,
+## raised plateaus and stone / wood / metal resource spots. Units are drawn
+## by units_view.gd.
+##
+## Every feature is placed twice, mirrored through the island's centre, so
+## both players get the same terrain. `is_walkable()` tells the pathfinding
+## (scripts/sim/nav_grid.gd) where ground units can go.
 ##
 ## Ground positions are 2D (x, z). Game logic will work on that flat plane;
 ## only the visuals are 3D. The coastline is built from fixed numbers so every
@@ -25,12 +30,32 @@ const STONE := Color("#cbc5da")
 const TRUNK := Color("#d9b48f")
 const LEAVES := Color("#f6c3d8")
 const METAL := Color("#a9e7e2")
+const LAKE := Color("#a6d9ee")
+const LAKE_DEEP := Color("#8ec8e3")
+const PLATEAU_TOP := Color("#d3ecbf")
+const CROWNS := [Color("#b8e0a0"), Color("#a6d68f"), Color("#cfe8b4"), Color("#b8e0a0"), Color("#f6c3d8")]
 
 # Coastline wobble: [frequency, amplitude, phase]. Only EVEN frequencies, so
 # the island looks the same after a 180° turn (fair for two players).
 const COAST_WAVES := [
 	[2, 0.10, 0.6], [4, 0.07, 2.1], [6, 0.04, 4.0], [8, 0.025, 1.3], [12, 0.012, 5.2],
 ]
+
+# Terrain, as offsets from the island centre. Each is also placed mirrored
+# (turned 180° around the centre) for the other side.
+# Lakes: [offset, radius x, radius z, rotation]
+const LAKES := [[Vector2(0, 0), 58.0, 34.0, 0.5], [Vector2(-50, 185), 32.0, 22.0, -0.4]]
+# Forests: [offset, radius, seed]
+const FORESTS := [[Vector2(-70, -110), 34.0, 11], [Vector2(-215, 100), 28.0, 12], [Vector2(-40, 90), 22.0, 13]]
+# Plateaus (raised ground with cliffs): [offset, radius x, radius z, rotation]
+const PLATEAUS := [[Vector2(-90, 30), 26.0, 20.0, 0.3], [Vector2(-110, -185), 22.0, 17.0, -0.6]]
+const PLATEAU_HEIGHT := 5.0
+# Shape wobble for lakes and plateaus (even frequencies only).
+const BLOB_WAVES := [[2, 0.12, 0.4], [4, 0.08, 1.7], [6, 0.05, 3.1]]
+
+## Room kept around obstacles and the shore so units don't clip into them.
+const UNIT_CLEARANCE := 3.0
+const SHORE_CLEARANCE := 6.0
 
 # Resource spots as offsets from the island centre (mirrored for fairness).
 const STONES := [Vector2(-170, -170), Vector2(170, 170)]
@@ -39,14 +64,72 @@ const METALS := [Vector2(0, -125), Vector2(0, 125), Vector2(-230, 0), Vector2(23
 
 
 var coastline: PackedVector2Array = PackedVector2Array()
+var lakes: Array = []      # PackedVector2Array outlines
+var plateaus: Array = []   # PackedVector2Array outlines
+var forests: Array = []    # {center, radius, trees: Array[Vector2]}
+
+# Shapes ground units can't enter, already grown by UNIT_CLEARANCE.
+var _blocked_polys: Array = []    # {poly, box}
+var _blocked_circles: Array = []  # {center, radius}
+var _walk_coast := PackedVector2Array()
+var _built := false
 
 
 func _ready() -> void:
-	coastline = _build_coastline()
+	build()
 	_build_environment()
 	_build_sea()
 	_build_island()
+	_build_terrain()
 	_build_resources()
+
+
+## Works out the island and its terrain. Safe to call more than once; the
+## pathfinding calls it if it needs the terrain before this node is ready.
+func build() -> void:
+	if _built:
+		return
+	_built = true
+	coastline = _build_coastline()
+	_walk_coast = _offset(coastline, -SHORE_CLEARANCE)
+	var c := get_center()
+	for lake in LAKES:
+		for poly in _mirrored_blob(lake[0], lake[1], lake[2], lake[3]):
+			lakes.append(poly)
+			_block_poly(poly)
+	for plateau in PLATEAUS:
+		for poly in _mirrored_blob(plateau[0], plateau[1], plateau[2], plateau[3]):
+			plateaus.append(poly)
+			_block_poly(poly)
+	for forest in FORESTS:
+		var trees := _forest_trees(c + forest[0], forest[1], forest[2])
+		var mirrored: Array = []
+		for t in trees:
+			mirrored.append(2.0 * c - t)
+		forests.append({"center": c + forest[0], "radius": forest[1], "trees": trees})
+		forests.append({"center": c - forest[0], "radius": forest[1], "trees": mirrored})
+		for t in trees + mirrored:
+			_blocked_circles.append({"center": t, "radius": 3.5 + UNIT_CLEARANCE})
+	for spot in STONES:
+		_blocked_circles.append({"center": c + spot, "radius": 13.0 + UNIT_CLEARANCE})
+	for spot in WOODS:
+		_blocked_circles.append({"center": c + spot, "radius": 16.0 + UNIT_CLEARANCE})
+	for spot in METALS:
+		_blocked_circles.append({"center": c + spot, "radius": 5.0 + UNIT_CLEARANCE})
+
+
+## Can a ground unit stand here? (On the island, away from the shore, and
+## not in a lake, forest, plateau or resource prop.)
+func is_walkable(p: Vector2) -> bool:
+	if not Geometry2D.is_point_in_polygon(p, _walk_coast):
+		return false
+	for circle in _blocked_circles:
+		if p.distance_squared_to(circle.center) < circle.radius * circle.radius:
+			return false
+	for blocked in _blocked_polys:
+		if blocked.box.has_point(p) and Geometry2D.is_point_in_polygon(p, blocked.poly):
+			return false
+	return true
 
 
 ## True if a ground point (x, z) is on land. Ground units will use this to
@@ -57,6 +140,58 @@ func is_on_land(ground_point: Vector2) -> bool:
 
 func get_center() -> Vector2:
 	return map_size * 0.5
+
+
+# --- Terrain shapes -----------------------------------------------------------
+
+func _block_poly(poly: PackedVector2Array) -> void:
+	var grown := _offset(poly, UNIT_CLEARANCE)
+	var box := Rect2(grown[0], Vector2.ZERO)
+	for p in grown:
+		box = box.expand(p)
+	_blocked_polys.append({"poly": grown, "box": box})
+
+
+## A wobbly oval at `offset` from the centre, plus its mirrored twin
+## (just one if it sits on the centre, since it's its own mirror).
+func _mirrored_blob(offset: Vector2, rx: float, rz: float, rot: float) -> Array:
+	var c := get_center()
+	var blob := PackedVector2Array()
+	for i in 48:
+		var a: float = TAU * i / 48.0
+		var wobble: float = 1.0
+		for wave in BLOB_WAVES:
+			wobble += wave[1] * sin(wave[0] * a + wave[2])
+		var local := Vector2(cos(a) * rx, sin(a) * rz) * wobble
+		blob.append(c + offset + local.rotated(rot))
+	if offset == Vector2.ZERO:
+		return [blob]
+	var twin := PackedVector2Array()
+	for p in blob:
+		twin.append(2.0 * c - p)
+	return [blob, twin]
+
+
+## Tree positions in a forest, from a fixed seed (same on every device).
+func _forest_trees(center: Vector2, radius: float, seed_value: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var trees: Array = []
+	var inside_shore := _offset(coastline, -12.0)
+	for attempt in 400:
+		var a: float = rng.randf() * TAU
+		var d: float = sqrt(rng.randf()) * (radius - 3.0)
+		var p: Vector2 = center + Vector2.from_angle(a) * d
+		if not Geometry2D.is_point_in_polygon(p, inside_shore):
+			continue
+		var crowded := false
+		for t in trees:
+			if p.distance_to(t) < 7.0:
+				crowded = true
+				break
+		if not crowded:
+			trees.append(p)
+	return trees
 
 
 # --- Building the world ----------------------------------------------------
@@ -112,6 +247,68 @@ func _build_island() -> void:
 	_add_skirt(beach, 0.0, -2.5, CLIFF)
 	_add_flat(_offset(coastline, -10.0), 0.15, GRASS)
 	_add_flat(_offset(coastline, -80.0), 0.3, GRASS_DARK)
+
+
+func _build_terrain() -> void:
+	for lake in lakes:
+		_add_flat(_offset(lake, 5.0), 0.36, SAND)
+		_add_flat(lake, 0.4, LAKE)
+		_add_flat(_offset(lake, -9.0), 0.42, LAKE_DEEP)
+	for plateau in plateaus:
+		_add_flat(_offset(plateau, 2.5), 0.34, CLIFF)
+		_add_skirt(plateau, PLATEAU_HEIGHT, 0.0, CLIFF, _poly_center(plateau))
+		_add_flat(plateau, PLATEAU_HEIGHT, PLATEAU_TOP)
+	_build_forest_trees()
+
+
+## All forest trees in two batches (trunks, crowns) so hundreds stay cheap.
+func _build_forest_trees() -> void:
+	var all_trees: Array = []
+	for forest in forests:
+		all_trees.append_array(forest.trees)
+	var trunk_mesh := CylinderMesh.new()
+	trunk_mesh.top_radius = 1.0
+	trunk_mesh.bottom_radius = 1.4
+	trunk_mesh.height = 7.0
+	trunk_mesh.radial_segments = 6
+	var crown_mesh := SphereMesh.new()
+	crown_mesh.radius = 5.0
+	crown_mesh.height = 8.0
+	crown_mesh.radial_segments = 10
+	crown_mesh.rings = 6
+	var trunks := _multimesh(trunk_mesh, all_trees.size(), _material(TRUNK))
+	var crown_mat := _material(Color.WHITE)
+	crown_mat.vertex_color_use_as_albedo = true
+	var crowns := _multimesh(crown_mesh, all_trees.size(), crown_mat)
+	for i in all_trees.size():
+		var p: Vector2 = all_trees[i]
+		# Size and colour vary per tree, but fixed by position (same everywhere).
+		var h: int = absi(int(p.x * 7.0) * 31 + int(p.y * 7.0) * 17)
+		var size: float = 0.8 + 0.45 * float(h % 100) / 100.0
+		var scale_basis := Basis().scaled(Vector3(size, size, size))
+		trunks.multimesh.set_instance_transform(i, Transform3D(scale_basis, _ground(p, 3.5 * size)))
+		crowns.multimesh.set_instance_transform(i, Transform3D(scale_basis, _ground(p, 9.5 * size)))
+		crowns.multimesh.set_instance_color(i, CROWNS[h % CROWNS.size()])
+
+
+func _multimesh(mesh: Mesh, count: int, material: Material) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = mesh
+	mm.instance_count = count
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = material
+	add_child(mmi)
+	return mmi
+
+
+func _poly_center(poly: PackedVector2Array) -> Vector2:
+	var sum := Vector2.ZERO
+	for p in poly:
+		sum += p
+	return sum / poly.size()
 
 
 func _build_resources() -> void:
@@ -198,11 +395,13 @@ func _add_flat(polygon: PackedVector2Array, y: float, color: Color) -> void:
 	add_child(mi)
 
 
-## Vertical band around a shape's edge, so the island has some thickness.
-func _add_skirt(polygon: PackedVector2Array, top: float, bottom: float, color: Color) -> void:
+## Vertical band around a shape's edge (island thickness, plateau cliffs).
+func _add_skirt(polygon: PackedVector2Array, top: float, bottom: float, color: Color,
+		center: Vector2 = Vector2.INF) -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var center := get_center()
+	if center == Vector2.INF:
+		center = get_center()
 	var n: int = polygon.size()
 	for i in n:
 		var p0: Vector2 = polygon[i]

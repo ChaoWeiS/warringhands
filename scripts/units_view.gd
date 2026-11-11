@@ -33,11 +33,17 @@ const HOPS_PER_SECOND := 2.7
 const HOP_BASE_SHRINK := 0.25
 ## A little squash on landing and stretch in the air.
 const HOP_SQUASH := 0.08
+## Route lines drawn for selected units: dashed ribbons on the ground.
+const ROUTE_COLOR := Color(1, 1, 1, 0.75)
+const ROUTE_WIDTH := 0.6
+const ROUTE_DASH := 2.2
+const ROUTE_GAP := 1.6
 
 var sim: Node
 var _views: Dictionary = {}  # unit id -> {root, ring, sprite, base, hop}
 var _selected: Dictionary = {}
 var _frames_by_kind: Array = []  # SpriteFrames per kind
+var _routes_mesh := ImmediateMesh.new()
 
 
 func _ready() -> void:
@@ -46,12 +52,18 @@ func _ready() -> void:
 		_frames_by_kind.append(_build_frames(kind))
 	for u in sim.units:
 		_make_view(u)
+	var routes := MeshInstance3D.new()
+	routes.mesh = _routes_mesh
+	routes.material_override = _flat_material(ROUTE_COLOR, true)
+	routes.material_override.cull_mode = BaseMaterial3D.CULL_DISABLED
+	add_child(routes)
 	_update_positions()
 
 
 func _process(delta: float) -> void:
 	_update_positions()
 	_update_hops(delta)
+	_draw_routes()
 
 
 ## Where a unit is drawn right now (middle of its sprite), for picking.
@@ -107,6 +119,55 @@ func _update_positions() -> void:
 		# Face the way we're walking (the art faces right).
 		if u.x != u.px:
 			view.sprite.flip_h = u.x < u.px
+
+
+## Dashed lines on the ground showing where selected units are headed,
+## following their planned route around obstacles.
+func _draw_routes() -> void:
+	_routes_mesh.clear_surfaces()
+	var started := false
+	var scale_factor: float = float(sim.SCALE)
+	for id in _selected:
+		var u: Dictionary = sim.get_unit(id)
+		if u.is_empty() or not u.moving or u.path.is_empty():
+			continue
+		var points: Array = [Vector2(_views[id].root.position.x, _views[id].root.position.z)]
+		for wp in u.path:
+			points.append(Vector2(wp.x, wp.y) / scale_factor)
+		if not started:
+			_routes_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+			started = true
+		_add_dashes(points)
+	if started:
+		_routes_mesh.surface_end()
+
+
+## Dashes every (ROUTE_DASH + ROUTE_GAP) along the whole route, measured
+## from its start, so the pattern carries smoothly around corners.
+func _add_dashes(points: Array) -> void:
+	var y := 0.55
+	var period: float = ROUTE_DASH + ROUTE_GAP
+	var travelled := 0.0  # route length before this segment
+	for i in points.size() - 1:
+		var a: Vector2 = points[i]
+		var b: Vector2 = points[i + 1]
+		var length: float = a.distance_to(b)
+		if length < 0.001:
+			continue
+		var dir: Vector2 = (b - a) / length
+		var side: Vector2 = Vector2(-dir.y, dir.x) * ROUTE_WIDTH * 0.5
+		var k: int = int(floor(travelled / period))
+		while k * period < travelled + length:
+			var s0: float = maxf(k * period, travelled) - travelled
+			var s1: float = minf(k * period + ROUTE_DASH, travelled + length) - travelled
+			if s1 > s0:
+				var p0: Vector2 = a + dir * s0
+				var p1: Vector2 = a + dir * s1
+				var q := [p0 + side, p0 - side, p1 - side, p1 + side]
+				for v in [0, 1, 2, 0, 2, 3]:
+					_routes_mesh.surface_add_vertex(Vector3(q[v].x, y, q[v].y))
+			k += 1
+		travelled += length
 
 
 ## Walking units hop. A unit that stops finishes its current hop and lands.

@@ -39,7 +39,8 @@
 - Selection is shared by all panes: select in one pane, tap the destination in another.
 - Selection bar (bottom): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type; Clear to deselect.
 - A second finger in the pane cancels a tap or lasso (it becomes a camera gesture).
-- Ground units stop at the shore.
+- **Pathfinding:** units plan a route around lakes, forests, plateaus and resource props (A* on a 4-unit grid, smoothed into straight runs). An order onto blocked ground (e.g. a lake) goes to the nearest open spot. Selected units show their route as a dashed line on the ground.
+- Units don't bump into each other yet (they can overlap while walking); local avoidance comes later.
 
 ## Economy
 - Resources: **stone** (rock), **wood** (paper), **metal** (scissors), scattered on the map.
@@ -58,6 +59,7 @@
 - An **island surrounded by sea** (8192 x 8192 world, sea included). No hard walls: the sea is the boundary.
 - The island looks the same when turned 180°, so two players starting on opposite sides get a fair coastline. Resource spots are mirrored too.
 - Ground units cannot enter the sea; flyers (wood upgrade) can cross it.
+- Terrain on the island (all mirrored): a central lake and two side lakes, six forests, four raised plateaus with cliffs. Forests, lakes and plateaus block ground units for now.
 - Later maps: several islands, rivers, cliffs.
 
 ## Matches
@@ -75,7 +77,7 @@
 - Godot 4.6, GL Compatibility renderer (Android, iOS, web).
 - Panes: each is a SubViewport sharing one 3D world, with its own camera. Layout is a tree of splits.
 - Multiplayer: deterministic lockstep (send commands only). Game logic uses integers / fixed point.
-- Sim (`scripts/sim/sim.gd`): 20 ticks/s, positions in whole sim units (100 per map unit), commands run 2 ticks after they are given. Tested: same orders give identical results. Still to do for online play: a whole-number land grid (the coastline test uses floats).
+- Sim (`scripts/sim/sim.gd`): 20 ticks/s, positions in whole sim units (100 per map unit), commands run 2 ticks after they are given. Tested: same orders give identical results. Pathfinding uses a walkable grid (`scripts/sim/nav_grid.gd`) with whole-number routes. Still to do for online play: make sure every device builds the identical grid (it's derived from the island's shapes with decimals), e.g. ship it prebuilt or compare a checksum at match start.
 - Tests: `tests/run_tests.sh` (panes, map stillness, units). CI runs them on every push.
 - Relay / matchmaking: Nakama (planned).
 - Builds: GitHub Actions exports Web (GitHub Pages) and an Android debug APK. iOS builds on the Mac with Xcode.
