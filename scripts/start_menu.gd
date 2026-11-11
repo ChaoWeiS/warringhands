@@ -94,6 +94,12 @@ func _ready() -> void:
 	for key in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "Join"]:
 		var b := UI.button(Color(1, 1, 1, 0.9), Color("#e7e1f5"), 40)
 		b.text = key
+		if key == "⌫":
+			# (The font has no such character: a drawn back arrow instead.)
+			b.text = ""
+			b.icon = _back_arrow()
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.tooltip_text = "Delete"
 		b.custom_minimum_size = Vector2(130, 88) * UI.ui_scale()
 		b.pressed.connect(_on_key.bind(key))
 		pad.add_child(b)
@@ -214,6 +220,36 @@ func _update_now() -> void:
 			}
 		} finally { location.reload(); }
 	})();""", true)
+
+
+## A backspace key picture: an arrow-shaped tag pointing left, with an x.
+static func _back_arrow() -> ImageTexture:
+	var w := 96
+	var h := 64
+	var k := 4  # drawn big, then shrunk (smooth edges)
+	var outline := PackedVector2Array([Vector2(4, 32), Vector2(30, 6), Vector2(90, 6), Vector2(90, 58), Vector2(30, 58)])
+	var img := Image.create(w * k, h * k, false, Image.FORMAT_RGBA8)
+	var ink := Color("#4a4560")
+	for y in h * k:
+		for x in w * k:
+			var p := Vector2(x + 0.5, y + 0.5) / k
+			var inside: bool = Geometry2D.is_point_in_polygon(p, outline)
+			if not inside:
+				continue
+			# Hollow tag: ink near the edge only.
+			var edge := 99.0
+			for i in outline.size():
+				var a: Vector2 = outline[i]
+				var b: Vector2 = outline[(i + 1) % outline.size()]
+				edge = minf(edge, p.distance_to(Geometry2D.get_closest_point_to_segment(p, a, b)))
+			# The x in the middle.
+			var c := Vector2(58, 32)
+			var d: Vector2 = p - c
+			var on_x: bool = absf(absf(d.x) - absf(d.y)) < 4.2 and absf(d.x) < 12 and absf(d.y) < 12
+			if edge < 5.5 or on_x:
+				img.set_pixel(x, y, ink)
+	img.resize(w, h, Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(img)
 
 
 func _big_button(text: String, color: Color, action: Callable) -> Button:

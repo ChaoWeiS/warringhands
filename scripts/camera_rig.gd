@@ -19,7 +19,9 @@ var pane_height: float = 1200.0
 ## How steeply the camera looks down, in degrees (90 = straight down).
 @export var pitch_degrees: float = 50.0
 ## Closest zoom (map units per pixel).
-@export var min_units_per_pixel: float = 0.016
+## (0.045: unit sprites show at most about 1.3x the size they're drawn, so
+## they never go blocky.)
+@export var min_units_per_pixel: float = 0.045
 ## Furthest zoom (roughly "whole island in a full-screen pane").
 @export var max_units_per_pixel: float = 0.6
 ## Area the camera may look at (x, z on the ground).

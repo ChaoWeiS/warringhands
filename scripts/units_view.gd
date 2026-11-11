@@ -45,6 +45,10 @@ const MARKER_COLOR := Color("#fff3b0")
 const ATTACK_MARKER_COLOR := Color("#ff7a7a")
 ## Map units per sprite pixel (a hand is about 6 map units tall).
 const SPRITE_PIXEL_SIZE := 0.06
+## Height of the team circle under each unit: above every flat ground layer
+## (the grass, the sand around lakes, the lakes themselves top out at 0.42),
+## so they never fight over which shows (that drew it in stripes).
+const GROUND_DECAL_Y := 0.6
 ## Height of the hand's middle above the ground, for picking.
 const SPRITE_HEIGHT := 3.0
 ## Route lines drawn for selected units: dashed ribbons on the ground.
@@ -352,7 +356,7 @@ func _make_view(u: Dictionary) -> void:
 	disc.height = 0.02
 	disc.radial_segments = 24
 	base.mesh = disc
-	base.position = Vector3(0, 0.35, 0)
+	base.position = Vector3(0, GROUND_DECAL_Y, 0)
 	var team_color: Color = TEAM_COLORS[u.team]
 	base.material_override = _flat_material(Color(team_color, 0.8), true)
 	root.add_child(base)
@@ -363,7 +367,7 @@ func _make_view(u: Dictionary) -> void:
 	torus.outer_radius = 3.9
 	torus.ring_segments = 12
 	ring.mesh = torus
-	ring.position = Vector3(0, 0.45, 0)
+	ring.position = Vector3(0, GROUND_DECAL_Y + 0.1, 0)
 	ring.material_override = _flat_material(RING_COLOR, false)
 	ring.visible = false
 	root.add_child(ring)

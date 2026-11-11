@@ -589,8 +589,9 @@ func _run() -> void:
 	cam.units_per_pixel = 0.08
 	cam.refit()
 	var res_view: Node3D = root.get_node("Main/World/Resources")
-	check("every resource spot and tree is drawn, spots with their amount", res_view._views.size() == sim.nodes.size()
-			and res_view._views[nearest_metal.id].label.text == str(nearest_metal.amount))
+	check("every resource spot and tree is drawn, with no badge over it", res_view._views.size() == sim.nodes.size()
+			and not res_view._views[nearest_metal.id].has("label")
+			and res_view._views[nearest_metal.id].root.get_children().all(func(c): return not c is Label3D))
 	# Tapping a tree in a forest gathers wood from that tree.
 	var forest_tree: Dictionary = {}
 	for n in sim.nodes:

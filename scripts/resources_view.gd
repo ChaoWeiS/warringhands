@@ -6,11 +6,14 @@ extends Node3D
 ##                                    (pines with a log pile).
 ##   Metal (scissors gather fastest): crystal clusters on rocks.
 ##
-## Stone, metal and lumber camps carry a floating badge (resource colour + amount left). Forest trees are drawn in
+## Stone, metal and lumber camps are just their pictures (no badges). Forest trees are drawn in
 ## two batches (one per pine picture) so the hundreds of them stay cheap; a
 ## tree that's been cut down shrinks away, and its ground opens up.
 
 const UI := preload("res://scripts/ui_style.gd")
+const GroundShadow := preload("res://scripts/ground_shadow.gd")
+## Shadow size (map units across) under a stone pile, lumber camp, crystals.
+const SPOT_SHADOWS := [15.0, 17.0, 13.0]
 const PINES := [preload("res://assets/env/pine_1.png"), preload("res://assets/env/pine_2.png")]
 const CRYSTALS := [preload("res://assets/env/crystals_1.png"), preload("res://assets/env/crystals_2.png")]
 const ROCKS := [preload("res://assets/env/rocks_1.png"), preload("res://assets/env/rocks_2.png")]
@@ -57,10 +60,6 @@ func _sync() -> void:
 		if view.is_empty():
 			view = _make_tree(n) if n.get("tree", false) else _make(n)
 			_views[n.id] = view
-		if view.has("label"):
-			var text := str(n.amount)
-			if view.label.text != text:
-				view.label.text = text
 	for id in _views.keys():
 		if not alive.has(id):
 			_remove(_views[id])
@@ -112,16 +111,9 @@ func _make_tree(n: Dictionary) -> Dictionary:
 	_batch_used[batch] = index + 1
 	mm.visible_instance_count = index + 1
 	mm.set_instance_transform(index, Transform3D(Basis().scaled(Vector3.ONE * size), pos))
-	# Soft shadow on the ground.
-	var shadow := MeshInstance3D.new()
-	var disc := CylinderMesh.new()
-	disc.top_radius = 3.6 * size
-	disc.bottom_radius = 3.6 * size
-	disc.height = 0.02
-	disc.radial_segments = 16
-	shadow.mesh = disc
-	shadow.position = pos + Vector3(0, 0.45, 0)
-	shadow.material_override = _material(Color(0.25, 0.35, 0.3, 0.22), true)
+	# Soft shadow on the ground (the same look as everything else's).
+	var shadow: MeshInstance3D = GroundShadow.make(5.0 * size, 0.5)
+	shadow.position += pos
 	add_child(shadow)
 	return {"tree": true, "batch": batch, "index": index, "pos": pos, "size": size, "shadow": shadow}
 
@@ -156,35 +148,13 @@ func _make(n: Dictionary) -> Dictionary:
 	root.position = Vector3(n.x / float(sim.SCALE), 0, n.z / float(sim.SCALE))
 	add_child(root)
 
+	root.add_child(GroundShadow.make(SPOT_SHADOWS[n.res], 0.45))
 	match n.res:
 		0: _make_stone(root)
 		1: _make_camp(root)
 		2: _make_metal(root)
 
-	# Badge: resource dot + amount left, always facing the camera.
-	var top: float = TOPS[n.res] + BADGE_GAP
-	var icon := Sprite3D.new()
-	icon.texture = UI.res_icon(n.res)
-	icon.pixel_size = 0.04
-	icon.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	icon.no_depth_test = true
-	icon.render_priority = 2
-	icon.position = Vector3(-3.2, top, 0)
-	root.add_child(icon)
-	var label := Label3D.new()
-	label.text = str(n.amount)
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.no_depth_test = true
-	label.render_priority = 2
-	label.font_size = 64
-	label.pixel_size = 0.05
-	label.outline_size = 16
-	label.outline_modulate = Color.WHITE
-	label.modulate = UI.TEXT_COLOR
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	label.position = Vector3(-0.8, top, 0)
-	root.add_child(label)
-	return {"root": root, "label": label}
+	return {"root": root}
 
 
 ## Two rock piles, the bigger one behind.

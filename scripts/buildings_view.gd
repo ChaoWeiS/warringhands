@@ -11,6 +11,7 @@ extends Node3D
 ## A construction just finished (shown once per building).
 signal finished(building_id: int)
 
+const GroundShadow := preload("res://scripts/ground_shadow.gd")
 const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
 const TRIM := Color("#e2cfae")
 const STONE := Color("#c9c3d6")
@@ -235,6 +236,8 @@ func _on_added(id: int) -> void:
 			# its width deep) is centred on the footprint.
 			art.position = Vector3(0, 0, ART_WIDTH[b.btype] * ART_BASE_DEPTH)
 			model.add_child(art)
+			var shade: MeshInstance3D = GroundShadow.make(r + 4.0, 0.4)
+			root.add_child(shade)
 			var patch := MeshInstance3D.new()
 			var disc := CylinderMesh.new()
 			disc.top_radius = r + 1.0
