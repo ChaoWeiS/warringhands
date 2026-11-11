@@ -27,6 +27,8 @@ signal lassoed(camera: Camera3D, polygon: PackedVector2Array)
 ## pane point; and the finger was lifted here (build it).
 signal pointer_moved(camera: Camera3D, point: Vector2)
 signal placed(camera: Camera3D, point: Vector2)
+## Two fingers tapped together (down and up quickly, without moving).
+signal two_finger_tapped(camera: Camera3D)
 
 ## While true (a building is picked), one finger drags a preview instead of
 ## drawing a loop, and lifting it emits `placed` (not over a button).
@@ -57,6 +59,9 @@ var placing := false
 
 const SNAPS := [1.0 / 3.0, 0.5, 2.0 / 3.0]
 const SNAP_RANGE := 0.03
+## A two-finger tap: both fingers up within this long (ms) of the first going
+## down, neither moving more than tap_slop.
+const TWO_TAP_MS := 350
 
 const DIVIDER_COLOR := Color("#5f5873")
 const DIVIDER_ACTIVE := Color("#fff3b0")
@@ -81,6 +86,11 @@ class PaneNode:
 	var camera: Camera3D = null
 	var pinch_center := Vector2.ZERO
 	var pinch_distance := 0.0
+	# A possible two-finger tap: when the first finger went down, how many
+	# fingers joined, and whether any of them moved or stayed too long.
+	var tap2_start := 0
+	var tap2_fingers := 0
+	var tap2_ok := false
 	# Last on-screen rectangle the camera was matched to (see _layout).
 	var anchor_rect := Rect2()
 	# Split
@@ -196,6 +206,7 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 					finger.solo = false
 		_fingers[event.index] = finger
 		if finger.mode == Mode.PANE:
+			_note_tap2_down(finger.leaf)
 			_reset_pinch(finger.leaf)
 			if placing and finger.solo:
 				pointer_moved.emit(finger.leaf.camera, p - finger.leaf.rect.position)
@@ -214,6 +225,7 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 			Mode.PANE:
 				_reset_pinch(finger.leaf)
 				_finish_solo(finger)
+				_note_tap2_up(finger)
 	_overlay.queue_redraw()
 
 
@@ -229,6 +241,8 @@ func _on_drag(event: InputEventScreenDrag) -> void:
 		Mode.CUT:
 			get_viewport().set_input_as_handled()
 		Mode.PANE:
+			if finger.pos.distance_to(finger.start) > tap_slop:
+				finger.leaf.tap2_ok = false
 			var points: Array = _pane_finger_points(finger.leaf)
 			if points.size() == 2:
 				_pinch(finger.leaf, points)
@@ -283,6 +297,28 @@ func _finish_solo(finger: Dictionary) -> void:
 			lassoed.emit(leaf.camera, local)
 	else:
 		tapped.emit(leaf.camera, finger.pos - leaf.rect.position)
+
+
+# --- Two-finger tap ------------------------------------------------------------
+
+func _note_tap2_down(leaf: PaneNode) -> void:
+	var count: int = _pane_finger_points(leaf).size()
+	if count == 1:
+		leaf.tap2_start = Time.get_ticks_msec()
+		leaf.tap2_fingers = 1
+		leaf.tap2_ok = true
+	else:
+		leaf.tap2_fingers = maxi(leaf.tap2_fingers, count)
+
+
+func _note_tap2_up(finger: Dictionary) -> void:
+	var leaf: PaneNode = finger.leaf
+	if not _is_alive(leaf) or not _pane_finger_points(leaf).is_empty():
+		return  # wait for the last finger
+	var quick: bool = Time.get_ticks_msec() - leaf.tap2_start <= TWO_TAP_MS
+	if leaf.tap2_ok and quick and leaf.tap2_fingers == 2 and not placing:
+		two_finger_tapped.emit(leaf.camera)
+	leaf.tap2_ok = false
 
 
 # --- Camera gestures ---------------------------------------------------------

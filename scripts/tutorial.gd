@@ -37,7 +37,7 @@ var STEPS: Array = [
 	{"text": "Welcome to Warring Hands!\nFor the best experience, hold your device sideways (landscape).", "next": true},
 	{"text": "Tap one of your hands to select it.", "on": ["select", "lasso", "select_kind"]},
 	{"text": "Draw a loop around several hands with one finger to select them all.", "on": ["lasso"]},
-	{"text": "Tap the ground to send them there.\n(To unselect your hands, tap the ✕ cancel button on the left, under the sword.)", "on": ["move", "attack_move"]},
+	{"text": "Tap the ground to send them there.\n(To unselect, tap with two fingers at once, or press the ✕ cancel button on the left, under the sword.)", "on": ["move", "attack_move"]},
 	{"text": "Move the camera: drag with two fingers, pinch to zoom.\n(Mouse: right-drag to move, wheel to zoom.)", "poll": "_camera_moved", "enter": "_note_cameras"},
 	{"text": "Double tap a hand: every hand of that kind on screen gets selected.", "on": ["select_kind"]},
 	{"text": "Gather: with hands selected, tap your HQ (the town hall).\nRocks dig stone, papers cut wood, scissors mine metal.", "on": ["harvest", "gather"]},

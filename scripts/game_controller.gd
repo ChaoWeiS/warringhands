@@ -102,6 +102,8 @@ func _ready() -> void:
 	view.sounds = sounds
 	did.connect(_voice_for)
 	panes.placed.connect(_on_placed)
+	# Two-finger tap: unselect everything (like the cancel button).
+	panes.two_finger_tapped.connect(func(_camera): _unselect_all())
 	panes.register_blocker(bar)
 	panes.register_blocker(bar.actions)
 	hud.below_build = bar.actions
@@ -109,7 +111,7 @@ func _ready() -> void:
 	for control in hud.blockers():
 		panes.register_blocker(control)
 	bar.filter_pressed.connect(_on_filter)
-	bar.clear_pressed.connect(func(): _select([]))
+	bar.clear_pressed.connect(_unselect_all)
 	hud.train_pressed.connect(func(id):
 		sim.command_train(player_team, id)
 		did.emit("train"))
@@ -440,6 +442,12 @@ func _on_filter(kind: int) -> void:
 		if sim.get_unit(id).kind == kind:
 			kept.append(id)
 	_select(kept)
+
+
+## The cancel button and a two-finger tap: nothing selected, hands or buildings.
+func _unselect_all() -> void:
+	_select([])
+	_select_buildings([])
 
 
 func _select(ids: Array) -> void:

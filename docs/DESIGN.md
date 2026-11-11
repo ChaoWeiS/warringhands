@@ -78,6 +78,7 @@
 - **Repair:** double tap a damaged building of yours; your units within 40 map units of it (not ones in a fight) walk over and repair it, 10 HP a second each, free. They stop when it's whole. Green numbers show the HP coming back.
 - **Cancel / sell:** the building panel's button. Still going up: Cancel, the whole cost back. Finished: Sell, half the cost back. Units queued in it are refunded either way. Tap once ("Sure?"), again within 3 s to do it. Your last HQ can't go.
 - **Minimap:** a small map in the top-left of every pane: the island, buildings and hands as dots in team colours, and a white outline of what that pane shows. Touch or drag on it to move that pane's camera. Settings → "Minimap in each pane" turns them off.
+- **Unselect:** tap with two fingers at once (quick, without moving), or press the ✕ cancel button. Clears hands and buildings.
 - **Tap priority** with units selected: an enemy unit under the finger comes first (even standing on your HQ's picture), unless one of your own units is closer to the finger.
 - Prices in the Build menu and on train buttons show the resource icons ("150 [rocks]").
 - **Selecting buildings:** tap a building anywhere on its picture (or its ground circle), or draw a loop around several. A loop with any of your units inside selects the units; otherwise it selects your buildings inside it. The panel shows one row per type ("Paper Mill × 2"); its + button trains at the least busy finished one.
