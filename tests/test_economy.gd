@@ -68,7 +68,10 @@ func _run() -> void:
 	check("each side has an HQ, mirrored", not hq0.is_empty() and not hq1.is_empty()
 			and hq0.x + hq1.x == 82000 and hq0.z + hq1.z == 82000)
 	check("everyone starts with 300 of each resource", s.resources == [[300, 300, 300], [300, 300, 300]])
-	check("8 resource spots (stone, wood, metal on both sides)", s.nodes.size() == 8)
+	var trees: Array = s.nodes.filter(func(n): return n.tree)
+	check("8 resource spots (stone, wood, metal on both sides)", s.nodes.size() - trees.size() == 8)
+	check("every forest tree can be cut for wood (%d trees)" % trees.size(),
+			trees.size() > 100 and trees.all(func(n): return n.res == 1 and n.amount == SimScript.TREE_AMOUNT))
 
 	# Gathering: a rock gathers stone twice as fast as other resources, and
 	# carries it home.
@@ -91,6 +94,38 @@ func _run() -> void:
 	check("gathered stone reaches the HQ (+%d)" % (s.resources[0][0] - before), s.resources[0][0] >= before + 40)
 	check("...and the spot runs down (%d left)" % stone.amount, stone.amount < amount_before)
 	check("gatherers keep going back and forth", s.get_unit(rock).job == "gather")
+	s.queue_free()
+
+	# Cutting trees: the tree nearest our HQ, nearly used up.
+	s = new_sim()
+	hq0 = s.hq_of(0)
+	var tree: Dictionary = {}
+	for n in s.nodes:
+		if n.tree and (tree.is_empty() or SimScript._dist2(n, hq0) < SimScript._dist2(tree, hq0)):
+			tree = n
+	tree.amount = SimScript.CARRY  # one trip's worth
+	var tgrid = s.nav()
+	var toward: Vector2 = (ground_of(hq0) - ground_of(tree)).normalized()
+	var stand: Vector2 = ground_of(tree) + toward * 12.0
+	var stand_cell: Vector2i = tgrid.nearest_walkable(tgrid.cell_of(roundi(stand.x * 100), roundi(stand.y * 100)))
+	var tree_cell: Vector2i = tgrid.cell_of(tree.x, tree.z)
+	check("a standing tree blocks the ground", not tgrid.is_walkable_cell(tree_cell))
+	var lumberjack: int = s.add_unit(0, PAPER, Vector2(tgrid.cell_centre(stand_cell)) / 100.0)
+	s.command_gather([lumberjack], tree.id)
+	for t in 1200:
+		s.step_ticks(1)
+		if s.get_node_by_id(tree.id).is_empty():
+			break
+	check("the tree gets cut down", s.get_node_by_id(tree.id).is_empty())
+	check("...and its ground opens up", tgrid.is_walkable_cell(tree_cell))
+	s.step_ticks(400)
+	var lj: Dictionary = s.get_unit(lumberjack)
+	var next_tree: Dictionary = s.get_node_by_id(lj.node)
+	check("the gatherer moves on to the next tree by itself", lj.job == "gather"
+			and not next_tree.is_empty() and next_tree.tree and s.resources[0][1] >= 300 + SimScript.CARRY)
+	var fresh = new_sim()
+	check("a cut tree doesn't open the ground in other games", not fresh.nav().is_walkable_cell(tree_cell))
+	fresh.queue_free()
 	s.queue_free()
 
 	# Building: costs resources, takes time, blocks the ground.
@@ -254,7 +289,7 @@ func _run() -> void:
 	cam.units_per_pixel = 0.2  # zoomed out to see several spots
 	cam.refit()
 	for n in sim.nodes:
-		var top := Vector3(n.x / 100.0, ResView.top_of(n.res) - 1.0, n.z / 100.0)
+		var top := Vector3(n.x / 100.0, ResView.top_of(n) - 1.0, n.z / 100.0)
 		var p: Vector2 = cam.unproject_position(top)
 		if not leaf_rect.has_point(p):
 			continue
@@ -268,18 +303,26 @@ func _run() -> void:
 	cam.units_per_pixel = 0.08
 	cam.refit()
 	var res_view: Node3D = root.get_node("Main/World/Resources")
-	check("every resource spot is drawn with its amount", res_view._views.size() == sim.nodes.size()
+	check("every resource spot and tree is drawn, spots with their amount", res_view._views.size() == sim.nodes.size()
 			and res_view._views[nearest_metal.id].label.text == str(nearest_metal.amount))
-	# Tapping a forest says where wood comes from.
-	var forest: Dictionary = sim.field.forests.front()
-	game._on_tapped(cam, cam.unproject_position(Vector3(forest.center.x, 0, forest.center.y)))
-	check("tapping a forest explains where wood comes from", hud._toast.modulate.a > 0.5 and "wood" in hud._toast.text)
+	# Tapping a tree in a forest gathers wood from that tree.
+	var forest_tree: Dictionary = {}
+	for n in sim.nodes:
+		if n.tree and (forest_tree.is_empty() or SimScript._dist2(n, my_hq) < SimScript._dist2(forest_tree, my_hq)):
+			forest_tree = n
+	cam.target = Vector3(forest_tree.x / 100.0, 0, forest_tree.z / 100.0)
+	cam.refit()
+	game._on_tapped(cam, cam.unproject_position(Vector3(forest_tree.x / 100.0, 10.0, forest_tree.z / 100.0)))
+	queued = [] if sim._pending.is_empty() else sim._pending.values()[0]
+	check("tapping a forest tree sends units to cut it", queued.size() == 1 and queued[0].type == "gather"
+			and queued[0].node == forest_tree.id)
 	sim._pending.clear()
 	# An emptied spot disappears.
-	nearest_metal.amount = 0
-	sim.nodes.erase(nearest_metal)
+	sim._remove_node(nearest_metal)
+	sim._remove_node(forest_tree)
 	res_view._sync()
-	check("an emptied resource spot goes away", not res_view._views.has(nearest_metal.id))
+	check("an emptied resource spot or cut tree goes away", not res_view._views.has(nearest_metal.id)
+			and not res_view._views.has(forest_tree.id))
 	sim._remove_building(sim.hq_of(1))
 	await frames(2)
 	check("destroying the enemy HQ shows Victory", hud.game_over_screen.visible and hud._over_label.text == "Victory!")

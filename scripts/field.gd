@@ -55,6 +55,8 @@ const BLOB_WAVES := [[2, 0.12, 0.4], [4, 0.08, 1.7], [6, 0.05, 3.1]]
 
 ## Room kept around obstacles and the shore so units don't clip into them.
 const UNIT_CLEARANCE := 3.0
+## Trunk size of a forest tree (map units).
+const TREE_RADIUS := 3.5
 const SHORE_CLEARANCE := 6.0
 
 # Resource spots as offsets from the island centre (mirrored for fairness).
@@ -108,7 +110,7 @@ func build() -> void:
 		forests.append({"center": c + forest[0], "radius": forest[1], "trees": trees})
 		forests.append({"center": c - forest[0], "radius": forest[1], "trees": mirrored})
 		for t in trees + mirrored:
-			_blocked_circles.append({"center": t, "radius": 3.5 + UNIT_CLEARANCE})
+			_blocked_circles.append({"center": t, "radius": TREE_RADIUS + UNIT_CLEARANCE, "tree": true})
 	for spot in STONES:
 		_blocked_circles.append({"center": c + spot, "radius": 13.0 + UNIT_CLEARANCE})
 	for spot in WOODS:
@@ -120,6 +122,7 @@ func build() -> void:
 ## Resource spots on both sides: [{res, pos, radius}] (map units).
 ## res: 0 stone, 1 wood, 2 metal (matching rock, paper, scissors).
 func resource_spots() -> Array:
+	build()
 	var c := get_center()
 	var spots: Array = []
 	for spot in STONES:
@@ -128,16 +131,23 @@ func resource_spots() -> Array:
 		spots.append({"res": 1, "pos": c + spot, "radius": 16.0})
 	for spot in METALS:
 		spots.append({"res": 2, "pos": c + spot, "radius": 5.0})
+	# Every forest tree can be cut for wood.
+	for forest in forests:
+		for t in forest.trees:
+			spots.append({"res": 1, "pos": t, "radius": TREE_RADIUS, "tree": true})
 	return spots
 
 
 ## Can a ground unit stand here? (On the island, away from the shore, and
-## not in a lake, forest, plateau or resource prop.)
-func is_walkable(p: Vector2) -> bool:
+## not in a lake, forest tree, plateau or resource prop.) Trees in
+## `cut_trees` (positions as keys) have been cut down and no longer block.
+func is_walkable(p: Vector2, cut_trees: Dictionary = {}) -> bool:
 	if not Geometry2D.is_point_in_polygon(p, _walk_coast):
 		return false
 	for circle in _blocked_circles:
 		if p.distance_squared_to(circle.center) < circle.radius * circle.radius:
+			if circle.has("tree") and cut_trees.has(circle.center):
+				continue
 			return false
 	for blocked in _blocked_polys:
 		if blocked.box.has_point(p) and Geometry2D.is_point_in_polygon(p, blocked.poly):
@@ -271,37 +281,6 @@ func _build_terrain() -> void:
 		_add_flat(_offset(plateau, 2.5), 0.34, CLIFF)
 		_add_skirt(plateau, PLATEAU_HEIGHT, 0.0, CLIFF, _poly_center(plateau))
 		_add_flat(plateau, PLATEAU_HEIGHT, PLATEAU_TOP)
-	_build_forest_trees()
-
-
-## All forest trees in two batches (trunks, crowns) so hundreds stay cheap.
-func _build_forest_trees() -> void:
-	var all_trees: Array = []
-	for forest in forests:
-		all_trees.append_array(forest.trees)
-	var trunk_mesh := CylinderMesh.new()
-	trunk_mesh.top_radius = 1.0
-	trunk_mesh.bottom_radius = 1.4
-	trunk_mesh.height = 7.0
-	trunk_mesh.radial_segments = 6
-	var crown_mesh := SphereMesh.new()
-	crown_mesh.radius = 5.0
-	crown_mesh.height = 8.0
-	crown_mesh.radial_segments = 10
-	crown_mesh.rings = 6
-	var trunks := _multimesh(trunk_mesh, all_trees.size(), _material(TRUNK))
-	var crown_mat := _material(Color.WHITE)
-	crown_mat.vertex_color_use_as_albedo = true
-	var crowns := _multimesh(crown_mesh, all_trees.size(), crown_mat)
-	for i in all_trees.size():
-		var p: Vector2 = all_trees[i]
-		# Size and colour vary per tree, but fixed by position (same everywhere).
-		var h: int = absi(int(p.x * 7.0) * 31 + int(p.y * 7.0) * 17)
-		var size: float = 0.8 + 0.45 * float(h % 100) / 100.0
-		var scale_basis := Basis().scaled(Vector3(size, size, size))
-		trunks.multimesh.set_instance_transform(i, Transform3D(scale_basis, _ground(p, 3.5 * size)))
-		crowns.multimesh.set_instance_transform(i, Transform3D(scale_basis, _ground(p, 9.5 * size)))
-		crowns.multimesh.set_instance_color(i, CROWNS[h % CROWNS.size()])
 
 
 func _multimesh(mesh: Mesh, count: int, material: Material) -> MultiMeshInstance3D:

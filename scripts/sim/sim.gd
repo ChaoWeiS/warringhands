@@ -84,6 +84,14 @@ const CARRY := 20
 const GATHER_TICKS_OWN := 40
 const GATHER_TICKS_OTHER := 80
 const NODE_AMOUNT := [2000, 2000, 1000]  # per spot: stone, wood, metal
+## Wood in one forest tree. A cut-down tree is gone and its ground opens up.
+const TREE_AMOUNT := 100
+## When a spot runs out, gatherers move on to the nearest spot of the same
+## resource within this distance of it.
+const NEXT_SPOT_RANGE := 4000
+## Route attempts before a gatherer gives up on a spot it can't reach (a tree
+## deep in a forest) and picks the nearest other one.
+const REACH_TRIES := 3
 ## Buildings: footprint radius (sim units), HP, cost, build time (ticks).
 ## Factories make the unit of the same kind as their resource.
 const BUILDINGS := {
@@ -124,6 +132,10 @@ var units: Array = []
 var buildings: Array = []
 ## Resource spots: {id, res, x, z, radius, amount}.
 var nodes: Array = []
+var _nodes_by_id: Dictionary = {}
+## Forest trees that have been cut down: map position -> true (and by node id).
+var cut_trees: Dictionary = {}
+var _tree_pos: Dictionary = {}  # node id -> map position (Vector2) of a tree
 ## Resources per team: [stone, wood, metal].
 var resources: Array = [[START_RESOURCES, START_RESOURCES, START_RESOURCES],
 		[START_RESOURCES, START_RESOURCES, START_RESOURCES]]
@@ -243,10 +255,7 @@ func get_entity(id: int) -> Dictionary:
 
 
 func get_node_by_id(id: int) -> Dictionary:
-	for n in nodes:
-		if n.id == id:
-			return n
-	return {}
+	return _nodes_by_id.get(id, {})
 
 
 ## The walkable grid (null if there's no island, e.g. in some tests). Each
@@ -589,6 +598,10 @@ func _apply_gather(command: Dictionary) -> void:
 		u.chasing = false
 		u.job = "gather"
 		u.node = node.id
+		u.work_x = node.x
+		u.work_z = node.z
+		u.work_res = node.res
+		u.tries = 0
 		u.phase = "to_node" if u.carry == 0 else "to_drop"
 		u.moving = false
 		u.path.clear()
@@ -638,15 +651,24 @@ func _work() -> void:
 		var node: Dictionary = get_node_by_id(u.node)
 		match u.phase:
 			"to_node":
-				if node.is_empty():
-					u.job = ""
-					continue
+				if node.is_empty() or u.tries >= REACH_TRIES:
+					# Gone, or out of reach: the nearest other spot of its kind.
+					node = _next_spot(u, u.work_res, u.node)
+					if node.is_empty():
+						u.job = ""
+						continue
+					u.node = node.id
+					u.work_x = node.x
+					u.work_z = node.z
+					u.tries = 0
 				if _near_edge(u, node.x, node.z, node.radius):
 					u.phase = "gathering"
 					u.timer = GATHER_TICKS_OWN if u.kind == node.res else GATHER_TICKS_OTHER
 					u.moving = false
 					u.path.clear()
+					u.tries = 0
 				elif not u.moving:
+					u.tries += 1
 					_route_to_edge(u, node.x, node.z, node.radius)
 			"gathering":
 				if node.is_empty():
@@ -660,7 +682,7 @@ func _work() -> void:
 					u.carry_res = node.res
 					u.phase = "to_drop"
 					if node.amount <= 0:
-						nodes.erase(node)
+						_remove_node(node)
 			"to_drop":
 				var hq: Dictionary = hq_of(u.team)
 				if hq.is_empty() or hq.progress < BUILDINGS[hq.btype].build:
@@ -672,10 +694,45 @@ func _work() -> void:
 					u.phase = "to_node"
 					u.moving = false
 					u.path.clear()
-					if node.is_empty():
-						u.job = ""
 				elif not u.moving:
 					_route_to_edge(u, hq.x, hq.z, hq.radius)
+
+
+## The spot of resource `res` nearest to where the unit was working, within
+## NEXT_SPOT_RANGE, other than `skip`; nearest to the unit breaks ties. {} if none.
+func _next_spot(u: Dictionary, res: int, skip: int) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d: int = NEXT_SPOT_RANGE * NEXT_SPOT_RANGE
+	for n in nodes:
+		if n.res != res or n.id == skip:
+			continue
+		var dx: int = n.x - u.work_x
+		var dz: int = n.z - u.work_z
+		var d: int = dx * dx + dz * dz
+		if d < best_d or (d == best_d and not best.is_empty() and _dist2(n, u) < _dist2(best, u)):
+			best = n
+			best_d = d
+	return best
+
+
+## A spot ran out. A forest tree is cut down: its ground opens up.
+func _remove_node(node: Dictionary) -> void:
+	nodes.erase(node)
+	_nodes_by_id.erase(node.id)
+	if not _tree_pos.has(node.id):
+		return
+	var pos: Vector2 = _tree_pos[node.id]
+	cut_trees[pos] = true
+	var grid = nav()
+	if grid == null:
+		return
+	var reach: int = roundi((field.TREE_RADIUS + field.UNIT_CLEARANCE) * SCALE)
+	for cell in grid.cells_in_circle(node.x, node.z, reach):
+		if grid.is_walkable_cell(cell):
+			continue
+		var centre: Vector2i = grid.cell_centre(cell)
+		if field.is_walkable(Vector2(centre) / float(SCALE), cut_trees):
+			grid.open_terrain(cell)
 
 
 ## Close enough to work at something round of `radius`?
@@ -756,11 +813,17 @@ func _spawn_bases() -> void:
 	_add_building(0, "hq", centre + HQ_OFFSET * SCALE, true)
 	_add_building(1, "hq", centre - HQ_OFFSET * SCALE, true)
 	for spot in field.resource_spots():
-		nodes.append({
+		var tree: bool = spot.get("tree", false)
+		var n := {
 			"id": _next_id, "res": spot.res,
 			"x": roundi(spot.pos.x * SCALE), "z": roundi(spot.pos.y * SCALE),
-			"radius": roundi(spot.radius * SCALE), "amount": NODE_AMOUNT[spot.res],
-		})
+			"radius": roundi(spot.radius * SCALE),
+			"amount": TREE_AMOUNT if tree else NODE_AMOUNT[spot.res], "tree": tree,
+		}
+		nodes.append(n)
+		_nodes_by_id[n.id] = n
+		if tree:
+			_tree_pos[n.id] = spot.pos
 		_next_id += 1
 
 
@@ -1030,6 +1093,7 @@ func _add_unit(team: int, kind: int, at: Vector2i) -> void:
 		"attack_tick": -1000, "hurt_tick": -1000, "repath": 0,
 		"attack_move": false, "dest_x": at.x, "dest_z": at.y, "focus": false, "chasing": false,
 		"job": "", "node": 0, "phase": "", "timer": 0, "carry": 0, "carry_res": 0,
+		"work_x": 0, "work_z": 0, "work_res": 0, "tries": 0,
 	}
 	_next_id += 1
 	units.append(u)

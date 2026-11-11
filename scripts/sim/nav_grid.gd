@@ -45,7 +45,7 @@ func copy() -> RefCounted:
 	var other = get_script().new()
 	other.size = size
 	other._walk = _terrain.duplicate()
-	other._terrain = _terrain
+	other._terrain = _terrain.duplicate()  # packed arrays are shared otherwise
 	other._setup_astar()
 	return other
 
@@ -85,6 +85,14 @@ func circle_is_open(cx: int, cz: int, radius: int) -> bool:
 		if not is_walkable_cell(cell):
 			return false
 	return true
+
+
+## Opens a cell for good (a tree was cut down).
+func open_terrain(cell: Vector2i) -> void:
+	var i: int = cell.y * size + cell.x
+	_terrain[i] = 1
+	_walk[i] = 1
+	_astar.set_point_solid(cell, false)
 
 
 ## Marks a building's footprint as blocked (or open again when it's gone).

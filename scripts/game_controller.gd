@@ -95,8 +95,6 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		sim.command_gather(selection, node)
 		view.show_move_marker(ground)
 		return
-	if _in_forest(ground):
-		hud.toast("Forests are scenery: gather wood at a lumber camp (golden trees, log pile)")
 	if bar.is_attack_armed():
 		sim.command_attack_move(selection, ground)
 		view.show_move_marker(ground, true)
@@ -202,18 +200,10 @@ func _resource_at(camera: Camera3D, point: Vector2) -> int:
 	for n in sim.nodes:
 		var at := Vector3(n.x, 0, n.z) / float(sim.SCALE)
 		var foot: Vector2 = camera.unproject_position(at)
-		var head: Vector2 = camera.unproject_position(at + Vector3(0, ResourcesView.top_of(n.res), 0))
+		var head: Vector2 = camera.unproject_position(at + Vector3(0, ResourcesView.top_of(n), 0))
 		var reach: float = (n.radius / float(sim.SCALE) + 3.0) / camera.units_per_pixel + TAP_RADIUS * 0.5
 		var d: float = point.distance_to(Geometry2D.get_closest_point_to_segment(point, foot, head))
 		if d <= reach and d < best_dist:
 			best = n.id
 			best_dist = d
 	return best
-
-
-func _in_forest(ground: Vector3) -> bool:
-	var g := Vector2(ground.x, ground.z)
-	for forest in sim.field.forests:
-		if g.distance_to(forest.center) <= forest.radius:
-			return true
-	return false
