@@ -69,6 +69,9 @@ var bar: Control
 var buildings_view: Node3D
 var hud: Control
 var minimap: Control
+## What's being played: "computer", "online" or "tutorial" ("" on the menu).
+var mode := ""
+var session: Node = null  # online
 ## The 3-2-1 overlay while it's showing (for tests).
 var countdown_layer: Control
 
@@ -128,7 +131,8 @@ func _ready() -> void:
 		sim.command_sell(player_team, ids)
 		did.emit("sell"))
 	hud.surrender_confirmed.connect(func(): sim.command_surrender(player_team))
-	hud.play_again_pressed.connect(func(): get_tree().reload_current_scene())
+	hud.rematch_pressed.connect(rematch)
+	hud.quit_pressed.connect(quit_to_menu)
 	sim.unit_died.connect(_on_unit_died)
 	sim.building_destroyed.connect(func(id):
 		if selected_buildings.has(id):
@@ -168,7 +172,15 @@ func _show_start_menu() -> void:
 ## Starts a match of this kind on the picked map. If the island in the
 ## scene is a different map, the scene reloads with the match waiting
 ## (MatchSetup.pending) and this runs again once it's built.
-func _begin(mode: String, session: Node = null, seat: int = 0) -> void:
+func _begin(kind: String, net: Node = null, seat: int = 0) -> void:
+	_begin_match(kind, net, seat)
+
+
+func _begin_match(mode_name: String, session_node: Node, seat: int) -> void:
+	var mode: String = mode_name
+	var session: Node = session_node
+	self.mode = mode_name
+	self.session = session_node
 	if mode == "tutorial":
 		MatchSetup.map = "island"  # the lessons are written for it
 	elif mode == "online" and session != null and session.map != "":
@@ -188,6 +200,35 @@ func _begin(mode: String, session: Node = null, seat: int = 0) -> void:
 			music.play("battle")
 			focus_home()
 			countdown(func(): sim.set_process(true))
+
+
+## End screen: the same match again. Online, the other player is asked
+## first; once both want it, both games restart (same seats and map).
+func rematch() -> void:
+	if mode == "online" and session != null:
+		hud.set_rematch_state("asked")
+		session.request_rematch()
+		return
+	MatchSetup.pending = {"mode": mode if mode != "" else "computer"}
+	get_tree().reload_current_scene.call_deferred()
+
+
+func _restart_online() -> void:
+	var s: Node = session
+	s.reset_for_rematch()
+	remove_child(s)  # keep the connection through the reload
+	MatchSetup.pending = {"mode": "online", "seat": player_team}
+	MatchSetup.session = s
+	get_tree().reload_current_scene.call_deferred()
+
+
+## End screen (or anywhere): leave the match, back to the start menu.
+func quit_to_menu() -> void:
+	if session != null and is_instance_valid(session):
+		session.leave()
+	MatchSetup.pending = {}
+	MatchSetup.session = null
+	get_tree().reload_current_scene.call_deferred()
 
 
 ## 3, 2, 1, Fight! over the map, then `then` (the game starts moving).
@@ -276,14 +317,25 @@ func start_online(session: Node, seat: int) -> void:
 	music.play("battle")
 	focus_home()
 	session.attach(sim)
+	session.rematch_requested.connect(func(): hud.set_rematch_state("offered"))
+	session.rematch_agreed.connect(_restart_online)
 	session.opponent_left.connect(func():
+		hud.set_rematch_state("gone")
 		if sim.winner < 0:
 			sim.set_process(false)
 			hud.show_message("Your opponent left"))
 	session.desynced.connect(func():
 		sim.set_process(false)
 		hud.show_message("Games went out of sync"))
-	countdown(func(): sim.set_process(true))
+	# Start together: wait until the other player has loaded too, then both
+	# count down at the same moment.
+	sim.set_process(false)
+	var waiting: Label = hud.toast_label("Waiting for your opponent…")
+	session.both_ready.connect(func():
+		if is_instance_valid(waiting):
+			waiting.queue_free()
+		countdown(func(): sim.set_process(true)), CONNECT_ONE_SHOT)
+	session.mark_ready()
 
 
 func _process(_delta: float) -> void:

@@ -15,6 +15,11 @@ signal started(seat: int)
 signal failed(message: String)
 signal opponent_left
 signal desynced
+## Both players have loaded the game: start the countdown together.
+signal both_ready
+## The other player asks for a rematch; then both agreed (start it).
+signal rematch_requested
+signal rematch_agreed
 
 const Config := preload("res://scripts/net/net_config.gd")
 static var _BASE64 := RegEx.create_from_string("^[A-Za-z0-9+/]+={0,2}$")
@@ -24,6 +29,19 @@ var seat := -1
 var map := ""
 var _awaiting_setup := false
 var _early: Array = []  # their orders that came before attach()
+var _i_am_ready := false
+## Which match on this connection (0, then 1 after a rematch...). Game
+## messages carry it, so stray orders from the last match are dropped.
+var game_no := 0
+var _we_want_rematch := false
+var _they_want_rematch := false
+var _gone := false
+## Online slack (ticks), set by the host from measured round trips.
+var net_delay: int = 6
+const PINGS := 5
+var _ping_sent := 0
+var _rtts: Array = []
+var _they_are_ready := false
 var code := ""
 var sim: Node = null
 var _socket := WebSocketPeer.new()
@@ -68,14 +86,94 @@ func join_room(room_code: String) -> void:
 ## Hooks the simulation up: our orders and fingerprints go out, theirs come in.
 func attach(simulation: Node) -> void:
 	sim = simulation
+	sim.net_delay = net_delay
 	sim.start_online(seat)
-	sim.turn_ready.connect(func(at, cmds): _send({"t": "turn", "tick": at, "c": encode_commands(cmds)}))
-	sim.hash_ready.connect(func(at, h): _send({"t": "hash", "tick": at, "h": str(h)}))
+	var g: int = game_no
+	sim.turn_ready.connect(func(at, cmds): _send({"t": "turn", "tick": at, "c": encode_commands(cmds), "g": g}))
+	sim.hash_ready.connect(func(at, h): _send({"t": "hash", "tick": at, "h": str(h), "g": g}))
 	sim.desynced.connect(func(_at): desynced.emit())
 	# Orders that arrived while we were still loading (the map, the countdown).
 	for msg in _early:
 		_handle_game(msg)
 	_early.clear()
+
+
+## Our game is loaded (map built, sim attached). Once the other player says
+## the same, both_ready fires on both devices (within the network delay).
+##
+## The host first times a few messages to the other player and back, picks
+## the slack (net_delay) to fit, and sends it along with its "ready".
+func mark_ready() -> void:
+	if _i_am_ready or _ping_sent > 0:
+		return
+	if seat == 0:
+		_ping()
+	else:
+		_i_am_ready = true
+		_send({"t": "ready", "g": game_no})
+		_check_ready()
+
+
+func _ping() -> void:
+	_ping_sent += 1
+	_send({"t": "ping", "at": Time.get_ticks_msec()})
+
+
+## Slack for orders: the one-way trip (half a round trip, the slowest of the
+## middle ones), in ticks, plus 4 ticks to spare; between 6 and 24.
+static func delay_for(round_trips: Array) -> int:
+	var sorted: Array = round_trips.duplicate()
+	sorted.sort()
+	var typical: float = sorted[mini(sorted.size() - 1, sorted.size() * 3 / 4)]
+	return clampi(ceili(typical * 0.5 / 50.0) + 4, 6, 24)
+
+
+func _host_ready() -> void:
+	net_delay = delay_for(_rtts)
+	if sim != null:
+		sim.set_net_delay(net_delay)
+	_i_am_ready = true
+	_send({"t": "ready", "delay": net_delay, "g": game_no})
+	_check_ready()
+
+
+func is_both_ready() -> bool:
+	return _i_am_ready and _they_are_ready
+
+
+func _check_ready() -> void:
+	if _i_am_ready and _they_are_ready:
+		both_ready.emit()
+
+
+func request_rematch() -> void:
+	if _we_want_rematch or _gone:
+		return
+	_we_want_rematch = true
+	_send({"t": "rematch", "g": game_no})
+	_check_rematch()
+
+
+func _check_rematch() -> void:
+	if _we_want_rematch and _they_want_rematch:
+		rematch_agreed.emit()
+
+
+## Ready for the next match on the same connection (same seats).
+func reset_for_rematch() -> void:
+	game_no += 1
+	sim = null
+	_early.clear()
+	_i_am_ready = false
+	_they_are_ready = false
+	_ping_sent = 0
+	_rtts.clear()
+	_we_want_rematch = false
+	_they_want_rematch = false
+	# Drop the old game's hookups (it's about to go).
+	for sig in ["both_ready", "rematch_requested", "rematch_agreed", "opponent_left", "desynced"]:
+		for c in get_signal_connection_list(sig):
+			disconnect(sig, c.callable)
 
 
 func leave() -> void:
@@ -99,6 +197,7 @@ func _process(_delta: float) -> void:
 		_was_closed = true
 		_open = false
 		if seat >= 0:
+			_gone = true
 			opponent_left.emit()  # we lost the connection mid-game
 		else:
 			failed.emit("Can't reach the game server")
@@ -136,8 +235,35 @@ func _handle(text: String) -> void:
 		"error":
 			failed.emit(str(msg.get("msg", "Something went wrong")))
 		"left":
+			_gone = true
 			opponent_left.emit()
+		"rematch":
+			if int(msg.get("g", -1)) == game_no and not _they_want_rematch:
+				_they_want_rematch = true
+				rematch_requested.emit()
+				_check_rematch()
+		"ping":
+			_send({"t": "pong", "at": msg.get("at", 0)})
+		"pong":
+			if seat == 0 and not _i_am_ready:
+				_rtts.append(Time.get_ticks_msec() - int(msg.get("at", 0)))
+				if _ping_sent < PINGS:
+					_ping()
+				else:
+					_host_ready()
+		"ready":
+			if int(msg.get("g", 0)) != game_no:
+				return
+			if msg.has("delay"):
+				net_delay = int(msg.delay)  # the host's measure
+				if sim != null:
+					sim.set_net_delay(net_delay)
+			if not _they_are_ready:
+				_they_are_ready = true
+				_check_ready()
 		"turn", "hash":
+			if int(msg.get("g", 0)) != game_no:
+				return  # from the last match
 			if sim == null:
 				_early.append(msg)
 			else:

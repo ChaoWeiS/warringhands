@@ -179,6 +179,7 @@ var _pending: Dictionary = {}  # tick -> Array of commands
 var online := false
 var local_team := 0
 var stalled := false             # waiting for the other player's orders
+var net_delay: int = NET_DELAY    # online: ticks of slack for orders to arrive
 var _outbox: Array = []          # our orders not yet sent
 var _turns: Dictionary = {}      # tick -> {seat: Array of commands}
 var _sent_until := -1            # last tick we've sent our orders for
@@ -220,7 +221,15 @@ func _process(delta: float) -> void:
 func start_online(team: int) -> void:
 	online = true
 	local_team = team
-	_sent_until = NET_DELAY - 1  # the first ticks have no orders, for both
+	set_net_delay(net_delay)
+
+
+## How many ticks ahead orders are scheduled online. Both players must use
+## the same; the host measures the connection and tells the guest (see
+## net_session.gd). Only before the game starts moving.
+func set_net_delay(ticks: int) -> void:
+	net_delay = ticks
+	_sent_until = net_delay - 1  # the first ticks have no orders, for both
 
 
 ## The other player's orders for a tick. `seat` comes from the server, so
@@ -245,13 +254,13 @@ func receive_hash(at_tick: int, seat: int, value: int) -> void:
 
 ## Online: may we run the current tick? (Sends our orders on the way.)
 func _online_ready() -> bool:
-	while _sent_until < tick + NET_DELAY:
+	while _sent_until < tick + net_delay:
 		_sent_until += 1
 		var mine: Array = _outbox
 		_outbox = []
 		_turn_slot(_sent_until)[local_team] = mine
 		turn_ready.emit(_sent_until, mine)
-	if tick < NET_DELAY:
+	if tick < net_delay:
 		return true
 	return _turns.has(tick) and _turns[tick].size() == 2
 

@@ -94,6 +94,18 @@ func _run() -> void:
 		s.set_process(false)
 		sessions[i].attach(s)
 		sims.append(s)
+	# Both say they're loaded (one later than the other): both get the go.
+	var gos := [0, 0]
+	sessions[0].both_ready.connect(func(): gos[0] += 1)
+	sessions[1].both_ready.connect(func(): gos[1] += 1)
+	sessions[0].mark_ready()
+	await create_timer(0.5).timeout
+	check("the first player to load waits for the other", gos[0] == 0)
+	sessions[1].mark_ready()
+	var together: bool = await until(func(): return gos[0] == 1 and gos[1] == 1)
+	check("...and both start together once both have loaded", together)
+	check("...with the same measured order delay (%d / %d ticks)" % [sims[0].net_delay, sims[1].net_delay],
+			sims[0].net_delay == sims[1].net_delay and sims[0].net_delay >= 6 and sessions[0]._rtts.size() == NetSession.PINGS)
 	var flags := {}
 	for i in 2:
 		sessions[i].desynced.connect(func(): flags.desync = true)

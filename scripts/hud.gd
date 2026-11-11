@@ -17,7 +17,9 @@ signal build_chosen(btype: String)  # "" = cancelled
 signal train_pressed(building_id: int)
 ## Cancel (still going up) or sell (finished) these buildings; confirmed.
 signal sell_pressed(building_ids: Array)
-signal play_again_pressed
+## End screen: play the same match again / back to the start menu.
+signal rematch_pressed
+signal quit_pressed
 ## The player confirmed giving up.
 signal surrender_confirmed
 
@@ -49,6 +51,9 @@ var build_menu: VBoxContainer
 var building_panel: PanelContainer
 var game_over_screen: Control
 var _over_banner: TextureRect
+var rematch_button: Button
+var quit_button: Button
+var rematch_note: Label
 const VICTORY := preload("res://assets/ui/victory.png")
 const DEFEAT := preload("res://assets/ui/defeat.png")
 
@@ -63,6 +68,7 @@ var _panel_buildings: Array = []  # selected building ids
 var _over_label: Label
 var _toast: Label
 var _waiting: Label
+var _stall_time := 0.0
 var _toast_tween: Tween
 
 
@@ -109,6 +115,45 @@ func toast(text: String) -> void:
 	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.6)
 
 
+## Rematch state on the end screen (online): "asked" (we're waiting),
+## "offered" (they asked: tap to accept), "gone" (they left: masked out).
+func set_rematch_state(state: String) -> void:
+	match state:
+		"asked":
+			rematch_button.disabled = true
+			rematch_button.text = "Rematch asked"
+			rematch_note.text = "Waiting for your opponent to accept…"
+		"offered":
+			rematch_button.disabled = false
+			rematch_button.text = "Accept rematch"
+			rematch_note.text = "Your opponent wants a rematch!"
+			rematch_button.pivot_offset = rematch_button.size * 0.5
+			var t := create_tween().set_loops(3)
+			t.tween_property(rematch_button, "scale", Vector2.ONE * 1.08, 0.25)
+			t.tween_property(rematch_button, "scale", Vector2.ONE, 0.25)
+		"gone":
+			rematch_button.disabled = true
+			rematch_button.text = "Rematch"
+			rematch_note.text = "Your opponent left."
+		_:
+			rematch_button.disabled = false
+			rematch_button.text = "Rematch"
+			rematch_note.text = ""
+
+
+## A message in the middle of the screen that stays until it's freed.
+func toast_label(text: String) -> Label:
+	var label := UI.label(text, 54)
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_color_override("font_outline_color", Color.WHITE)
+	label.add_theme_constant_override("outline_size", 18)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(label)
+	return label
+
+
 func _process(_delta: float) -> void:
 	if sim == null:
 		return
@@ -121,7 +166,9 @@ func _process(_delta: float) -> void:
 	_refresh_building_panel()
 	_layout_left()
 	# Online: say so when we're waiting for the other player's orders.
-	_waiting.visible = sim.online and sim.stalled
+	# Only for a real wait, not the odd split-second pause.
+	_stall_time = _stall_time + _delta if sim.online and sim.stalled else 0.0
+	_waiting.visible = _stall_time > 0.75
 
 
 ## Left column: the Build button about a third of the way down (lower if
@@ -641,12 +688,27 @@ func _build_game_over() -> void:
 	_over_banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_over_banner.visible = false
 	box.add_child(_over_banner)
-	var again := UI.button(Color("#fbe3ea"), Color("#f2c4d2"), 34)
-	again.text = "Play again"
-	again.custom_minimum_size.x = 420 * UI.ui_scale()
-	again.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	again.pressed.connect(func(): play_again_pressed.emit())
-	box.add_child(again)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", roundi(18 * UI.ui_scale()))
+	rematch_button = UI.button(Color("#d3ecbf"), Color("#bfe0a6"), 34)
+	rematch_button.text = "Rematch"
+	rematch_button.custom_minimum_size.x = 320 * UI.ui_scale()
+	rematch_button.pressed.connect(func(): rematch_pressed.emit())
+	row.add_child(rematch_button)
+	quit_button = UI.button(Color(1, 1, 1, 0.95), Color("#e7e1f5"), 34)
+	quit_button.text = "Quit to menu"
+	quit_button.custom_minimum_size.x = 320 * UI.ui_scale()
+	quit_button.pressed.connect(func(): quit_pressed.emit())
+	row.add_child(quit_button)
+	box.add_child(row)
+	# Online: "your opponent wants a rematch", "waiting...", "they left".
+	rematch_note = UI.label("", 34)
+	rematch_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rematch_note.add_theme_color_override("font_color", Color.WHITE)
+	rematch_note.add_theme_color_override("font_outline_color", Color(0.35, 0.25, 0.45))
+	rematch_note.add_theme_constant_override("outline_size", 12)
+	box.add_child(rematch_note)
 	game_over_screen.add_child(box)
 	game_over_screen.visible = false
 	add_child(game_over_screen)

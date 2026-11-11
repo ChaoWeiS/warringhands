@@ -106,6 +106,15 @@ func _run() -> void:
 	s.set_process(false)
 	guest.attach(s)
 	check("...and orders that came before the game was ready aren't lost", s._turns.has(6))
+	# Starting together: nobody counts down until both have loaded.
+	var go := [0]
+	guest.both_ready.connect(func(): go[0] += 1)
+	guest.mark_ready()
+	check("online: loaded first, we wait for the other player", go[0] == 0 and not guest.is_both_ready())
+	guest._handle(JSON.stringify({"t": "ready", "seat": 0}))
+	check("...and both start when they're loaded too (once)", go[0] == 1)
+	guest._handle(JSON.stringify({"t": "ready", "seat": 0}))
+	check("...not twice", go[0] == 1)
 	guest.free()
 
 	MatchSetup.map = "island"
