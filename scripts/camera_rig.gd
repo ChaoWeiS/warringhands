@@ -10,15 +10,18 @@ extends Camera3D
 
 ## Ground point at the centre of the pane (y is always 0).
 var target: Vector3 = Vector3.ZERO
-## How much of the world fits the pane's height. Smaller = zoomed in.
-var view_size: float = 300.0
+## Zoom: map units per screen pixel. Smaller = zoomed in. Only pinching /
+## the mouse wheel change it; resizing a pane never does.
+var units_per_pixel: float = 0.25
+## Height of the pane on screen, in pixels.
+var pane_height: float = 1200.0
 
 ## How steeply the camera looks down, in degrees (90 = straight down).
 @export var pitch_degrees: float = 50.0
-## Closest zoom.
-@export var min_view_size: float = 20.0
-## Furthest zoom (roughly "whole island in view").
-@export var max_view_size: float = 700.0
+## Closest zoom (map units per pixel).
+@export var min_units_per_pixel: float = 0.016
+## Furthest zoom (roughly "whole island in a full-screen pane").
+@export var max_units_per_pixel: float = 0.6
 ## Area the camera may look at (x, z on the ground).
 @export var map_rect: Rect2 = Rect2(0, 0, 820, 820)
 
@@ -37,14 +40,15 @@ func _ready() -> void:
 ## Shows the whole map.
 func fit_whole_map() -> void:
 	target = Vector3(map_rect.get_center().x, 0, map_rect.get_center().y)
-	view_size = max_view_size
+	units_per_pixel = max_units_per_pixel
 	_apply()
 
 
 ## Copies where another pane's camera is looking.
 func copy_view(other: Camera3D) -> void:
 	target = other.target
-	view_size = other.view_size
+	units_per_pixel = other.units_per_pixel
+	pane_height = other.pane_height
 	_apply()
 
 
@@ -62,7 +66,7 @@ func pan_by_screen(screen_delta: Vector2) -> void:
 ## Zooms by `factor` (>1 = closer), keeping the ground under `screen_point` fixed.
 func zoom_at(factor: float, screen_point: Vector2) -> void:
 	var before: Variant = _ground_at(screen_point)
-	view_size = clampf(view_size / factor, min_view_size, max_view_size)
+	units_per_pixel = clampf(units_per_pixel / factor, min_units_per_pixel, max_units_per_pixel)
 	_apply()
 	var after: Variant = _ground_at(screen_point)
 	if before != null and after != null:
@@ -70,8 +74,14 @@ func zoom_at(factor: float, screen_point: Vector2) -> void:
 		_apply()
 
 
-## Re-applies limits, e.g. after the pane was resized.
+## Re-applies limits.
 func refit() -> void:
+	_apply()
+
+
+## Tells the camera how tall its pane is (without moving the map).
+func set_pane_height(height: float) -> void:
+	pane_height = maxf(height, 1.0)
 	_apply()
 
 
@@ -79,30 +89,29 @@ func refit() -> void:
 ## (cut, resize, merge). `old_rect` and `new_rect` are the pane's position
 ## on the whole screen before and after. The ground that was under the new
 ## pane's centre moves to its centre, at the same scale, so the pane simply
-## shows more or less of the map around what was already there.
+## shows more or less of the map around what was already there. Zoom is
+## not touched.
 func reanchor(old_rect: Rect2, new_rect: Rect2) -> void:
-	var g: Vector3 = _ground_at_in(new_rect.get_center() - old_rect.position, old_rect.size)
-	view_size *= new_rect.size.y / old_rect.size.y  # same scale on screen
-	target = g
-	_apply(false)
+	target = _ground_at_in(new_rect.get_center() - old_rect.position, old_rect.size)
+	pane_height = maxf(new_rect.size.y, 1.0)
+	_apply()
 
 
-func _apply(clamp_zoom: bool = true) -> void:
-	if clamp_zoom:
-		view_size = clampf(view_size, min_view_size, max_view_size)
+func _apply() -> void:
+	units_per_pixel = clampf(units_per_pixel, min_units_per_pixel, max_units_per_pixel)
 	target.x = clampf(target.x, map_rect.position.x, map_rect.end.x)
 	target.z = clampf(target.z, map_rect.position.y, map_rect.end.y)
 	target.y = 0.0
 	var pitch: float = deg_to_rad(pitch_degrees)
 	rotation = Vector3(-pitch, 0, 0)
 	position = target + Vector3(0, sin(pitch), cos(pitch)) * BACK_OFF
-	size = view_size
+	size = units_per_pixel * pane_height
 
 
 ## Where a point of a pane with the given size hits the ground. Works even
 ## before the viewport is resized, and for points outside the pane.
 func _ground_at_in(point: Vector2, pane_size: Vector2) -> Vector3:
-	var half_h: float = view_size * 0.5
+	var half_h: float = units_per_pixel * pane_size.y * 0.5
 	var aspect: float = pane_size.x / pane_size.y
 	var ndc := Vector2(2.0 * point.x / pane_size.x - 1.0, 1.0 - 2.0 * point.y / pane_size.y)
 	var origin: Vector3 = transform * Vector3(ndc.x * half_h * aspect, ndc.y * half_h, 0.0)

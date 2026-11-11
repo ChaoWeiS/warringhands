@@ -33,8 +33,6 @@ const CameraRig := preload("res://scripts/camera_rig.gd")
 ## How far across the pane (0-1) a swipe must travel to cut.
 @export var cut_commit: float = 0.45
 
-## Panes smaller than this (while being squeezed shut) don't re-aim their camera.
-const ANCHOR_MIN := 120.0
 const SNAPS := [1.0 / 3.0, 0.5, 2.0 / 3.0]
 const SNAP_RANGE := 0.03
 
@@ -408,11 +406,13 @@ func _layout(node: PaneNode, r: Rect2) -> void:
 	if node.is_leaf():
 		node.container.position = r.position
 		node.container.size = Vector2(maxf(r.size.x, 1.0), maxf(r.size.y, 1.0))
-		# Keep the map still on screen. Skip while a pane is squeezed very
-		# small (about to merge), so its view isn't lost if dragged back out.
-		if r.size.x >= ANCHOR_MIN and r.size.y >= ANCHOR_MIN:
-			if node.anchor_rect.size.x > 0.0 and node.anchor_rect != r:
-				node.camera.reanchor(node.anchor_rect, r)
+		# Keep the map still on screen, at the same zoom.
+		if r.size.x >= 1.0 and r.size.y >= 1.0:
+			if node.anchor_rect.size.y >= 1.0:
+				if node.anchor_rect != r:
+					node.camera.reanchor(node.anchor_rect, r)
+			else:
+				node.camera.set_pane_height(r.size.y)
 			node.anchor_rect = r
 		return
 	var half: float = divider_width * 0.5

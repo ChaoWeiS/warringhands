@@ -21,7 +21,7 @@
 - Each pane has its own camera and zoom.
 - Grip tabs sit slightly inside the screen edge, clear of the OS back / home gestures.
 - Dividers can be grabbed anywhere except the tabs. Snap points at 1/3, 1/2, 2/3.
-- Cutting, resizing and merging never move the map: each pane keeps showing exactly what was already under it, and simply reveals or hides more at its edges. The player navigates from there.
+- Cutting, resizing and merging never move the map: each pane keeps showing exactly what was already under it, and simply reveals or hides more at its edges, at the same zoom. Only the player's own pinch changes zoom, for better orientation.
 - Ideas to explore: drag units from one pane to a destination in another; pin a pane to a group.
 
 ## Controls
