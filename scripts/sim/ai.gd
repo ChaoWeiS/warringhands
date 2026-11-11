@@ -142,7 +142,7 @@ func _build_spot(sim: Node, hq: Dictionary, btype: String) -> Variant:
 			var turn: float = (step + 1) / 2 * (PI / 6.0) * (1 if step % 2 == 0 else -1)
 			var spot: Vector2 = home + Vector2.from_angle(facing + turn) * ring
 			spot = Vector2(roundf(spot.x), roundf(spot.y))
-			if sim.can_place(btype, spot):
+			if sim.can_place(btype, spot, team):
 				return spot
 	return null
 

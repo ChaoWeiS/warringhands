@@ -135,6 +135,18 @@ func _run() -> void:
 	check("open ground next to the HQ can be built on", s.can_place("quarry", spot))
 	check("can't build on top of the HQ", not s.can_place("quarry", ground_of(hq0)))
 	check("can't build in a lake", not s.can_place("quarry", Vector2(410, 410)))
+	# Build range: open ground too far from any of our buildings.
+	var far := Vector2.ZERO
+	for d in range(60, 120, 4):
+		for k in 16:
+			var p: Vector2 = ground_of(hq0) + Vector2.from_angle(k * TAU / 16) * d
+			if far == Vector2.ZERO and s.can_place("quarry", p):
+				far = p
+	check("only near your own buildings: open ground %d away is out of range" % roundi(far.distance_to(ground_of(hq0))),
+			far != Vector2.ZERO and not s.can_place("quarry", far, 0) and s.can_place("quarry", spot, 0))
+	s.command_build(0, "quarry", far)
+	s.step_ticks(3)
+	check("...and a build order there does nothing", s.buildings.size() == 2 and s.resources[0][0] == 300)
 	s.command_build(0, "quarry", spot)
 	s.step_ticks(3)
 	var quarry: Dictionary = s.buildings.filter(func(b): return b.btype == "quarry").front()
@@ -148,6 +160,29 @@ func _run() -> void:
 	check("can't train before it's finished", quarry.queue.is_empty() and s.resources[0][0] == 150)
 	s.step_ticks(200)
 	check("construction finishes after 10 s", quarry.progress >= SimScript.BUILDINGS.quarry.build)
+	check("a finished building extends the build range", s.in_build_range(0,
+			quarry.x + (quarry.x - hq0.x) * SimScript.BUILD_RANGE / maxi(1, absi(quarry.x - hq0.x) + absi(quarry.z - hq0.z)),
+			quarry.z + (quarry.z - hq0.z) * SimScript.BUILD_RANGE / maxi(1, absi(quarry.x - hq0.x) + absi(quarry.z - hq0.z))))
+	# Drop-offs: stone goes to whichever is nearer, the quarry or the HQ.
+	var hauler: int = s.add_unit(0, ROCK, ground_of(quarry) + (ground_of(quarry) - ground_of(hq0)).normalized() * 12.0)
+	var hu: Dictionary = s.get_unit(hauler)
+	hu.carry = 20
+	hu.carry_res = 0
+	check("stone goes to the quarry when it's nearer", s._drop_for(hu).get("id") == quarry.id)
+	hu.carry_res = 1
+	check("wood doesn't (a quarry only takes stone)", s._drop_for(hu).get("id") == hq0.id)
+	hu.carry_res = 0
+	hu.job = "gather"
+	hu.phase = "to_drop"
+	hu.node = home_node(s, 0).id
+	var stone_before: int = s.resources[0][0]
+	var hq_dist: int = SimScript._dist2(hu, hq0)
+	s.step_ticks(80)
+	check("the load is dropped at the quarry (+%d stone)" % (s.resources[0][0] - stone_before),
+			s.resources[0][0] == stone_before + 20 and SimScript._dist2(hu, hq0) >= hq_dist * 0.5)
+	s.units.erase(hu)
+	s._by_id.erase(hauler)
+	s.resources[0][0] = stone_before  # back to where the checks below expect
 
 	# Training.
 	var count_before: int = s.units.size()
@@ -237,6 +272,7 @@ func _run() -> void:
 	var sim: Node = root.get_node("Main/Sim")
 	var game: Node = root.get_node("Main/Game")
 	var hud: Control = root.get_node("Main/HUD/Economy")
+	var buildings_view: Node3D = root.get_node("Main/World/Buildings")
 	var panes: Control = root.get_node("Main/Panes")
 	var leaf = panes._leaves()[0]
 	var cam = leaf.camera
@@ -254,6 +290,13 @@ func _run() -> void:
 	check("picking one waits for a tap on the ground", hud.armed_build() == "quarry")
 	game._on_tapped(cam, cam.unproject_position(Vector3(my_hq.x / 100.0, 0, my_hq.z / 100.0)))
 	check("tapping on the HQ doesn't build there", sim._pending.is_empty() and hud.armed_build() == "quarry")
+	game._process(0.0)
+	check("while placing, the build range shows around your buildings", buildings_view._ranges.visible
+			and buildings_view._ranges.get_child_count() > 0)
+	var too_far := Vector3(my_hq.x / 100.0 + 70, 0, my_hq.z / 100.0)
+	game._on_tapped(cam, cam.unproject_position(too_far))
+	check("tapping out of range doesn't build and says why", sim._pending.is_empty() and hud.armed_build() == "quarry"
+			and "far" in hud._toast.text)
 	var free_spot := Vector3(my_hq.x / 100.0 + 25, 0, my_hq.z / 100.0 - 20)
 	game._on_tapped(cam, cam.unproject_position(free_spot))
 	var queued: Array = [] if sim._pending.is_empty() else sim._pending.values()[0]

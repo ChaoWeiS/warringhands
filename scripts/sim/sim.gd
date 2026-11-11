@@ -94,6 +94,9 @@ const NEXT_SPOT_RANGE := 4000
 const REACH_TRIES := 3
 ## Buildings: footprint radius (sim units), HP, cost, build time (ticks).
 ## Factories make the unit of the same kind as their resource.
+## New buildings go within this distance (centre to centre, sim units) of
+## one of the team's own buildings.
+const BUILD_RANGE := 5000
 const BUILDINGS := {
 	"hq": {"radius": 900, "hp": 2000, "cost": 0, "res": -1, "build": 0, "kind": -1},
 	"quarry": {"radius": 650, "hp": 800, "cost": 150, "res": Res.STONE, "build": 200, "kind": Kind.ROCK},
@@ -294,9 +297,13 @@ func can_afford(team: int, res: int, amount: int) -> bool:
 
 ## Can `team` put a building of this type here (ground point, map units)?
 ## Needs open ground (no water, trees, other buildings) and no units in the way.
-func can_place(btype: String, ground: Vector2) -> bool:
+## Can a building go here? Open ground, nobody standing there, and (for a
+## team) within BUILD_RANGE of one of its own buildings.
+func can_place(btype: String, ground: Vector2, team: int = -1) -> bool:
 	var x: int = roundi(ground.x * SCALE)
 	var z: int = roundi(ground.y * SCALE)
+	if team >= 0 and not in_build_range(team, x, z):
+		return false
 	var radius: int = BUILDINGS[btype].radius
 	var grid = nav()
 	if grid != null and not grid.circle_is_open(x, z, radius + RADIUS):
@@ -307,6 +314,18 @@ func can_place(btype: String, ground: Vector2) -> bool:
 		if dx * dx + dz * dz < (radius + RADIUS) * (radius + RADIUS):
 			return false
 	return true
+
+
+## Within BUILD_RANGE of one of the team's buildings (sim units)?
+func in_build_range(team: int, x: int, z: int) -> bool:
+	for b in buildings:
+		if b.team != team:
+			continue
+		var dx: int = b.x - x
+		var dz: int = b.z - z
+		if dx * dx + dz * dz <= BUILD_RANGE * BUILD_RANGE:
+			return true
+	return false
 
 
 ## Build a factory (or HQ) at a ground point. Paid when it happens.
@@ -562,7 +581,7 @@ func _in_reach(u: Dictionary, target: Dictionary) -> bool:
 func _apply_build(command: Dictionary) -> void:
 	var spec: Dictionary = BUILDINGS[command.btype]
 	var ground := Vector2(command.x, command.z) / float(SCALE)
-	if winner >= 0 or not can_afford(command.team, spec.res, spec.cost) or not can_place(command.btype, ground):
+	if winner >= 0 or not can_afford(command.team, spec.res, spec.cost) or not can_place(command.btype, ground, command.team):
 		return
 	if spec.res >= 0:
 		resources[command.team][spec.res] -= spec.cost
@@ -684,18 +703,37 @@ func _work() -> void:
 					if node.amount <= 0:
 						_remove_node(node)
 			"to_drop":
-				var hq: Dictionary = hq_of(u.team)
-				if hq.is_empty() or hq.progress < BUILDINGS[hq.btype].build:
+				var drop: Dictionary = _drop_for(u)
+				if drop.is_empty():
 					u.job = ""
 					continue
-				if _near_edge(u, hq.x, hq.z, hq.radius):
+				if _near_edge(u, drop.x, drop.z, drop.radius):
 					resources[u.team][u.carry_res] += u.carry
 					u.carry = 0
 					u.phase = "to_node"
 					u.moving = false
 					u.path.clear()
 				elif not u.moving:
-					_route_to_edge(u, hq.x, hq.z, hq.radius)
+					_route_to_edge(u, drop.x, drop.z, drop.radius)
+
+
+## Where a gatherer takes its load: the nearest finished building of its
+## team that takes it, the HQ (anything) or the matching factory (stone to a
+## quarry, wood to a mill, metal to a forge). {} if none.
+func _drop_for(u: Dictionary) -> Dictionary:
+	var best: Dictionary = {}
+	var best_walk := 0
+	for b in buildings:
+		if b.team != u.team:
+			continue
+		var spec: Dictionary = BUILDINGS[b.btype]
+		if b.progress < spec.build or (b.btype != "hq" and spec.res != u.carry_res):
+			continue
+		var walk: int = _isqrt(_dist2(b, u)) - b.radius  # to its edge
+		if best.is_empty() or walk < best_walk:
+			best = b
+			best_walk = walk
+	return best
 
 
 ## The spot of resource `res` nearest to where the unit was working, within

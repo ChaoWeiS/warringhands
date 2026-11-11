@@ -31,3 +31,24 @@ for name, height in SIZES.items():
     out.paste(im, (2, 2))
     out.save(f'{DST}/{name}.png')
     print(name, out.size)
+
+# The red team's town hall: the same picture with every blue (flag,
+# banners, windows) turned red. Blue team uses hq.png as it is.
+im = Image.open(f'{DST}/hq.png').convert('RGBA')
+a = np.array(im).astype(float) / 255.0
+r, g, b = a[..., 0], a[..., 1], a[..., 2]
+mx, mn = a[..., :3].max(axis=2), a[..., :3].min(axis=2)
+sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0)
+# Hue (0..1) of each pixel.
+d = np.maximum(mx - mn, 1e-6)
+hue = np.where(mx == r, ((g - b) / d) % 6, np.where(mx == g, (b - r) / d + 2, (r - g) / d + 4)) / 6.0
+blue = (hue > 0.52) & (hue < 0.665) & (sat > 0.18)  # not the lavender roof
+# Same brightness and strength, rose-red hue (h = 0.97).
+v, s2 = mx, np.clip(sat * 1.15, 0, 1)
+f = 6 * 0.97 - 5
+out = a.copy()
+out[..., 0] = np.where(blue, v, r)
+out[..., 1] = np.where(blue, v * (1 - s2), g)
+out[..., 2] = np.where(blue, v * (1 - s2 * f), b)
+Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8), 'RGBA').save(f'{DST}/hq_red.png')
+print('hq_red', im.size)

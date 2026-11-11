@@ -62,6 +62,10 @@ func _ready() -> void:
 	sim.game_over.connect(func(winner): hud.show_game_over(winner))
 
 
+func _process(_delta: float) -> void:
+	buildings_view.show_build_range(PLAYER_TEAM, hud.armed_build() != "")
+
+
 func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 	var ground: Variant = camera.ground_at(point)
 	# Placing a building?
@@ -107,7 +111,13 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 ## Builds where tapped if possible; a red marker means "can't build here".
 func _place(btype: String, ground: Vector2) -> void:
 	var spec: Dictionary = sim.BUILDINGS[btype]
-	if sim.can_place(btype, ground) and sim.can_afford(PLAYER_TEAM, spec.res, spec.cost):
+	var x: int = roundi(ground.x * sim.SCALE)
+	var z: int = roundi(ground.y * sim.SCALE)
+	if not sim.in_build_range(PLAYER_TEAM, x, z):
+		hud.toast("Too far: build inside the circles around your buildings")
+		view.show_move_marker(Vector3(ground.x, 0, ground.y), true)
+		return
+	if sim.can_place(btype, ground, PLAYER_TEAM) and sim.can_afford(PLAYER_TEAM, spec.res, spec.cost):
 		sim.command_build(PLAYER_TEAM, btype, ground)
 		view.show_move_marker(Vector3(ground.x, 0, ground.y))
 		hud.clear_build()

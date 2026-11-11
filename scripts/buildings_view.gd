@@ -20,17 +20,25 @@ const ART := {
 	"mill": preload("res://assets/env/mill.png"),
 	"forge": preload("res://assets/env/forge.png"),
 }
+## The red team's town hall: flag, banners and windows red instead of blue.
+const HQ_RED := preload("res://assets/env/hq_red.png")
 ## Width of each building's picture (map units).
 const ART_WIDTH := {"hq": 30.0, "quarry": 23.0, "mill": 23.0, "forge": 23.0}
 
 var sim: Node
 var _views: Dictionary = {}  # building id -> {root, model, ring, hp_bg, hp_fill, sails}
 var _selected_id := 0
+var _ranges := Node3D.new()   # build range circles, shown while placing
+var _range_key := ""          # which buildings the circles were drawn for
+const RANGE_COLOR := Color(1, 1, 1, 0.16)
+const RANGE_EDGE := Color(1, 1, 1, 0.85)
 var _white: ImageTexture
 
 
 func _ready() -> void:
 	sim = get_node(sim_path)
+	_ranges.visible = false
+	add_child(_ranges)
 	var img := Image.create(int(HP_BAR_PX.x), int(HP_BAR_PX.y), false, Image.FORMAT_RGBA8)
 	img.fill(Color.WHITE)
 	_white = ImageTexture.create_from_image(img)
@@ -61,6 +69,53 @@ func _process(delta: float) -> void:
 			view.hp_fill.region_rect = Rect2(0, 0, width, HP_BAR_PX.y)
 
 
+## While placing a building: circles around the team's buildings showing
+## where it may go.
+func show_build_range(team: int, on: bool) -> void:
+	_ranges.visible = on
+	if not on:
+		return
+	var key := ""
+	for b in sim.buildings:
+		if b.team == team:
+			key += "%d," % b.id
+	if key == _range_key:
+		return
+	_range_key = key
+	for c in _ranges.get_children():
+		c.queue_free()
+	var reach: float = sim.BUILD_RANGE / float(sim.SCALE)
+	var fill := _mat(RANGE_COLOR)
+	fill.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fill.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var edge := _mat(RANGE_EDGE)
+	edge.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for b in sim.buildings:
+		if b.team != team:
+			continue
+		var at := Vector3(b.x / float(sim.SCALE), 0, b.z / float(sim.SCALE))
+		var disc := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = reach
+		cyl.bottom_radius = reach
+		cyl.height = 0.02
+		cyl.radial_segments = 64
+		disc.mesh = cyl
+		disc.position = at + Vector3(0, 0.55, 0)
+		disc.material_override = fill
+		_ranges.add_child(disc)
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = reach - 0.4
+		torus.outer_radius = reach + 0.4
+		torus.rings = 64
+		ring.mesh = torus
+		ring.scale = Vector3(1, 0.2, 1)
+		ring.position = at + Vector3(0, 0.6, 0)
+		ring.material_override = edge
+		_ranges.add_child(ring)
+
+
 func set_selected_building(id: int) -> void:
 	_selected_id = id
 	for bid in _views:
@@ -83,7 +138,7 @@ func _on_added(id: int) -> void:
 		"hq", "quarry", "mill", "forge":
 			# Painted art, standing up and facing the camera, on a patch of
 			# the team's colour.
-			var tex: Texture2D = ART[b.btype]
+			var tex: Texture2D = HQ_RED if b.btype == "hq" and b.team == 0 else ART[b.btype]
 			var art := Sprite3D.new()
 			art.texture = tex
 			art.pixel_size = ART_WIDTH[b.btype] / tex.get_width()
