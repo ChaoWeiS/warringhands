@@ -86,6 +86,7 @@ func _ready() -> void:
 	panes.register_blocker(bar)
 	panes.register_blocker(bar.actions)
 	hud.below_build = bar.actions
+	hud.right_column = bar
 	for control in hud.blockers():
 		panes.register_blocker(control)
 	bar.filter_pressed.connect(_on_filter)

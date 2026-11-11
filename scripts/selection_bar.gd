@@ -1,8 +1,9 @@
-extends HBoxContainer
-## Bar at the bottom of the screen showing what's selected: each unit
-## type's hand icon with a count ("× 4"). Tap one to keep only that type.
-## Attack (then tap the ground: attack-move) and Clear (deselect) are in
-## `actions`, a small stack the HUD places on the left under Build.
+extends VBoxContainer
+## What's selected, in a column on the right (placed by the HUD, level with
+## Build): each unit type's hand icon with a count ("× 4"). Tap one to keep
+## only that type. Attack (sword; then tap the ground: attack-move) and
+## Clear (the "no" sign: deselect) are in `actions`, a small stack the HUD
+## places on the left under Build.
 ## Both are hidden when nothing is selected.
 
 signal filter_pressed(kind: int)
@@ -13,9 +14,6 @@ signal attack_toggled(armed: bool)
 const UI := preload("res://scripts/ui_style.gd")
 ## Pastel chip colours: stone, paper, metal.
 const KIND_COLORS := [Color("#d8d2e6"), Color("#fbf1d6"), Color("#c4eeea")]
-const CLEAR_COLOR := Color("#f3d6de")
-const ATTACK_COLOR := Color("#ffc2c2")
-const ATTACK_ARMED_COLOR := Color("#ff8f8f")
 const TEXT_COLOR := Color("#4a4560")
 
 var _kind_buttons: Array = []
@@ -25,14 +23,7 @@ var actions := VBoxContainer.new()
 
 
 func _ready() -> void:
-	anchor_left = 0.5
-	anchor_right = 0.5
-	anchor_top = 1.0
-	anchor_bottom = 1.0
-	grow_horizontal = Control.GROW_DIRECTION_BOTH
-	grow_vertical = Control.GROW_DIRECTION_BEGIN
-	offset_bottom = -104.0  # sits above the bottom cut tab
-	add_theme_constant_override("separation", 14)
+	add_theme_constant_override("separation", roundi(12 * UI.ui_scale()))
 	for kind in 3:
 		var button := _make_button(KIND_COLORS[kind])
 		button.icon = _kind_icon(kind)
@@ -42,13 +33,13 @@ func _ready() -> void:
 		add_child(button)
 		_kind_buttons.append(button)
 	actions.add_theme_constant_override("separation", roundi(12 * UI.ui_scale()))
-	_attack = _make_button(ATTACK_COLOR, ATTACK_ARMED_COLOR)
-	_attack.text = "Attack"
+	_attack = UI.icon_button("attack")
+	_attack.tooltip_text = "Attack"
 	_attack.toggle_mode = true
 	_attack.toggled.connect(func(on): attack_toggled.emit(on))
 	actions.add_child(_attack)
-	var clear := _make_button(CLEAR_COLOR)
-	clear.text = "Clear"
+	var clear := UI.icon_button("cancel")
+	clear.tooltip_text = "Clear"
 	clear.pressed.connect(func(): clear_pressed.emit())
 	actions.add_child(clear)
 	add_sibling.call_deferred(actions)
@@ -77,6 +68,8 @@ func is_attack_armed() -> bool:
 ## Turns attack mode on or off (without re-announcing it).
 func set_attack_armed(on: bool) -> void:
 	_attack.set_pressed_no_signal(on)
+	_attack.pivot_offset = _attack.size * 0.5
+	_attack.scale = Vector2.ONE * (1.12 if on else 1.0)
 
 
 ## First idle frame of the unit type, cropped to the hand.

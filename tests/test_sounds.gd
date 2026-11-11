@@ -54,6 +54,8 @@ func _run() -> void:
 			box.end + Vector2(20, 20), Vector2(box.position.x - 20, box.end.y + 20)]))
 	check("every selected unit answers (%d units, %d answers)" % [game.selection.size(), count(sounds.played, before, "acknowledge")],
 			game.selection.size() >= 2 and count(sounds.played, before, "acknowledge") == mini(game.selection.size(), sounds.MAX_CHORUS))
+	var lines: Array = sounds.played_clips.slice(before)
+	check("...all saying the same line", lines.size() >= 2 and lines.all(func(c): return c == lines[0]))
 	before = sounds.played.size()
 	game._last_tap.camera = null
 	var hq: Dictionary = sim.hq_of(0)

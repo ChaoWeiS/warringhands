@@ -52,3 +52,32 @@ out[..., 1] = np.where(blue, v * (1 - s2), g)
 out[..., 2] = np.where(blue, v * (1 - s2 * f), b)
 Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8), 'RGBA').save(f'{DST}/hq_red.png')
 print('hq_red', im.size)
+
+# Round buttons: cropped to the button, 192 px. The cancel button's cold
+# grey frame and white middle are warmed up to match the other two (a lilac
+# frame, cream middle), keeping its shading.
+BUTTON = 192
+for name in ['button_build', 'button_attack', 'button_cancel']:
+    im = Image.open(f'{SRC}/{name}.png').convert('RGBA')
+    a = np.array(im).astype(float)
+    a[a[..., 3] < 200, 3] = 0  # drop the faint glow baked onto black
+    if name == 'button_cancel':
+        rgb = a[..., :3]
+        lum = rgb @ np.array([0.299, 0.587, 0.114])
+        sat = rgb.max(axis=2) - rgb.min(axis=2)
+        opaque = a[..., 3] > 0
+        frame = opaque & (rgb[..., 2] - rgb[..., 0] > 12) & (lum > 140)
+        middle = opaque & (lum > 228) & (sat < 22) & ~frame
+        lilac = np.array([238, 222, 255]) / 226.0  # shade of the frame's own brightness
+        cream = np.array([253, 246, 226]) / 248.0
+        rgb[frame] = np.clip(lum[frame][:, None] * lilac, 0, 255)
+        rgb[middle] = np.clip(lum[middle][:, None] * cream, 0, 255)
+        a[..., :3] = rgb
+    a[a[..., 3] == 0] = 0
+    out = Image.fromarray(a.astype(np.uint8), 'RGBA')
+    out = out.crop(out.getbbox())
+    side = max(out.size)
+    sq = Image.new('RGBA', (side, side), (0, 0, 0, 0))
+    sq.paste(out, ((side - out.width) // 2, (side - out.height) // 2))
+    sq.resize((BUTTON, BUTTON), Image.LANCZOS).save(f'{DST}/{name}.png')
+    print(name, BUTTON)

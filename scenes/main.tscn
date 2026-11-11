@@ -48,7 +48,7 @@ world_path = NodePath("../World")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
-[node name="SelectionBar" type="HBoxContainer" parent="HUD"]
+[node name="SelectionBar" type="VBoxContainer" parent="HUD"]
 script = ExtResource("5_bar")
 
 [node name="Economy" type="Control" parent="HUD"]

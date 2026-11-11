@@ -103,6 +103,38 @@ static func fullscreen_icon() -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
+## Round icon buttons (assets/env/button_*.png).
+const BUTTON_ICONS := {
+	"build": preload("res://assets/env/button_build.png"),
+	"attack": preload("res://assets/env/button_attack.png"),
+	"cancel": preload("res://assets/env/button_cancel.png"),
+}
+const ICON_BUTTON_SIZE := 96.0
+
+
+## A square button that's just a picture (the picture has its own frame).
+## Toggle buttons grow a little and glow while switched on.
+static func icon_button(icon_name: String) -> Button:
+	var b := Button.new()
+	b.icon = BUTTON_ICONS[icon_name]
+	b.expand_icon = true
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2.ONE * roundf(ICON_BUTTON_SIZE * ui_scale())
+	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+		b.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+	b.add_theme_color_override("icon_pressed_color", Color(1.12, 1.05, 1.05))
+	b.add_theme_color_override("icon_hover_pressed_color", Color(1.12, 1.05, 1.05))
+	b.toggled.connect(func(on):
+		b.pivot_offset = b.size * 0.5
+		b.scale = Vector2.ONE * (1.12 if on else 1.0))
+	return b
+
+
+static func set_button_icon(b: Button, icon_name: String) -> void:
+	b.icon = BUTTON_ICONS[icon_name]
+
+
 ## A small picture for inside a button's content.
 static func icon_rect(texture: Texture2D, size: float) -> TextureRect:
 	var t := TextureRect.new()

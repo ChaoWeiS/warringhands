@@ -25,8 +25,6 @@ const FACTORY_COLORS := {"quarry": Color("#ddd6ea"), "mill": Color("#fbf1d6"), "
 		"hq": Color("#fbe3ea")}
 ## Small town hall picture for the Build menu.
 var HQ_ICON: Texture2D = _small_hq_icon()
-const BUILD_COLOR := Color("#e7e1f5")
-const BUILD_ARMED := Color("#c9bdf0")
 
 var sim: Node
 var team := 0
@@ -35,6 +33,8 @@ var resource_bar: PanelContainer
 var fullscreen_button: Button
 ## Shown just under Build (the selection's Attack / Clear), placed by us.
 var below_build: Control = null
+## Shown on the right, level with Build (the selection's hand chips).
+var right_column: Control = null
 var build_menu: VBoxContainer
 var building_panel: PanelContainer
 var game_over_screen: Control
@@ -118,14 +118,19 @@ func _layout_left() -> void:
 	var s: float = UI.ui_scale()
 	var margin: float = 24.0
 	var gap: float = 12.0 * s
-	var button_h: float = roundf(84 * s)
+	var option_h: float = roundf(84 * s)
+	var toggle_h: float = _build_toggle.custom_minimum_size.y
 	var options: int = _build_options.size()
-	var top: float = maxf(get_viewport_rect().size.y / 3.0, 16.0 + options * (button_h + gap))
+	var top: float = maxf(get_viewport_rect().size.y / 3.0, 16.0 + options * (option_h + gap))
 	build_menu.reset_size()
-	build_menu.position = Vector2(margin, top + button_h - build_menu.size.y)
+	build_menu.position = Vector2(margin, top + toggle_h - build_menu.size.y)
 	if below_build != null:
 		below_build.reset_size()
-		below_build.position = Vector2(margin, top + button_h + gap * 2.0)
+		below_build.position = Vector2(margin, top + toggle_h + gap * 2.0)
+	# The selection (hand chips) on the right, level with Build.
+	if right_column != null:
+		right_column.reset_size()
+		right_column.position = Vector2(get_viewport_rect().size.x - margin - right_column.size.x, top)
 
 
 ## The build the player picked and still has to place ("" if none).
@@ -262,9 +267,11 @@ func _build_build_menu() -> void:
 	build_menu.alignment = BoxContainer.ALIGNMENT_END
 	# Placed each frame by _layout_left(): Build about a third of the way
 	# down on the left, its options stacking upwards.
-	_build_toggle = UI.button(BUILD_COLOR, BUILD_ARMED)
-	_build_toggle.text = "Build"
+	# Hammer and pickaxe; the "no" sign while picking / placing (cancel).
+	_build_toggle = UI.icon_button("build")
+	_build_toggle.tooltip_text = "Build"
 	_build_toggle.toggle_mode = true
+	_build_toggle.toggled.connect(func(on): UI.set_button_icon(_build_toggle, "cancel" if on else "build"))
 	_build_toggle.toggled.connect(func(on):
 		if not on:
 			_armed_build = ""
@@ -292,7 +299,6 @@ func _build_build_menu() -> void:
 		b.pressed.connect(func():
 			_armed_build = btype
 			_show_build_options(false)
-			_build_toggle.text = "Cancel"
 			build_chosen.emit(btype))
 		b.visible = false
 		build_menu.add_child(b)
@@ -305,10 +311,10 @@ func _build_build_menu() -> void:
 func _show_build_options(on: bool) -> void:
 	for btype in _build_options:
 		_build_options[btype].visible = on
-	if not on and _armed_build == "":
-		_build_toggle.text = "Build"
 	if not on and _armed_build == "" and _build_toggle.button_pressed:
 		_build_toggle.set_pressed_no_signal(false)
+		UI.set_button_icon(_build_toggle, "build")
+		_build_toggle.scale = Vector2.ONE
 
 
 func _build_building_panel() -> void:

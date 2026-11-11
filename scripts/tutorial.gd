@@ -37,11 +37,11 @@ var STEPS: Array = [
 	{"text": "Move the camera: drag with two fingers, pinch to zoom.\n(Mouse: right-drag to move, wheel to zoom.)", "poll": "_camera_moved", "enter": "_note_cameras"},
 	{"text": "Double tap a hand: every hand of that kind on screen gets selected.", "on": ["select_kind"]},
 	{"text": "Gather: with hands selected, tap your HQ (the town hall).\nRocks dig stone, papers cut wood, scissors mine metal.", "on": ["harvest", "gather"]},
-	{"text": "Build: tap Build (on the left), pick Quarry, then tap open ground inside the circles.", "on": ["build_quarry", "build_mill", "build_forge"]},
+	{"text": "Build: tap the hammer button (on the left), pick Quarry, then touch open ground inside the circles (drag to adjust, lift to build).", "on": ["build_quarry", "build_mill", "build_forge"]},
 	{"text": "Train: when your factory is finished, tap it and press + to make a new hand.\nNew hands go gathering by themselves.", "on": ["train"]},
 	{"text": "Split the screen: grab the white tab on a side of the screen and swipe across.\nEach pane has its own camera.", "poll": "_split_done"},
 	{"text": "Drag the divider between the panes all the way to an edge to merge them again.", "poll": "_merged_done"},
-	{"text": "Enemies are coming! Rock beats scissors, scissors beat paper, paper beats rock.\nSelect your army, tap Attack, then tap near the enemies.", "poll": "_enemies_beaten", "enter": "_send_enemies"},
+	{"text": "Enemies are coming! Rock beats scissors, scissors beat paper, paper beats rock.\nSelect your army, tap the sword button (on the left), then tap near the enemies.", "poll": "_enemies_beaten", "enter": "_send_enemies"},
 	{"text": "Well done! You know the basics.\nDouble tap a damaged building to repair it, and build more HQs anywhere.", "end": true},
 ]
 
