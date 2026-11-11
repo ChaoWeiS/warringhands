@@ -57,6 +57,9 @@ static func set_volume(which: String, value: float, save: bool = true) -> void:
 		cfg.save(FILE)
 
 
+## The buses are declared in res://default_bus_layout.tres, so they exist from
+## the start. (Don't rely on adding them here: on the web, Godot's audio puts a
+## bus added while running in the wrong place and nothing reaches the speakers.)
 static func _ensure_bus(name: String) -> void:
 	if AudioServer.get_bus_index(name) >= 0:
 		return

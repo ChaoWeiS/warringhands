@@ -18,3 +18,4 @@ Thumbs.db
 
 # Relay server packages
 server/node_modules/
+__pycache__/

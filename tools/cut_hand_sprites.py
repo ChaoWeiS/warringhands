@@ -38,7 +38,8 @@ BADGE = 51          # start just under the numbered badge (art starts lower)
 EDGE_PAD = 1        # px kept clear of a line (its anti-aliased edge)
 ROW_PAD = 6         # px above the row's bottom border
 
-src = np.array(Image.open(sys.argv[1]).convert('RGB')).astype(float)
+SOURCE = sys.argv[1] if __name__ == '__main__' else 'art_source/hands_sheet_v2.png'
+src = np.array(Image.open(SOURCE).convert('RGB')).astype(float)
 lum = src @ np.array([0.299, 0.587, 0.114])
 
 
@@ -109,37 +110,42 @@ def erase(rgba, polygons, x0, y0):
     return out
 
 
-atlas = Image.new('RGBA', (CELL * 5, CELL * 15), (0, 0, 0, 0))
-clipped = []
-for k, (ry0, ry1) in enumerate(ROWS):
-    y0, y1 = ry0 + BADGE, ry1 - ROW_PAD
-    # Scale and ground line for this kind, from its idle frames.
-    heights, bottoms = [], []
-    for (x0, x1) in cells(PANELS[0], y0, y1):
-        _, solid = cut(x0, x1, y0, y1)
-        lab, n = ndi.label(solid)
-        sizes = ndi.sum(solid, lab, range(1, n + 1))
-        body = lab == (np.argmax(sizes) + 1)
-        ys = np.nonzero(body.any(axis=1))[0]
-        heights.append(ys.max() - ys.min() + 1)
-        bottoms.append(ys.max() + 1)
-    s = HAND_HEIGHT / float(np.median(heights))
-    ground = float(np.median(bottoms))  # in cell pixels
-    for state, panel in enumerate(PANELS):
-        for f, (x0, x1) in enumerate(cells(panel, y0, y1)):
-            rgba, _ = cut(x0, x1, y0, y1)
-            if (k, state, f) in ERASE:
-                rgba = erase(rgba, ERASE[(k, state, f)], x0, y0)
-            img = Image.fromarray(rgba, 'RGBA')
-            img = img.resize((round(img.width * s), round(img.height * s)), Image.LANCZOS)
-            # Cell centre on the atlas cell centre; ground line on GROUND.
-            ox = round(CELL / 2 - img.width / 2)
-            oy = round(CELL - GROUND - ground * s)
-            cell = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
-            cell.alpha_composite(img.crop((-ox, -oy, -ox + CELL, -oy + CELL)))
-            atlas.paste(cell, (f * CELL, (k * 5 + state) * CELL))
-            edge = np.array(cell)[..., 3]
-            if edge[-1].max() > 40 or edge[0].max() > 40:
-                clipped.append((k, state, f))
-atlas.save(sys.argv[2])
-print('atlas', atlas.size, 'cut off at top/bottom (kind, state, frame):', clipped)
+def main():
+    atlas = Image.new('RGBA', (CELL * 5, CELL * 15), (0, 0, 0, 0))
+    clipped = []
+    for k, (ry0, ry1) in enumerate(ROWS):
+        y0, y1 = ry0 + BADGE, ry1 - ROW_PAD
+        # Scale and ground line for this kind, from its idle frames.
+        heights, bottoms = [], []
+        for (x0, x1) in cells(PANELS[0], y0, y1):
+            _, solid = cut(x0, x1, y0, y1)
+            lab, n = ndi.label(solid)
+            sizes = ndi.sum(solid, lab, range(1, n + 1))
+            body = lab == (np.argmax(sizes) + 1)
+            ys = np.nonzero(body.any(axis=1))[0]
+            heights.append(ys.max() - ys.min() + 1)
+            bottoms.append(ys.max() + 1)
+        s = HAND_HEIGHT / float(np.median(heights))
+        ground = float(np.median(bottoms))  # in cell pixels
+        for state, panel in enumerate(PANELS):
+            for f, (x0, x1) in enumerate(cells(panel, y0, y1)):
+                rgba, _ = cut(x0, x1, y0, y1)
+                if (k, state, f) in ERASE:
+                    rgba = erase(rgba, ERASE[(k, state, f)], x0, y0)
+                img = Image.fromarray(rgba, 'RGBA')
+                img = img.resize((round(img.width * s), round(img.height * s)), Image.LANCZOS)
+                # Cell centre on the atlas cell centre; ground line on GROUND.
+                ox = round(CELL / 2 - img.width / 2)
+                oy = round(CELL - GROUND - ground * s)
+                cell = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
+                cell.alpha_composite(img.crop((-ox, -oy, -ox + CELL, -oy + CELL)))
+                atlas.paste(cell, (f * CELL, (k * 5 + state) * CELL))
+                edge = np.array(cell)[..., 3]
+                if edge[-1].max() > 40 or edge[0].max() > 40:
+                    clipped.append((k, state, f))
+    atlas.save(sys.argv[2])
+    print('atlas', atlas.size, 'cut off at top/bottom (kind, state, frame):', clipped)
+
+
+if __name__ == '__main__':
+    main()

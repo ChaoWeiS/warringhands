@@ -131,6 +131,9 @@ func _run() -> void:
 	check("effects at 0 are silent", sfx_bus >= 0 and AudioServer.is_bus_mute(sfx_bus))
 	check("...and the settings are remembered", is_equal_approx(Settings.get_volume("music"), 0.25)
 			and is_equal_approx(Settings.get_volume("sfx"), 0.0))
+	check("the Music and SFX buses come from the bus layout (there from the start, sent to Master)",
+			music_bus == 1 and sfx_bus == 2 and AudioServer.get_bus_send(1) == &"Master"
+			and AudioServer.get_bus_send(2) == &"Master" and AudioServer.bus_count == 3)
 	check("voices play on the effects bus", sounds._voices[0].bus == &"SFX")
 	var panel: Control = Settings.new()
 	root.add_child(panel)
