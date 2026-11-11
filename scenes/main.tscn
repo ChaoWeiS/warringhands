@@ -57,6 +57,7 @@ theme_override_colors/font_color = Color(0.35, 0.33, 0.44, 1)
 theme_override_font_sizes/font_size = 20
 text = "Tap a unit or draw a loop to select  ·  Tap ground to move, an enemy to attack, a resource to gather
 Attack button + tap: charge  ·  Build + pick + tap: place a factory  ·  Tap your factory to train
+Double tap a unit: all of its type  ·  Units + tap HQ: gather  ·  Double tap a damaged building: repair
 Side tab swipe: cut  ·  Divider: resize / merge  ·  Two fingers: pan / zoom"
 
 [node name="SelectionBar" type="HBoxContainer" parent="HUD"]

@@ -31,6 +31,8 @@ signal unit_died(id: int)
 signal building_added(id: int)
 signal building_destroyed(id: int)
 signal game_over(winner: int)
+## HP restored to a building this tick (all its repairers together).
+signal building_repaired(building_id: int, amount: int)
 
 const NavGrid := preload("res://scripts/sim/nav_grid.gd")
 const AI := preload("res://scripts/sim/ai.gd")
@@ -97,6 +99,11 @@ const REACH_TRIES := 3
 ## New buildings go within this distance (centre to centre, sim units) of
 ## one of the team's own buildings.
 const BUILD_RANGE := 5000
+## Repairs: your units within this distance of a damaged building's edge
+## answer the call; each restores REPAIR_HP every REPAIR_TICKS (free).
+const REPAIR_CALL := 4000
+const REPAIR_TICKS := 20
+const REPAIR_HP := 10
 const BUILDINGS := {
 	"hq": {"radius": 900, "hp": 2000, "cost": 0, "res": -1, "build": 0, "kind": -1},
 	"quarry": {"radius": 650, "hp": 800, "cost": 150, "res": Res.STONE, "build": 200, "kind": Kind.ROCK},
@@ -344,6 +351,17 @@ func command_gather(ids: Array, node_id: int) -> void:
 	_queue({"type": "gather", "ids": ids.duplicate(), "node": node_id})
 
 
+## Each unit gathers the resource it's fastest at (rock: stone, paper: wood,
+## scissors: metal), from the spot of it nearest its HQ.
+func command_harvest(ids: Array) -> void:
+	_queue({"type": "harvest", "ids": ids.duplicate()})
+
+
+## Calls the team's units near a damaged building to repair it.
+func command_repair(team: int, building_id: int) -> void:
+	_queue({"type": "repair", "team": team, "building": building_id})
+
+
 # --- Simulation ----------------------------------------------------------------
 
 func _queue(command: Dictionary) -> void:
@@ -393,6 +411,10 @@ func _apply(command: Dictionary) -> void:
 			_apply_train(command)
 		"gather":
 			_apply_gather(command)
+		"harvest":
+			_apply_harvest(command)
+		"repair":
+			_apply_repair(command)
 
 
 ## Spreads the group into a square formation around the target point.
@@ -610,20 +632,62 @@ func _apply_gather(command: Dictionary) -> void:
 		var u: Dictionary = _by_id.get(id, {})
 		if u.is_empty() or u.has("btype"):
 			continue
-		u.ordered = false
-		u.attack_move = false
-		u.focus = false
-		u.target = 0
-		u.chasing = false
-		u.job = "gather"
-		u.node = node.id
-		u.work_x = node.x
-		u.work_z = node.z
-		u.work_res = node.res
-		u.tries = 0
-		u.phase = "to_node" if u.carry == 0 else "to_drop"
-		u.moving = false
-		u.path.clear()
+		_assign_gather(u, node)
+
+
+func _apply_harvest(command: Dictionary) -> void:
+	var ids: Array = command.ids.duplicate()
+	ids.sort()
+	for id in ids:
+		var u: Dictionary = _by_id.get(id, {})
+		if u.is_empty() or u.has("btype"):
+			continue
+		var hq: Dictionary = hq_of(u.team)
+		var from: Dictionary = hq if not hq.is_empty() else u
+		var best: Dictionary = {}
+		for n in nodes:
+			if n.res == u.kind and (best.is_empty() or _dist2(n, from) < _dist2(best, from)):
+				best = n
+		if not best.is_empty():
+			_assign_gather(u, best)
+
+
+func _assign_gather(u: Dictionary, node: Dictionary) -> void:
+	_clear_orders(u)
+	u.job = "gather"
+	u.node = node.id
+	u.work_x = node.x
+	u.work_z = node.z
+	u.work_res = node.res
+	u.tries = 0
+	u.phase = "to_node" if u.carry == 0 else "to_drop"
+
+
+func _clear_orders(u: Dictionary) -> void:
+	u.ordered = false
+	u.attack_move = false
+	u.focus = false
+	u.target = 0
+	u.chasing = false
+	u.moving = false
+	u.path.clear()
+
+
+func _apply_repair(command: Dictionary) -> void:
+	var b: Dictionary = _by_id.get(command.building, {})
+	if b.is_empty() or not b.has("btype") or b.team != command.team or b.hp >= b.max_hp:
+		return
+	var reach: int = b.radius + REPAIR_CALL
+	for u in units:
+		if u.team != b.team or u.target != 0:
+			continue  # busy fighting
+		if _dist2(u, b) > reach * reach:
+			continue
+		_clear_orders(u)
+		u.job = "repair"
+		u.node = b.id
+		u.phase = "to_site"
+		u.timer = REPAIR_TICKS
 
 
 ## Construction progress and factory production.
@@ -664,7 +728,11 @@ func _spawn_from(b: Dictionary, kind: int) -> void:
 
 ## Gatherers: walk to the spot, gather, carry it home, repeat.
 func _work() -> void:
+	var repaired := {}  # building id -> HP restored this tick
 	for u in units:
+		if u.job == "repair":
+			_repair(u, repaired)
+			continue
 		if u.job != "gather":
 			continue
 		var node: Dictionary = get_node_by_id(u.node)
@@ -715,6 +783,8 @@ func _work() -> void:
 					u.path.clear()
 				elif not u.moving:
 					_route_to_edge(u, drop.x, drop.z, drop.radius)
+	for id in repaired:
+		building_repaired.emit(id, repaired[id])
 
 
 ## Where a gatherer takes its load: the nearest finished building of its
@@ -771,6 +841,27 @@ func _remove_node(node: Dictionary) -> void:
 		var centre: Vector2i = grid.cell_centre(cell)
 		if field.is_walkable(Vector2(centre) / float(SCALE), cut_trees):
 			grid.open_terrain(cell)
+
+
+## A repairer: walk to the building, then patch it up until it's whole.
+func _repair(u: Dictionary, repaired: Dictionary) -> void:
+	var b: Dictionary = _by_id.get(u.node, {})
+	if b.is_empty() or not b.has("btype") or b.hp >= b.max_hp:
+		u.job = ""
+		return
+	if not _near_edge(u, b.x, b.z, b.radius):
+		if not u.moving:
+			_route_to_edge(u, b.x, b.z, b.radius)
+		return
+	u.moving = false
+	u.path.clear()
+	u.phase = "repairing"
+	u.timer -= 1
+	if u.timer <= 0:
+		u.timer = REPAIR_TICKS
+		var amount: int = mini(REPAIR_HP, b.max_hp - b.hp)
+		b.hp += amount
+		repaired[b.id] = repaired.get(b.id, 0) + amount
 
 
 ## Close enough to work at something round of `radius`?

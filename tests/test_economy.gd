@@ -184,6 +184,45 @@ func _run() -> void:
 	s._by_id.erase(hauler)
 	s.resources[0][0] = stone_before  # back to where the checks below expect
 
+	# Auto-gather: each unit off to the resource it's fastest at.
+	var trio: Array = []
+	for k in 3:
+		trio.append(s.add_unit(0, k, ground_of(hq0) + Vector2(14, (k - 1) * 7)))
+	s.command_harvest(trio)
+	s.step_ticks(4)
+	var trio_ok := true
+	for id in trio:
+		var tu: Dictionary = s.get_unit(id)
+		trio_ok = trio_ok and tu.job == "gather" and s.get_node_by_id(tu.node).res == tu.kind
+	check("sent to the HQ, each unit gathers its own resource (rock stone, paper wood, scissors metal)", trio_ok)
+	# Repair: units near a damaged building come and fix it; far ones don't.
+	hq0.hp = 1700
+	var far_one: int = s.add_unit(0, ROCK, ground_of(hq0) + Vector2(0, 0))
+	var fu: Dictionary = s.get_unit(far_one)
+	var nav_far = s.nav()
+	var far_cell: Vector2i = nav_far.nearest_walkable(nav_far.cell_of(hq0.x + 9000, hq0.z))
+	fu.x = nav_far.cell_centre(far_cell).x
+	fu.z = nav_far.cell_centre(far_cell).y
+	fu.px = fu.x
+	fu.pz = fu.z
+	var repaired_total := [0]
+	s.building_repaired.connect(func(_id, amount): repaired_total[0] += amount)
+	s.command_repair(0, hq0.id)
+	s.step_ticks(4)
+	var repairing: Array = s.units.filter(func(u): return u.team == 0 and u.job == "repair")
+	check("repair call: units nearby answer (%d), far ones don't" % repairing.size(),
+			repairing.size() == trio.size() and fu.job != "repair")
+	for t in 1200:
+		s.step_ticks(1)
+		if hq0.hp >= hq0.max_hp:
+			break
+	check("...and repair it to full (+%d HP)" % repaired_total[0], hq0.hp == hq0.max_hp and repaired_total[0] == 300)
+	s.step_ticks(2)
+	check("...then stop", s.units.filter(func(u): return u.job == "repair").is_empty())
+	for id in trio + [far_one]:
+		s.units.erase(s.get_unit(id))
+		s._by_id.erase(id)
+
 	# Training.
 	var count_before: int = s.units.size()
 	s.command_train(0, quarry.id)
@@ -350,6 +389,41 @@ func _run() -> void:
 	sim._pending.clear()
 	game._select(mine.slice(0, 2))
 	check("lassoing units after that drops the buildings", game.selected_buildings.is_empty())
+	# Double tap a unit: all your units of that type in the pane.
+	game._last_tap.camera = null
+	var rock0: Dictionary = sim.units.filter(func(u): return u.team == 0 and u.kind == ROCK).front()
+	var rock_px: Vector2 = cam.unproject_position(view_units.world_position(rock0.id))
+	game._on_tapped(cam, rock_px)
+	var after_one: Array = game.selection.duplicate()
+	game._on_tapped(cam, rock_px)
+	var rocks_in_view := 0
+	for u in sim.units:
+		if u.team == 0 and u.kind == ROCK and Rect2(Vector2.ZERO, leaf.rect.size).has_point(
+				cam.unproject_position(view_units.world_position(u.id))):
+			rocks_in_view += 1
+	check("double tap a unit: all your units of its type in the pane (%d)" % game.selection.size(),
+			after_one == [rock0.id] and rocks_in_view > 1 and game.selection.size() == rocks_in_view
+			and game.selection.all(func(id): return sim.get_unit(id).kind == ROCK))
+	# Tap the HQ with units selected: they go gather.
+	game._last_tap.camera = null
+	sim._pending.clear()
+	var hq_px: Vector2 = cam.unproject_position(Vector3(my_hq.x / 100.0, 6.0, my_hq.z / 100.0))
+	game._on_tapped(cam, hq_px)
+	queued = [] if sim._pending.is_empty() else sim._pending.values()[0]
+	check("tapping the HQ with units selected sends them to gather", queued.size() == 1 and queued[0].type == "harvest")
+	# Double tap the damaged HQ: repair.
+	sim._pending.clear()
+	game._select([])
+	my_hq.hp = my_hq.max_hp - 100
+	game._on_tapped(cam, hq_px)
+	game._on_tapped(cam, hq_px)
+	queued = [] if sim._pending.is_empty() else sim._pending.values()[0]
+	check("double tap a damaged building: repair call", queued.size() == 1 and queued[0].type == "repair"
+			and queued[0].building == my_hq.id and "repair" in hud._toast.text)
+	sim._pending.clear()
+	my_hq.hp = my_hq.max_hp
+	game._last_tap.camera = null
+	game._select(mine.slice(0, 2))  # what the checks below expect
 	var node: Dictionary = sim.nodes.filter(func(n): return n.res == 2).front()
 	var nearest_metal: Dictionary = node
 	for n in sim.nodes:

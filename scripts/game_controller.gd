@@ -1,14 +1,19 @@
 extends Node
 ## Turns taps and lassos from any pane into selections and orders.
 ##
-##   - Tap one of your units: select it.
-##   - Draw a loop around units: select all of yours inside.
+##   - Tap one of your units: select it. Double tap it: select all your
+##     units of that type visible in the pane.
+##   - Draw a loop around units: select all of yours inside (no units inside:
+##     your buildings inside).
 ##   - Tap the ground with units selected: they move there.
 ##   - Tap an enemy (unit or building) with units selected: they attack it.
 ##   - Tap a resource spot with units selected: they gather from it.
 ##   - Attack button, then tap the ground: attack-move there (fight anything
 ##     on the way).
-##   - Tap one of your buildings: select it (factories: train units).
+##   - Tap one of your buildings (anywhere on its picture): select it
+##     (factories: train units).
+##   - Tap your HQ with units selected: each gathers what it's fastest at.
+##   - Double tap a damaged building of yours: units nearby repair it.
 ##   - Build, pick a factory, then tap the ground: build it there.
 ## The selection is shared by every pane, so you can select in one pane and
 ## tap the destination in another.
@@ -22,14 +27,20 @@ extends Node
 
 ## Which team this device controls.
 const PLAYER_TEAM := 0
+const UI := preload("res://scripts/ui_style.gd")
 ## How close (pixels) a tap must be to a unit to pick it.
 const TAP_RADIUS := 44.0
+## Two taps this close in time (ms) and space (px), in the same pane, make a
+## double tap.
+const DOUBLE_TAP_MS := 350
+const DOUBLE_TAP_PX := 40.0
 ## Height (map units) of a building's middle, for lassoing it.
 const BUILDING_MIDDLE := 10.0
 const ResourcesView := preload("res://scripts/resources_view.gd")
 
 var selection: Array = []  # unit ids
 var selected_buildings: Array = []
+var _last_tap := {"camera": null, "point": Vector2.ZERO, "time": -100000}
 var selected_building := 0  # the first of them (0 = none)
 
 var panes: Control
@@ -78,13 +89,29 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		if ground != null:
 			_place(hud.armed_build(), Vector2(ground.x, ground.z))
 		return
+	var double := _is_double_tap(camera, point)
 	var id := _unit_at(camera, point, true)
 	if id != -1 and not bar.is_attack_armed():
-		_select([id])
+		if double and selection.has(id):
+			_select_same_kind_in_pane(camera, sim.get_unit(id).kind)
+		else:
+			_select([id])
 		return
 	var own_building := _building_at(camera, point, ground, true)
 	if own_building != 0 and not bar.is_attack_armed():
-		_select_building(own_building)
+		var b: Dictionary = sim.get_entity(own_building)
+		if double and b.hp < b.max_hp:
+			# Double tap a damaged building: units nearby come to fix it.
+			sim.command_repair(PLAYER_TEAM, own_building)
+			hud.toast("Units nearby are coming to repair the %s" % UI.BUILDING_NAMES[b.btype])
+			_select_building(own_building)
+		elif not selection.is_empty() and b.btype == "hq":
+			# Units sent to the HQ go and gather what they're best at.
+			sim.command_harvest(selection)
+			view.show_move_marker(Vector3(b.x / float(sim.SCALE), 0, b.z / float(sim.SCALE)))
+			hud.toast("Off to gather: rocks stone, papers wood, scissors metal")
+		else:
+			_select_building(own_building)
 		return
 	if selection.is_empty():
 		_select_building(0)
@@ -181,6 +208,27 @@ func _select(ids: Array) -> void:
 	bar.show_counts(counts)
 	if not ids.is_empty() and not selected_buildings.is_empty():
 		_select_buildings([])
+
+
+## Was this tap the second of a double tap (same pane, quick, close by)?
+func _is_double_tap(camera: Camera3D, point: Vector2) -> bool:
+	var now: int = Time.get_ticks_msec()
+	var double: bool = _last_tap.camera == camera and now - _last_tap.time <= DOUBLE_TAP_MS \
+			and point.distance_to(_last_tap.point) <= DOUBLE_TAP_PX
+	# A double tap is used up; a third tap starts afresh.
+	_last_tap = {"camera": null if double else camera, "point": point, "time": now}
+	return double
+
+
+## All your units of this kind that are visible in this pane.
+func _select_same_kind_in_pane(camera: Camera3D, kind: int) -> void:
+	var visible := Rect2(Vector2.ZERO, camera.get_viewport().get_visible_rect().size)
+	var ids: Array = []
+	for u in sim.units:
+		if u.team == PLAYER_TEAM and u.kind == kind \
+				and visible.has_point(camera.unproject_position(view.world_position(u.id))):
+			ids.append(u.id)
+	_select(ids)
 
 
 func _select_building(id: int) -> void:

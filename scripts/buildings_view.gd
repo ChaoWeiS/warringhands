@@ -45,6 +45,7 @@ func _ready() -> void:
 	sim.building_added.connect(_on_added)
 	sim.building_destroyed.connect(_on_destroyed)
 	sim.unit_hit.connect(_on_hit)
+	sim.building_repaired.connect(_on_repaired)
 	for b in sim.buildings:
 		_on_added(b.id)
 
@@ -219,11 +220,21 @@ func _on_destroyed(id: int) -> void:
 
 
 func _on_hit(target_id: int, _attacker: int, damage: int, _strength: int) -> void:
-	var view: Dictionary = _views.get(target_id, {})
+	_float_number(target_id, "-%d" % damage, Color.WHITE)
+
+
+func _on_repaired(building_id: int, amount: int) -> void:
+	_float_number(building_id, "+%d" % amount, Color("#9ff0b0"))
+
+
+## A number that floats up from a building and fades.
+func _float_number(building_id: int, text: String, color: Color) -> void:
+	var view: Dictionary = _views.get(building_id, {})
 	if view.is_empty():
 		return
 	var label := Label3D.new()
-	label.text = "-%d" % damage
+	label.text = text
+	label.modulate = color
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.render_priority = 3
