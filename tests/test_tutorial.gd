@@ -116,11 +116,16 @@ func _run() -> void:
 		sim.get_unit(id).hp = 1
 	sim.step_ticks(400)
 	await frames(2)
-	check("beating them moves on to the last step", tut.step == 12 and tut._skip.text == "Finish")
+	check("beating them moves on to the last step", tut.step == 12 and tut._skip.text == "Continue Tutorial")
 	var done := [false]
 	tut.finished.connect(func(): done[0] = true)
 	tut._skip.pressed.emit()
-	check("Finish ends the tutorial", done[0])
+	await frames(2)
+	check("Continue Tutorial closes the lesson card and keeps playing", not done[0] and tut.free_play
+			and not tut._text.visible and not tut._skip.visible and tut._quit.visible and tut.is_inside_tree())
+	check("...leaving just a small Quit tutorial button", tut.card().size.x < 400)
+	tut._quit.pressed.emit()
+	check("Quit tutorial goes back to the menu", done[0])
 
 	# Layout: Build on the left a third of the way down, Attack / Clear under it.
 	var bar: Control = root.get_node("Main/HUD/SelectionBar")

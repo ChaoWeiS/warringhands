@@ -20,6 +20,10 @@ var _count: Label
 var _text: Label
 var _skip: Button
 var _done_buttons: HBoxContainer
+var _quit: Button
+## After the last step: the card shrinks to just "Quit tutorial" and you
+## keep playing on the island.
+var free_play := false
 var _camera_start := {}      # where each pane's camera was when the step began
 var _enemies: Array = []     # the last lesson's enemies
 
@@ -79,9 +83,11 @@ func _ready() -> void:
 	_skip = UI.button(Color("#f2eefb"), Color("#e7e1f5"), 22)
 	_skip.text = "Skip"
 	_skip.custom_minimum_size = Vector2(120, 56) * UI.ui_scale()
-	_skip.pressed.connect(next_step)
+	_skip.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_skip.pressed.connect(_on_skip)
 	row.add_child(_skip)
 	var quit := UI.button(Color("#f2eefb"), Color("#e7e1f5"), 22)
+	_quit = quit
 	quit.text = "Quit tutorial"
 	quit.custom_minimum_size = Vector2(170, 56) * UI.ui_scale()
 	quit.pressed.connect(func(): finished.emit())
@@ -95,6 +101,22 @@ func card() -> Control:
 	return _card
 
 
+## Skip / Next, or on the last step, Continue Tutorial: close the lesson card
+## and keep playing (only a small Quit tutorial button stays, to leave).
+func _on_skip() -> void:
+	if step >= 0 and step < STEPS.size() and STEPS[step].get("end", false):
+		free_play = true
+		_count.visible = false
+		_text.visible = false
+		_skip.visible = false
+		_quit.text = "Quit tutorial"
+		_card.offset_left = 0
+		_card.offset_right = 0
+		_card.reset_size()
+		return
+	next_step()
+
+
 func next_step() -> void:
 	step += 1
 	if step >= STEPS.size():
@@ -103,7 +125,7 @@ func next_step() -> void:
 	var s: Dictionary = STEPS[step]
 	_count.text = "Tutorial  ·  step %d of %d" % [step + 1, STEPS.size()]
 	_text.text = s.text
-	_skip.text = "Finish" if s.get("end", false) else ("Next" if s.get("next", false) else "Skip")
+	_skip.text = "Continue Tutorial" if s.get("end", false) else ("Next" if s.get("next", false) else "Skip")
 	if s.has("enter"):
 		call(s.enter)
 	# A little bounce so the new instruction gets noticed.
