@@ -4,6 +4,9 @@ extends Node
 ##   - Tap one of your units: select it.
 ##   - Draw a loop around units: select all of yours inside.
 ##   - Tap the ground with units selected: they move there.
+##   - Tap an enemy with units selected: they attack it.
+##   - Attack button, then tap the ground: attack-move there (fight anything
+##     on the way).
 ## The selection is shared by every pane, so you can select in one pane and
 ## tap the destination in another.
 
@@ -39,17 +42,28 @@ func _ready() -> void:
 
 
 func _on_tapped(camera: Camera3D, point: Vector2) -> void:
-	var id := _own_unit_at(camera, point)
-	if id != -1:
+	var id := _unit_at(camera, point, true)
+	if id != -1 and not bar.is_attack_armed():
 		_select([id])
 		return
 	if selection.is_empty():
 		return
+	var enemy := _unit_at(camera, point, false)
+	if enemy != -1:
+		sim.command_attack(selection, enemy)
+		view.show_attack_marker(enemy)
+		bar.set_attack_armed(false)
+		return
 	var ground: Variant = camera.ground_at(point)
 	if ground == null:
 		return
-	sim.command_move(selection, ground)
-	view.show_move_marker(ground)
+	if bar.is_attack_armed():
+		sim.command_attack_move(selection, ground)
+		view.show_move_marker(ground, true)
+		bar.set_attack_armed(false)
+	else:
+		sim.command_move(selection, ground)
+		view.show_move_marker(ground)
 
 
 func _on_lassoed(camera: Camera3D, polygon: PackedVector2Array) -> void:
@@ -89,12 +103,13 @@ func _select(ids: Array) -> void:
 	bar.show_counts(counts)
 
 
-## Your unit closest to a pane point, within TAP_RADIUS pixels, or -1.
-func _own_unit_at(camera: Camera3D, point: Vector2) -> int:
+## Closest unit (yours if `own`, else an enemy) to a pane point, within
+## TAP_RADIUS pixels, or -1.
+func _unit_at(camera: Camera3D, point: Vector2, own: bool) -> int:
 	var best := -1
 	var best_dist := TAP_RADIUS
 	for u in sim.units:
-		if u.team != PLAYER_TEAM:
+		if (u.team == PLAYER_TEAM) != own:
 			continue
 		var p: Vector2 = camera.unproject_position(view.world_position(u.id))
 		var d: float = p.distance_to(point)

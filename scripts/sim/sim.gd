@@ -12,8 +12,10 @@ extends Node
 ## Combat: units have HP and hit enemies they're touching once a second.
 ## Rock beats scissors, scissors beats paper, paper beats rock: a counter hit
 ## does double damage, being countered does half. Idle units spot enemies in
-## sight, walk up and fight; a unit the player has ordered to move goes there
-## first and fights after.
+## sight, walk up and fight. Orders:
+##   - move: go there first, fight after (but fight back if attacked);
+##   - attack-move: go there, fighting any enemy met on the way, then carry on;
+##   - attack: go after one particular enemy until it's dead.
 
 signal ticked
 ## A unit was hit. strength: 1 = counter hit, 0 = even, -1 = countered.
@@ -78,8 +80,10 @@ var combat_enabled: bool = true
 ## target, ordered, next_attack, attack_tick, hurt_tick, repath, stuck}.
 ## (px, pz) = position at the previous tick, for smooth drawing.
 ## path = waypoints (Vector2i, sim units) still to walk; the last is (tx, tz).
-## target = id of the enemy being fought (0 = none). ordered = walking
-## somewhere the player said (won't stop to fight until it gets there).
+## target = id of the enemy being fought (0 = none). ordered = on a plain
+## move order (won't stop to fight unless attacked). attack_move + dest_x/z =
+## heading to dest, fighting on the way. focus = target was picked by the
+## player (chase it anywhere). chasing = current path leads to the target.
 var units: Array = []
 
 var _by_id: Dictionary = {}
@@ -140,6 +144,21 @@ func command_move(ids: Array, ground: Vector3) -> void:
 		"x": roundi(ground.x * SCALE),
 		"z": roundi(ground.z * SCALE),
 	})
+
+
+## Attack-move: go to a ground point, fighting any enemy met on the way.
+func command_attack_move(ids: Array, ground: Vector3) -> void:
+	_queue({
+		"type": "attack_move",
+		"ids": ids.duplicate(),
+		"x": roundi(ground.x * SCALE),
+		"z": roundi(ground.z * SCALE),
+	})
+
+
+## Attack one particular enemy, following it until it's dead.
+func command_attack(ids: Array, target_id: int) -> void:
+	_queue({"type": "attack", "ids": ids.duplicate(), "target": target_id})
 
 
 func has_pending_commands() -> bool:
@@ -211,8 +230,10 @@ func _step() -> void:
 
 func _apply(command: Dictionary) -> void:
 	match command.type:
-		"move":
+		"move", "attack_move":
 			_apply_move(command)
+		"attack":
+			_apply_attack(command)
 
 
 ## Spreads the group into a square formation around the target point.
@@ -237,8 +258,29 @@ func _apply_move(command: Dictionary) -> void:
 		var tx: int = command.x + (c * 2 - (cols - 1)) * SPACING / 2
 		var tz: int = command.z + (r * 2 - (rows - 1)) * SPACING / 2
 		u.target = 0  # the player's order comes first
-		u.ordered = true
+		u.focus = false
+		u.chasing = false
+		u.ordered = command.type == "move"
+		u.attack_move = command.type == "attack_move"
+		u.dest_x = tx
+		u.dest_z = tz
 		_route(u, tx, tz)
+
+
+func _apply_attack(command: Dictionary) -> void:
+	if not _by_id.has(command.target):
+		return
+	var ids: Array = command.ids.duplicate()
+	ids.sort()
+	for id in ids:
+		var u: Dictionary = _by_id.get(id, {})
+		if u.is_empty() or u.team == _by_id[command.target].team:
+			continue
+		u.ordered = false
+		u.attack_move = false
+		u.focus = true
+		u.chasing = false
+		u.target = command.target
 
 
 ## Plans a unit's way to (tx, tz) around lakes, forests and the like. If the
@@ -267,30 +309,51 @@ func _fight() -> void:
 		if not combat_enabled:
 			continue
 		var target: Dictionary = _by_id.get(u.target, {})
-		if not target.is_empty() and _dist2(u, target) > LEASH * LEASH:
+		if not target.is_empty() and not u.focus and _dist2(u, target) > LEASH * LEASH:
 			target = {}
 		if target.is_empty():
+			u.focus = false
 			target = _nearest_enemy(u, SIGHT)
-		u.target = 0 if target.is_empty() else target.id
 		if target.is_empty():
+			u.target = 0
+			if u.chasing:
+				# The fight is over: carry on to an attack-move's destination,
+				# otherwise stop here.
+				u.chasing = false
+				if u.attack_move:
+					_route(u, u.dest_x, u.dest_z)
+				else:
+					u.moving = false
+					u.path.clear()
+			elif u.attack_move and not u.moving:
+				u.attack_move = false  # arrived
 			continue
+		u.target = target.id
 		if _dist2(u, target) <= ATTACK_RANGE * ATTACK_RANGE:
 			# In reach: stand and fight.
 			u.moving = false
 			u.path.clear()
+			u.chasing = true
 			if tick >= u.next_attack:
 				hits.append([u, target, damage_for(u.kind, target.kind)])
 				u.next_attack = tick + ATTACK_COOLDOWN
 				u.attack_tick = tick
-		elif not u.moving or tick >= u.repath:
+		elif not u.moving or not u.chasing or tick >= u.repath:
 			# Chase, re-planning now and then as the target moves.
 			_route(u, target.x, target.z)
+			u.chasing = true
 			u.repath = tick + REPATH_TICKS
 	for hit in hits:
 		var attacker: Dictionary = hit[0]
 		var victim: Dictionary = hit[1]
 		victim.hp -= hit[2]
 		victim.hurt_tick = tick
+		if victim.ordered:
+			# Attacked while on a plain move order: stop and fight back.
+			victim.ordered = false
+			victim.target = attacker.id
+			victim.moving = false
+			victim.path.clear()
 		var strength: int = 0
 		if attacker.kind != victim.kind:
 			strength = 1 if beats(attacker.kind, victim.kind) else -1
@@ -583,6 +646,7 @@ func _add_unit(team: int, kind: int, at: Vector2i) -> void:
 		"tx": at.x, "tz": at.y, "moving": false, "path": [], "stuck": 0,
 		"hp": MAX_HP, "target": 0, "ordered": false, "next_attack": 0,
 		"attack_tick": -1000, "hurt_tick": -1000, "repath": 0,
+		"attack_move": false, "dest_x": at.x, "dest_z": at.y, "focus": false, "chasing": false,
 	}
 	_next_id += 1
 	units.append(u)

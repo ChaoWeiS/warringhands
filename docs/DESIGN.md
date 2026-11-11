@@ -37,7 +37,7 @@
 - Unit art: animated hand sprites (idle / attack / defend, 5 frames each) on a team-coloured base (pink vs blue). Source sheet in `art_source/hands_sheet.png`; `tools/cut_hand_sprites.py` cuts it into `assets/units/hands.png`. Units face the way they walk and **hop** while walking (base shrinks like a shadow at the top of a hop, slight squash and stretch; each unit at its own pace; it finishes the hop and lands when it stops).
 - **One finger:** tap your unit to select it; draw a loop to lasso; tap the ground to move the selection there (they spread into a square formation).
 - Selection is shared by all panes: select in one pane, tap the destination in another.
-- Selection bar (bottom): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type; Clear to deselect.
+- Selection bar (bottom): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type; **Attack** arms an attack-move for the next ground tap; Clear to deselect.
 - A second finger in the pane cancels a tap or lasso (it becomes a camera gesture).
 - **Pathfinding:** units plan a route around lakes, forests, plateaus and resource props (A* on a 4-unit grid, smoothed into straight runs). An order onto blocked ground (e.g. a lake) goes to the nearest open spot. Selected units show their route as a dashed line on the ground.
 - **Collision:** each unit has a round body (radius 3.2 map units); bodies don't overlap (pushed apart 8 times a tick, never onto blocked ground).
@@ -51,7 +51,11 @@
 - Every unit: **100 HP**, one hit per second against an enemy it's touching.
 - Damage: same type **10**; counter (rock > scissors > paper > rock) **20**; countered **5**. A counter duel ends in ~4 s with the winner on 75 HP.
 - Idle units spot enemies within sight (35 map units), walk up and fight; give up chasing beyond 50.
-- Units under a move order walk there first and only fight once they arrive (attack-move can come later).
+- Orders:
+  - **Move** (tap ground): walk there first, fight after. A unit attacked on the way stops and **fights back**.
+  - **Attack-move** (Attack button, then tap ground; red marker): walk there, fighting any enemy met on the way, then carry on.
+  - **Attack** (tap an enemy with units selected; red ring on the enemy): hunt down that unit until it's dead.
+- Charging a mirrored army with attack-move is a roughly even trade; defenders keep a slight edge (they're already in position).
 - All hits in a tick land at once (no first-strike advantage from unit ids).
 - Look: attack animation when swinging, crying defend animation when hit, HP bar once damaged, floating damage numbers (big red for counter hits), fade-out on death. Fallen units leave the selection.
 - `combat_enabled` switch on the sim (e.g. for early tutorial steps).

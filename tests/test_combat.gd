@@ -136,6 +136,66 @@ func _run() -> void:
 	check("units under orders don't stop to fight on the way", not distracted)
 	march.queue_free()
 
+	# Fighting back: a unit on a plain move order that gets attacked stops
+	# and fights its attacker.
+	var ambush := new_sim()
+	var walker: int = ambush.add_unit(0, ROCK, arena + Vector2(-25, 0))
+	var ambusher: int = ambush.add_unit(1, PAPER, arena + Vector2(0, 9))
+	ambush.command_move([walker], Vector3(arena.x + 25, 0, arena.y))
+	var hit_back := false
+	for t in 400:
+		ambush.step_ticks(1)
+		var amb: Dictionary = ambush.get_unit(ambusher)
+		if amb.is_empty() or amb.hp < 100:
+			hit_back = true
+			break
+	check("a unit attacked on the move stops and fights back", hit_back)
+	ambush.queue_free()
+
+	# Attack-move: march past an enemy, kill it on the way, carry on to the
+	# destination.
+	var charge := new_sim()
+	var charger: int = charge.add_unit(0, ROCK, arena + Vector2(-25, 0))
+	var victim: int = charge.add_unit(1, SCISSORS, arena + Vector2(0, 14))
+	var dest := arena + Vector2(25, 0)
+	charge.command_attack_move([charger], Vector3(dest.x, 0, dest.y))
+	charge.step_ticks(900)
+	check("attack-move fights an enemy met on the way", charge.get_unit(victim).is_empty())
+	check("...then carries on to the destination (%.1f away)" % charge.unit_ground(charger).distance_to(dest),
+			charge.unit_ground(charger).distance_to(dest) < 1.0 and not charge.get_unit(charger).moving)
+	charge.queue_free()
+
+	# Attack order: go after one particular enemy, even far out of sight,
+	# ignoring a closer one.
+	var hunt := new_sim()
+	var hunter: int = hunt.add_unit(0, PAPER, arena)
+	var prey: int = hunt.add_unit(1, ROCK, arena + Vector2(0, -60))
+	var bystander: int = hunt.add_unit(1, PAPER, arena + Vector2(0, 30))
+	hunt.command_attack([hunter], prey)
+	for t in 1500:
+		hunt.step_ticks(1)
+		if hunt.get_unit(prey).is_empty():
+			break
+	check("attack order hunts down a chosen enemy out of sight", hunt.get_unit(prey).is_empty()
+			and not hunt.get_unit(hunter).is_empty())
+	hunt.queue_free()
+
+	# A proper charge into a mirrored army is a fair fight: attack-moving
+	# together, we trade roughly evenly instead of being picked off.
+	var fair := new_sim()
+	var ours: Array = []
+	for k in 3:
+		for i in 4:
+			ours.append(fair.add_unit(0, k, arena + Vector2(-40 - i * 7, (k - 1) * 10)))
+			fair.add_unit(1, k, arena + Vector2(40 + i * 7, (k - 1) * 10))
+	fair.command_attack_move(ours, Vector3(arena.x + 50, 0, arena.y))
+	fight_out(fair, 4000)
+	var kept: int = survivors(fair, 0).size()
+	var lost_theirs: int = 12 - survivors(fair, 1).size()
+	check("charging a mirrored army trades evenly (we killed %d, kept %d)" % [lost_theirs, kept],
+			lost_theirs >= 6)
+	fair.queue_free()
+
 	# Group battle: 4 rocks against 4 scissors. Rocks win comfortably.
 	var war := new_sim()
 	for i in 4:
@@ -205,6 +265,28 @@ func _run() -> void:
 		if u.hp == sim.MAX_HP:
 			bars_ok = bars_ok and not view._views[u.id].hp_bg.visible
 	check("damaged units show an HP bar (and healthy ones don't)", bars_ok)
+
+	# Controls: Attack button then tap the ground = attack-move; tapping an
+	# enemy with units selected = attack it.
+	var cam0 = root.get_node("Main/Panes")._leaves()[0].camera
+	var leaf0 = root.get_node("Main/Panes")._leaves()[0]
+	var mine_now: Array = sim.units.filter(func(u): return u.team == 0).map(func(u): return u.id)
+	game._select(mine_now)
+	sim._pending.clear()
+	bar._attack.button_pressed = true  # like tapping Attack
+	check("attack button arms attack mode", bar.is_attack_armed())
+	game._on_tapped(cam0, leaf0.rect.size * 0.5)
+	var queued: Array = sim._pending.values()[0] if not sim._pending.is_empty() else []
+	check("then tapping the ground gives an attack-move", queued.size() == 1 and queued[0].type == "attack_move")
+	check("...and attack mode switches off", not bar.is_attack_armed())
+	sim._pending.clear()
+	var enemy_id: int = sim.units.filter(func(u): return u.team == 1).front().id
+	var enemy_screen: Vector2 = cam0.unproject_position(view.world_position(enemy_id))
+	game._on_tapped(cam0, enemy_screen)
+	queued = sim._pending.values()[0] if not sim._pending.is_empty() else []
+	check("tapping an enemy orders an attack on it", queued.size() == 1 and queued[0].type == "attack"
+			and queued[0].target == enemy_id)
+	sim._pending.clear()
 
 	# A battle in the real game for the screenshot.
 	if out_dir != "":

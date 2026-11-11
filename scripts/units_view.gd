@@ -25,6 +25,7 @@ const STATE_FPS := {"idle": 6.0, "attack": 10.0, "defend": 8.0}
 const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
 const RING_COLOR := Color("#ffffff")
 const MARKER_COLOR := Color("#fff3b0")
+const ATTACK_MARKER_COLOR := Color("#ff7a7a")
 ## Map units per sprite pixel (a hand is about 6 map units tall).
 const SPRITE_PIXEL_SIZE := 0.06
 ## Height of the hand's middle above the ground, for picking.
@@ -108,14 +109,15 @@ func set_state(id: int, state: String) -> void:
 		view.sprite.play(state)
 
 
-## A ring that shrinks and fades where a move order was given.
-func show_move_marker(ground: Vector3) -> void:
+## A ring that shrinks and fades where a move order was given (red for an
+## attack-move).
+func show_move_marker(ground: Vector3, attack: bool = false) -> void:
 	var marker := MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 5.0
 	torus.outer_radius = 6.2
 	marker.mesh = torus
-	var mat := _flat_material(MARKER_COLOR, true)
+	var mat := _flat_material(ATTACK_MARKER_COLOR if attack else MARKER_COLOR, true)
 	marker.material_override = mat
 	marker.position = Vector3(ground.x, 0.6, ground.z)
 	add_child(marker)
@@ -123,6 +125,28 @@ func show_move_marker(ground: Vector3) -> void:
 	tween.tween_property(marker, "scale", Vector3(0.3, 1, 0.3), 0.6)
 	tween.tween_property(mat, "albedo_color:a", 0.0, 0.6)
 	tween.chain().tween_callback(marker.queue_free)
+
+
+## A red ring that pulses on an enemy you've ordered an attack on.
+func show_attack_marker(target_id: int) -> void:
+	var view: Dictionary = _views.get(target_id, {})
+	if view.is_empty():
+		return
+	var marker := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 3.6
+	torus.outer_radius = 4.6
+	marker.mesh = torus
+	var mat := _flat_material(ATTACK_MARKER_COLOR, true)
+	marker.material_override = mat
+	marker.position = Vector3(0, 0.5, 0)
+	view.root.add_child(marker)
+	var tween := create_tween()
+	for i in 2:
+		tween.tween_property(marker, "scale", Vector3(1.3, 1, 1.3), 0.25)
+		tween.tween_property(marker, "scale", Vector3.ONE, 0.25)
+	tween.tween_property(mat, "albedo_color:a", 0.0, 0.3)
+	tween.tween_callback(marker.queue_free)
 
 
 func _update_positions() -> void:
