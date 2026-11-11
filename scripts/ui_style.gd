@@ -4,9 +4,9 @@ extends RefCounted
 
 const TEXT_COLOR := Color("#4a4560")
 const ATLAS := preload("res://assets/units/hands.png")
-const CELL := 128
+const CELL := 192
 ## Hand picture inside an atlas cell (frames sit at the bottom of the cell).
-const ICON_INSET := Rect2(8, 12, 112, 114)
+const ICON_INSET := Rect2(40, 60, 112, 114)
 ## Resource colours: stone, wood, metal.
 const RES_COLORS := [Color("#b9b2cc"), Color("#cf9f74"), Color("#8fd6d0")]
 const RES_ICONS := [
@@ -52,7 +52,7 @@ static func button(color: Color, pressed_color: Color = Color.TRANSPARENT, font_
 static func kind_icon(kind: int) -> AtlasTexture:
 	var icon := AtlasTexture.new()
 	icon.atlas = ATLAS
-	icon.region = Rect2(ICON_INSET.position + Vector2(0, kind * 3 * CELL), ICON_INSET.size)
+	icon.region = Rect2(ICON_INSET.position + Vector2(0, kind * 5 * CELL), ICON_INSET.size)
 	return icon
 
 

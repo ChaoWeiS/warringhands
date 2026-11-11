@@ -9,10 +9,7 @@ signal clear_pressed
 ## Attack mode switched on / off.
 signal attack_toggled(armed: bool)
 
-const ATLAS := preload("res://assets/units/hands.png")
-const CELL := 128
-## Hand picture inside an atlas cell (frames sit at the bottom of the cell).
-const ICON_INSET := Rect2(8, 12, 112, 114)
+const UI := preload("res://scripts/ui_style.gd")
 ## Pastel chip colours: stone, paper, metal.
 const KIND_COLORS := [Color("#d8d2e6"), Color("#fbf1d6"), Color("#c4eeea")]
 const CLEAR_COLOR := Color("#f3d6de")
@@ -77,11 +74,7 @@ func set_attack_armed(on: bool) -> void:
 
 ## First idle frame of the unit type, cropped to the hand.
 func _kind_icon(kind: int) -> AtlasTexture:
-	var icon := AtlasTexture.new()
-	icon.atlas = ATLAS
-	var row: int = kind * 3  # idle row of this kind
-	icon.region = Rect2(ICON_INSET.position + Vector2(0, row * CELL), ICON_INSET.size)
-	return icon
+	return UI.kind_icon(kind)
 
 
 func _make_button(color: Color, pressed_color: Color = Color.TRANSPARENT) -> Button:

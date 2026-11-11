@@ -2,31 +2,32 @@ extends Node3D
 ## Draws the units from the simulation: animated 2D hand sprites standing on
 ## the 3D world (always facing the camera), Ragnarok-style, with a soft
 ## team-coloured base under each, a selection ring, and a marker where a move
-## order was given. In combat: attack animation when swinging, crying defend
+## order was given. Walking units hop along (the move animation). In combat: attack animation when swinging, crying defend
 ## animation when hit, HP bars once damaged, floating damage numbers, and a
 ## death animation (it keels over) then a fade-out when a unit dies.
 ##
 ## It only reads the sim (and listens to its hit / death signals) and smooths
 ## positions between ticks. Units added mid-game get visuals automatically.
 ##
-## Sprites: assets/units/hands.png, 5 frames per row, 128 px cells;
-## row = kind * 3 + state (kind: rock, paper, scissors; state: idle, attack,
-## defend), then rows 9-11 = death per kind. Idle and defend are cut from
-## art_source/hands_sheet.png by tools/cut_hand_sprites.py; attack and death
-## from art_source/attack_sheet.png / death_sheet.png by tools/cut_grid_sprites.py.
+## Sprites: assets/units/hands.png, 5 frames per row, 192 px cells;
+## row = kind * 5 + state (kind: rock, paper, scissors; state: idle, move,
+## attack, defend, death), cut from art_source/hands_sheet_v2.png by
+## tools/cut_hand_sprites.py. Walking plays "move", whose frames hop by
+## themselves (with dust puffs).
 
 @export var sim_path: NodePath
 
 const ATLAS := preload("res://assets/units/hands.png")
-const CELL := 128
+const CELL := 192
+## The ground line in each atlas cell, this many px above its bottom.
+const GROUND := 24
 const FRAMES := 5
-## Atlas rows: kind * 3 + (idle 0, attack 1, defend 2); death rows after those.
-const STATES := ["idle", "attack", "defend"]
-const DEATH_ROW := 9  # + kind
-const STATE_FPS := {"idle": 6.0, "attack": 12.0, "defend": 8.0, "death": 9.0}
+## Atlas rows: kind * 5 + state.
+const STATES := ["idle", "move", "attack", "defend", "death"]
+const STATE_FPS := {"idle": 6.0, "move": 10.0, "attack": 12.0, "defend": 8.0, "death": 9.0}
 ## Attack and death play once (attack restarts on every swing); idle and
 ## defend loop.
-const LOOPS := {"idle": true, "attack": false, "defend": true, "death": false}
+const LOOPS := {"idle": true, "move": true, "attack": false, "defend": true, "death": false}
 
 ## Team colours, used for the base under each unit.
 const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
@@ -37,13 +38,6 @@ const ATTACK_MARKER_COLOR := Color("#ff7a7a")
 const SPRITE_PIXEL_SIZE := 0.06
 ## Height of the hand's middle above the ground, for picking.
 const SPRITE_HEIGHT := 3.0
-## Walking hops: how high (map units) and how many per second.
-const HOP_HEIGHT := 1.6
-const HOPS_PER_SECOND := 2.7
-## How much the team base shrinks at the top of a hop (like a shadow).
-const HOP_BASE_SHRINK := 0.25
-## A little squash on landing and stretch in the air.
-const HOP_SQUASH := 0.08
 ## Route lines drawn for selected units: dashed ribbons on the ground.
 const ROUTE_COLOR := Color(1, 1, 1, 0.75)
 const ROUTE_WIDTH := 0.6
@@ -60,7 +54,7 @@ const DAMAGE_COLORS := {1: Color("#ff5a6e"), 0: Color("#ffffff"), -1: Color("#d9
 const DAMAGE_SIZES := {1: 115, 0: 85, -1: 68}
 
 var sim: Node
-var _views: Dictionary = {}  # unit id -> {root, ring, sprite, base, hop}
+var _views: Dictionary = {}  # unit id -> {root, ring, sprite, base, hp bars, swing}
 var _selected: Dictionary = {}
 var _frames_by_kind: Array = []  # SpriteFrames per kind
 var _routes_mesh := ImmediateMesh.new()
@@ -88,7 +82,6 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_update_positions()
-	_update_hops(delta)
 	_update_combat_look()
 	_draw_routes()
 
@@ -109,7 +102,7 @@ func set_selected(ids: Array) -> void:
 		_views[id].ring.visible = _selected.has(id)
 
 
-## Plays "idle", "attack" or "defend" for a unit right away. (During play the
+## Plays "idle", "move", "attack" or "defend" for a unit right away. (During play the
 ## animation follows combat automatically each frame.)
 func set_state(id: int, state: String) -> void:
 	var view: Dictionary = _views.get(id, {})
@@ -173,14 +166,14 @@ func _update_positions() -> void:
 			view.sprite.flip_h = u.x < u.px
 
 
-## Attack / defend / idle animations, facing the enemy, and HP bars.
+## Idle / move / attack / defend animations, facing the enemy, and HP bars.
 func _update_combat_look() -> void:
 	for u in sim.units:
 		var view: Dictionary = _views.get(u.id, {})
 		if view.is_empty():
 			continue
 		# A swing beats a flinch, so a duel (both hit at once) shows punches.
-		var state := "idle"
+		var state := "move" if u.moving else "idle"
 		if u.target != 0 and sim.tick - u.attack_tick < SWING_TICKS:
 			state = "attack"
 		elif sim.tick - u.hurt_tick < HURT_TICKS:
@@ -238,9 +231,6 @@ func _on_unit_died(id: int) -> void:
 	view.hp_bg.visible = false
 	view.hp_fill.visible = false
 	var sprite: AnimatedSprite3D = view.sprite
-	# Land from any hop, no squash.
-	sprite.position.y = view.sprite_y
-	sprite.scale = Vector3.ONE
 	sprite.speed_scale = 1.0
 	sprite.play("death")
 	var fall: float = FRAMES / STATE_FPS["death"]
@@ -300,32 +290,6 @@ func _add_dashes(points: Array) -> void:
 		travelled += length
 
 
-## Walking units hop. A unit that stops finishes its current hop and lands.
-## Purely visual (not part of the sim), so it can use frame time freely.
-func _update_hops(delta: float) -> void:
-	for u in sim.units:
-		var view: Dictionary = _views.get(u.id, {})
-		if view.is_empty():
-			continue
-		var phase: float = view.hop  # 0..PI = one hop; 0 = on the ground
-		if u.moving or phase > 0.0:
-			phase += delta * HOPS_PER_SECOND * view.hop_speed * PI
-			if phase >= PI:
-				# Landed. Keep hopping if still walking, otherwise stop here.
-				phase = fmod(phase, PI) if u.moving else 0.0
-		view.hop = phase
-		var lift: float = sin(phase)  # 0 on the ground, 1 at the top
-		var sprite: AnimatedSprite3D = view.sprite
-		sprite.position.y = view.sprite_y + lift * HOP_HEIGHT
-		# Stretch in the air, squash near the ground (only while hopping).
-		var squash: float = 0.0
-		if phase > 0.0:
-			squash = HOP_SQUASH * (lift * 2.0 - 1.0)
-		sprite.scale = Vector3(1.0 - squash * 0.5, 1.0 + squash, 1.0)
-		var shrink: float = 1.0 - HOP_BASE_SHRINK * lift
-		view.base.scale = Vector3(shrink, 1.0, shrink)
-
-
 func _make_view(u: Dictionary) -> void:
 	var root := Node3D.new()
 	add_child(root)
@@ -361,8 +325,8 @@ func _make_view(u: Dictionary) -> void:
 	sprite.shaded = false
 	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
 	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	# Bottom of the cell on the ground (frames are drawn 2 px above it).
-	sprite.position = Vector3(0, (CELL * 0.5 - 2.0) * SPRITE_PIXEL_SIZE, 0)
+	# The cell's ground line on the ground.
+	sprite.position = Vector3(0, (CELL * 0.5 - GROUND) * SPRITE_PIXEL_SIZE, 0)
 	root.add_child(sprite)
 	# Don't let everyone bob in sync.
 	sprite.play("idle")
@@ -380,12 +344,7 @@ func _make_view(u: Dictionary) -> void:
 	_views[u.id] = {
 		"root": root, "ring": ring, "sprite": sprite, "base": base,
 		"hp_bg": hp_bg, "hp_fill": hp_fill,
-		"sprite_y": sprite.position.y,
-		"hop": 0.0,  # 0 = standing on the ground
 		"swing": u.attack_tick,  # last swing whose animation was started
-		# Slightly different hop speeds so a group drifts out of step
-		# instead of bouncing in unison.
-		"hop_speed": 0.88 + 0.24 * float((u.id * 53) % 11) / 10.0,
 	}
 
 
@@ -414,9 +373,9 @@ func _hp_bar_sprite(color: Color, back: bool) -> Sprite3D:
 func _build_frames(kind: int) -> SpriteFrames:
 	var frames := SpriteFrames.new()
 	frames.remove_animation("default")
-	var rows := {"death": DEATH_ROW + kind}
+	var rows := {}
 	for state_index in STATES.size():
-		rows[STATES[state_index]] = kind * 3 + state_index
+		rows[STATES[state_index]] = kind * STATES.size() + state_index
 	for anim in rows:
 		frames.add_animation(anim)
 		frames.set_animation_speed(anim, STATE_FPS[anim])

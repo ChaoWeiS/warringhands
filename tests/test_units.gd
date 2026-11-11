@@ -174,21 +174,17 @@ func _run() -> void:
 	sim.step_ticks(3)
 	game._select([first])
 
-	# Walking units hop; when they stop they land back on the ground.
-	var hop_spr = view._views[mine[1]].sprite
-	var ground_y: float = view._views[mine[1]].sprite_y
+	# Walking units play the moving animation (it hops by itself); when they
+	# stop they go back to idle.
+	var walker_spr: AnimatedSprite3D = view._views[mine[1]].sprite
 	sim.command_move([mine[1]], Vector3(sim.unit_ground(mine[1]).x + 15, 0, sim.unit_ground(mine[1]).y))
 	sim.step_ticks(4)
-	var highest := 0.0
-	for i in 8:
-		view._update_hops(0.04)
-		highest = maxf(highest, hop_spr.position.y - ground_y)
-	check("a walking unit hops (rose %.1f)" % highest, highest > 0.8)
+	view._update_combat_look()
+	check("a walking unit plays its moving animation", walker_spr.animation == "move"
+			and walker_spr.sprite_frames.get_frame_count("move") == 5)
 	sim.step_ticks(60)  # arrives
-	for i in 30:
-		view._update_hops(0.04)
-	check("after arriving it lands and stays down", is_equal_approx(hop_spr.position.y, ground_y) \
-			and is_equal_approx(view._views[mine[1]].base.scale.x, 1.0))
+	view._update_combat_look()
+	check("after arriving it's idle again", walker_spr.animation == "idle")
 	game._select([first])
 
 	# Tap the ground: the unit walks there.

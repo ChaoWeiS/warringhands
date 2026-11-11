@@ -1,137 +1,105 @@
-# Cuts the hand frames out of art_source/hands_sheet.png into
-# assets/units/hands.png. Run: python3 tools/cut_hand_sprites.py art_source/hands_sheet.png assets/units/hands.png
-# Needs: pillow, numpy, scipy, opencv-python.
-"""Cuts the 45 hand frames out of the sprite sheet into a transparent atlas.
+# Cuts the hand frames out of art_source/hands_sheet_v2.png into
+# assets/units/hands.png.
+#   python3 tools/cut_hand_sprites.py art_source/hands_sheet_v2.png assets/units/hands.png
+# Needs: pillow, numpy, scipy.
+"""The sheet: 5 panels (idle, moving, attack, defend, dying) x 3 rows (rock,
+paper, scissors) x 5 numbered frames, on white, split by thin coloured lines.
 
-Atlas layout: 5 columns (frames) x 9 rows of 128 px cells.
-Row = kind * 3 + state, kind: 0 rock, 1 paper, 2 scissors; state: 0 idle, 1 attack, 2 defend.
-Each frame's bottom sits 2 px above the bottom of its cell, centred horizontally.
+Atlas: 5 columns (frames) x 15 rows of CELL px cells; row = kind * 5 + state
+(state: 0 idle, 1 move, 2 attack, 3 defend, 4 death).
+
+Background: alpha comes from how far a pixel is from white, so motion
+trails, dust and the ghost stay see-through; anything inside a dark outline
+(the hands, the POW! burst) is solid. Each kind is scaled by one factor (so
+its idle hand matches HAND_HEIGHT) and every frame keeps its place inside its
+sheet cell, so the hop of the moving frames and the lunge of the attack stay
+as drawn. The ground line (bottom of the idle hands) sits GROUND px above the
+bottom of the atlas cell.
 """
-from PIL import Image; import numpy as np, sys, cv2
+from PIL import Image
+import numpy as np, sys
 from scipy import ndimage as ndi
 
-src = np.array(Image.open(sys.argv[1]).convert('RGB'))
-im = src.astype(int); R, G, B = im[..., 0], im[..., 1], im[..., 2]
-lum = 0.299 * R + 0.587 * G + 0.114 * B
-# Strict skin test finds the frames; a looser one shapes each cut-out.
-strict = (R > 200) & (G > 140) & (B > 110) & (R >= G) & (G >= B - 10) & ((R - B) > 40)
-strict[:, :120] = False; strict[:140, :] = False
-skin = (R > 170) & (G > 110) & ((R - B) > 35) & (R >= G)
-OUTLINE = 80      # darker than this next to a hand = its outline
-SOFT = 110        # between OUTLINE and SOFT = half-transparent edge
-OUTLINE_RGB = np.array([45, 24, 20])
-# The outline is very dark (brown, or navy on some frames). Red anger marks
-# are dark by brightness but have a bright red channel, so they're excluded.
-# (Blue motion lines are much lighter, so they never count as outline.)
-outline_px = (lum < OUTLINE) & (np.max(im, axis=2) < 130)
+CELL = 192
+HAND_HEIGHT = 103   # px, idle hand in the atlas (same size as before)
+GROUND = 24         # px above the cell bottom (room for squashed / fallen frames)
+# Sheet grid (pixels in hands_sheet_v2.png).
+# Cell lines of each panel (x), measured from the sheet; cells aren't evenly spaced.
+PANELS = [
+    [138, 254, 372, 490, 609, 728],      # idle
+    [744, 860, 978, 1099, 1218, 1340],   # moving
+    [1354, 1469, 1593, 1718, 1842, 1953],  # attack
+    [1968, 2080, 2195, 2311, 2426, 2533],  # defend
+    [2545, 2651, 2754, 2857, 2961, 3062],  # dying
+]
+ROWS = [(122, 395), (404, 676), (688, 977)]
+BADGE = 62          # skip the numbered badge at the top of each cell
+LINE = 6            # skip the cell lines
+EDGE = 16           # skip the panel borders
 
-lab, n = ndi.label(strict)
-sizes = ndi.sum(strict, lab, range(1, n + 1)); objs = ndi.find_objects(lab)
-comps = [(i + 1, objs[i]) for i, s in enumerate(sizes) if s > 500]
-rows = [(150, 320), (400, 620), (700, 900)]
-CELL = 128
-atlas = Image.new('RGBA', (CELL * 5, CELL * 9), (0, 0, 0, 0))
+src = np.array(Image.open(sys.argv[1]).convert('RGB')).astype(float)
+lum = src @ np.array([0.299, 0.587, 0.114])
 
-# Group pieces into frames (pieces that overlap horizontally = same frame).
-frames_by_row = []
-for (y0, y1) in rows:
-    cs = sorted([c for c in comps if y0 <= (c[1][0].start + c[1][0].stop) / 2 <= y1], key=lambda c: c[1][1].start)
-    clusters = []
-    for lid, sl in cs:
-        if clusters and sl[1].start < clusters[-1]['x1']:
-            cl = clusters[-1]
-            cl['ids'].append(lid); cl['y0'] = min(cl['y0'], sl[0].start); cl['y1'] = max(cl['y1'], sl[0].stop)
-            cl['x0'] = min(cl['x0'], sl[1].start); cl['x1'] = max(cl['x1'], sl[1].stop)
-        else:
-            clusters.append({'ids': [lid], 'y0': sl[0].start, 'y1': sl[0].stop, 'x0': sl[1].start, 'x1': sl[1].stop})
-    assert len(clusters) == 15, len(clusters)
-    frames_by_row.append(clusters)
 
-# Body of every frame (skin near its own pieces, holes filled), whole sheet.
-bodies = []
-for clusters in frames_by_row:
-    for cl in clusters:
-        own = np.isin(lab, cl['ids'])
-        body = skin & ndi.binary_dilation(own, iterations=6)
-        body = ndi.binary_fill_holes(ndi.binary_closing(body, iterations=3))
-        bodies.append(body)
-# Each pixel belongs to the nearest frame body.
-dists = np.stack([ndi.distance_transform_edt(~b) for b in bodies])
-owner = np.argmin(dists, axis=0)
+def cells(lines):
+    # The panel's outer border is thicker than the lines between cells.
+    return [(lines[i] + (EDGE if i == 0 else LINE), lines[i + 1] - (EDGE if i == 4 else LINE)) for i in range(5)]
 
-idx = 0
-for k, clusters in enumerate(frames_by_row):
-    for f, cl in enumerate(clusters):
-        body = bodies[idx]; mine = owner == idx; idx += 1
-        # The dark outline is the boundary: bright skin + nearby dark outline,
-        # tiny gaps closed, then everything inside filled (shaded skin, faces).
-        core = np.isin(lab, cl['ids'])
-        dark = outline_px & ndi.binary_dilation(core, iterations=14) & mine
-        shape = ndi.binary_closing(core | dark, iterations=2)
-        solid = ndi.binary_fill_holes(shape) & mine
-        lb, nb = ndi.label(solid)
-        if nb > 1:
-            keep = np.unique(lb[core & solid]); keep = keep[keep > 0]
-            solid = np.isin(lb, keep)
-        # Trim thin strokes sticking out of the silhouette (motion curls,
-        # ghost marks): anything thinner than ~6 px that isn't hand.
-        disk = ndi.generate_binary_structure(2, 1)
-        opened = ndi.binary_opening(solid, structure=disk, iterations=3)
-        solid = opened | (solid & ndi.binary_dilation(core, iterations=2))
-        lb, nb = ndi.label(solid)
-        if nb > 1:
-            sz = ndi.sum(solid, lb, range(1, nb + 1)); solid = lb == (np.argmax(sz) + 1)
-        # Rock (a convex fist): patch notches where the artwork's outline is
-        # open, by filling to the convex outline, painting skin from the
-        # surrounding hand and outline along the patch's edge.
-        patch = np.zeros_like(solid); patch_edge = np.zeros_like(solid)
-        if k == 0:
-            pts = np.argwhere(solid)[:, ::-1].astype(np.int32)
-            hull = np.zeros(solid.shape, np.uint8)
-            cv2.fillConvexPoly(hull, cv2.convexHull(pts), 1)
-            hull = hull.astype(bool)
-            added = hull & ~solid
-            if 0 < added.sum() < 0.4 * solid.sum():
-                patch_edge = added & ~ndi.binary_erosion(hull, iterations=3)
-                patch = added & ~patch_edge
-                solid = solid | added
-        # Soft edge: one more pixel ring, partly transparent by brightness.
-        edge = ndi.binary_dilation(solid, iterations=1) & ~solid & mine
-        alpha = solid.astype(float)
-        alpha[edge] = np.clip((SOFT - lum[edge]) / (SOFT - OUTLINE), 0, 1)
-        rgb = src.astype(float).copy()
-        rgb[edge] = OUTLINE_RGB  # edge pixels take the outline colour (no glow halo)
-        if patch.any():
-            # Colour of the nearest real skin pixel (never the dark outline).
-            skin_px = solid & ~patch & ~patch_edge & skin & (lum > 150)
-            _, (iy, ix) = ndi.distance_transform_edt(~skin_px, return_indices=True)
-            rgb[patch] = src[iy[patch], ix[patch]]
-            rgb[patch_edge] = OUTLINE_RGB
-            # The art's own broken outline now sits inside the patched fist,
-            # doubling the line: paint it over with nearby skin.
-            band = solid & ~ndi.binary_erosion(solid, iterations=4)
-            near_patch = ndi.binary_dilation(patch | patch_edge, iterations=7)
-            stray = solid & ~band & near_patch & (lum < 120) & ~patch
-            rgb[stray] = src[iy[stray], ix[stray]]
-        ys, xs = np.nonzero(alpha > 0)
-        y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
-        rgba = np.dstack([rgb[y0:y1, x0:x1], alpha[y0:y1, x0:x1] * 255]).astype(np.uint8)
-        img = Image.fromarray(rgba, 'RGBA')
-        if img.width > CELL - 4 or img.height > CELL - 4:
-            s = min((CELL - 4) / img.width, (CELL - 4) / img.height)
-            img = img.resize((int(img.width * s), int(img.height * s)), Image.LANCZOS)
-        state, frame = f // 5, f % 5
-        cell = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
-        cell.alpha_composite(img, ((CELL - img.width) // 2, CELL - 2 - img.height))
-        atlas.alpha_composite(cell, (frame * CELL, (k * 3 + state) * CELL))
 
+def cut(x0, x1, y0, y1):
+    """RGBA of one cell, background removed, and its solid mask."""
+    c = src[y0:y1, x0:x1]
+    L = lum[y0:y1, x0:x1]
+    lo = c.min(axis=2)
+    whiteness_alpha = np.clip((250 - lo) / 55.0, 0, 1)
+    # Solid: outline or clearly coloured paint (skin, effects), small gaps
+    # closed, holes (highlights inside a hand) filled...
+    paint = (L < 170) | (lo < 205)
+    solid = ndi.binary_fill_holes(ndi.binary_closing(paint, iterations=3))
+    # ...except big pure-white areas that got closed in (paper between spikes).
+    white = solid & ~paint & (lo > 238)
+    lab, n = ndi.label(white)
+    if n:
+        sizes = ndi.sum(white, lab, range(1, n + 1))
+        solid &= ~np.isin(lab, np.nonzero(sizes > 300)[0] + 1)
+    alpha = np.maximum(whiteness_alpha, solid.astype(float))
+    alpha[alpha < 0.08] = 0
+    # Un-mix half see-through pixels (trails, dust, ghost) from the paper.
+    a3 = np.maximum(alpha, 1e-3)[..., None]
+    rgb = np.clip((c - (1 - a3) * 255) / a3, 0, 255)
+    rgb[alpha == 0] = 0
+    return np.dstack([rgb, alpha * 255]).astype(np.uint8), solid
+
+
+atlas = Image.new('RGBA', (CELL * 5, CELL * 15), (0, 0, 0, 0))
+clipped = []
+for k, (ry0, ry1) in enumerate(ROWS):
+    y0, y1 = ry0 + BADGE, ry1 - LINE
+    # Scale and ground line for this kind, from its idle frames.
+    heights, bottoms = [], []
+    for (x0, x1) in cells(PANELS[0]):
+        _, solid = cut(x0, x1, y0, y1)
+        lab, n = ndi.label(solid)
+        sizes = ndi.sum(solid, lab, range(1, n + 1))
+        body = lab == (np.argmax(sizes) + 1)
+        ys = np.nonzero(body.any(axis=1))[0]
+        heights.append(ys.max() - ys.min() + 1)
+        bottoms.append(ys.max() + 1)
+    s = HAND_HEIGHT / float(np.median(heights))
+    ground = float(np.median(bottoms))  # in cell pixels
+    for state, panel in enumerate(PANELS):
+        for f, (x0, x1) in enumerate(cells(panel)):
+            rgba, _ = cut(x0, x1, y0, y1)
+            img = Image.fromarray(rgba, 'RGBA')
+            img = img.resize((round(img.width * s), round(img.height * s)), Image.LANCZOS)
+            # Cell centre on the atlas cell centre; ground line on GROUND.
+            ox = round(CELL / 2 - img.width / 2)
+            oy = round(CELL - GROUND - ground * s)
+            cell = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
+            cell.alpha_composite(img.crop((-ox, -oy, -ox + CELL, -oy + CELL)))
+            atlas.paste(cell, (f * CELL, (k * 5 + state) * CELL))
+            edge = np.array(cell)[..., 3]
+            if edge[-1].max() > 40 or edge[0].max() > 40:
+                clipped.append((k, state, f))
 atlas.save(sys.argv[2])
-# Previews on game-like backgrounds.
-prev = Image.new('RGBA', (CELL * 15, CELL * 3))
-for k in range(3):
-    for st in range(3):
-        for fr in range(5):
-            prev.alpha_composite(atlas.crop((fr * CELL, (k * 3 + st) * CELL, (fr + 1) * CELL, (k * 3 + st + 1) * CELL)), ((st * 5 + fr) * CELL, k * CELL))
-for name, col in [('green', (170, 215, 150, 255)), ('sand', (246, 231, 193, 255))]:
-    bg = Image.new('RGBA', prev.size, col); bg.alpha_composite(prev); bg.convert('RGB').save(f'preview_{name}.png')
-print('atlas', atlas.size)
+print('atlas', atlas.size, 'cut off at top/bottom (kind, state, frame):', clipped)
