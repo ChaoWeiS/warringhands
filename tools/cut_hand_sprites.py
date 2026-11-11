@@ -115,6 +115,49 @@ def erase(rgba, polygons, x0, y0):
     return out
 
 
+def skin_stats(cells):
+    """Mean saturation and value of the skin (solid, light pixels) in cells."""
+    import colorsys
+    px = []
+    for c in cells:
+        a = np.array(c).astype(float)
+        m = a[..., 3] > 250
+        p = a[m][:, :3]
+        p = p[p.mean(axis=1) > 150] / 255.0
+        px.append(p)
+    p = np.concatenate(px)
+    hsv = np.array([colorsys.rgb_to_hsv(*q) for q in p[::7]])
+    return hsv[:, 1].mean(), hsv[:, 2].mean()
+
+
+def match_colours(atlas):
+    """Some animations were painted paler than the idle frames (moving,
+    getting hit): bring each one's skin saturation and brightness in line
+    with the same hand's idle frames, so a hand doesn't fade as it walks."""
+    import colorsys
+    for k in range(3):
+        cells = lambda st: [atlas.crop((f * CELL, (k * 5 + st) * CELL, (f + 1) * CELL, (k * 5 + st + 1) * CELL)) for f in range(5)]
+        sat0, val0 = skin_stats(cells(0))
+        for st in range(1, 5):
+            sat, val = skin_stats(cells(st))
+            boost = float(np.clip(sat0 / max(sat, 1e-3), 1.0, 1.6))
+            dim = float(np.clip(val0 / max(val, 1e-3), 0.85, 1.0))
+            if boost < 1.03 and dim > 0.99:
+                continue
+            box = (0, (k * 5 + st) * CELL, 5 * CELL, (k * 5 + st + 1) * CELL)
+            a = np.array(atlas.crop(box)).astype(float) / 255.0
+            rgb = a[..., :3]
+            mx = rgb.max(axis=2, keepdims=True)
+            mn = rgb.min(axis=2, keepdims=True)
+            # Saturation up around each pixel's brightest channel; value scaled.
+            grey = mx
+            rgb = grey - (grey - rgb) * boost
+            rgb = np.clip(rgb * dim, 0, 1)
+            a[..., :3] = np.where(a[..., 3:] > 0, rgb, a[..., :3])
+            atlas.paste(Image.fromarray((a * 255).round().astype(np.uint8), "RGBA"), box[:2])
+            print("kind %d state %d: saturation x%.2f, value x%.2f" % (k, st, boost, dim))
+
+
 def main():
     atlas = Image.new('RGBA', (CELL * 5, CELL * 15), (0, 0, 0, 0))
     clipped = []
@@ -148,6 +191,7 @@ def main():
                 edge = np.array(cell)[..., 3]
                 if edge[-1].max() > 40 or edge[0].max() > 40:
                     clipped.append((k, state, f))
+    match_colours(atlas)
     atlas.save(sys.argv[2])
     print('atlas', atlas.size, 'cut off at top/bottom (kind, state, frame):', clipped)
 

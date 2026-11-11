@@ -27,6 +27,10 @@ var pane_height: float = 1200.0
 ## Area the camera may look at (x, z on the ground).
 @export var map_rect: Rect2 = Rect2(0, 0, 820, 820)
 
+## The island (field.gd), so a tap on a plateau lands on its top, not on
+## the ground plane beneath it. Set by the game for every pane.
+static var terrain: Node = null
+
 ## How far back the camera sits. Only affects clipping, not the picture.
 const BACK_OFF := 1500.0
 
@@ -131,4 +135,12 @@ func _ground_at(screen_point: Vector2) -> Variant:
 	var dir: Vector3 = project_ray_normal(screen_point)
 	if dir.y > -0.001:
 		return null
-	return origin + dir * (-origin.y / dir.y)
+	var hit: Vector3 = origin + dir * (-origin.y / dir.y)
+	if terrain != null and is_instance_valid(terrain):
+		# Raised ground: step back along the ray to its height (twice is
+		# plenty for gentle ramps and flat plateau tops).
+		for i in 3:
+			var h: float = terrain.height_at(Vector2(hit.x, hit.z))
+			hit = origin + dir * ((h - origin.y) / dir.y)
+		hit.y = 0.0  # orders are on the map (x, z)
+	return hit

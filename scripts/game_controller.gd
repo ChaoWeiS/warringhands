@@ -79,6 +79,7 @@ var countdown_layer: Control
 func _ready() -> void:
 	panes = get_node(panes_path)
 	sim = get_node(sim_path)
+	load("res://scripts/camera_rig.gd").terrain = sim.field if sim.field != null else sim.get_node_or_null(sim.field_path)
 	view = get_node(view_path)
 	bar = get_node(bar_path)
 	buildings_view = get_node(buildings_path)

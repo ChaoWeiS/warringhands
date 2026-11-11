@@ -136,7 +136,7 @@ func show_move_marker(ground: Vector3, attack: bool = false) -> void:
 	marker.mesh = torus
 	var mat := _flat_material(ATTACK_MARKER_COLOR if attack else MARKER_COLOR, true)
 	marker.material_override = mat
-	marker.position = Vector3(ground.x, 0.6, ground.z)
+	marker.position = Vector3(ground.x, 0.6 + _ground_height(Vector2(ground.x, ground.z)), ground.z)
 	add_child(marker)
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(marker, "scale", Vector3(0.3, 1, 0.3), 0.6)
@@ -318,6 +318,10 @@ func _draw_routes() -> void:
 		_routes_mesh.surface_end()
 
 
+func _ground_height(p: Vector2) -> float:
+	return sim.field.height_at(p) if sim.field != null else 0.0
+
+
 ## Dashes every (ROUTE_DASH + ROUTE_GAP) along the whole route, measured
 ## from its start, so the pattern carries smoothly around corners.
 func _add_dashes(points: Array) -> void:
@@ -340,8 +344,12 @@ func _add_dashes(points: Array) -> void:
 				var p0: Vector2 = a + dir * s0
 				var p1: Vector2 = a + dir * s1
 				var q := [p0 + side, p0 - side, p1 - side, p1 + side]
+				# Following the ground: up ramps, across plateau tops.
+				var h0: float = _ground_height(p0) + y
+				var h1: float = _ground_height(p1) + y
+				var hs := [h0, h0, h1, h1]
 				for v in [0, 1, 2, 0, 2, 3]:
-					_routes_mesh.surface_add_vertex(Vector3(q[v].x, y, q[v].y))
+					_routes_mesh.surface_add_vertex(Vector3(q[v].x, hs[v], q[v].y))
 			k += 1
 		travelled += length
 
