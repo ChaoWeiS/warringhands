@@ -13,13 +13,15 @@ const UI := preload("res://scripts/ui_style.gd")
 const NetSession := preload("res://scripts/net/net_session.gd")
 const CODE_LENGTH := 4
 const BuildInfo := preload("res://scripts/build_info.gd")
+const LOGO := preload("res://assets/ui/logo.png")
 const Maps := preload("res://scripts/maps.gd")
 const MatchSetup := preload("res://scripts/match_setup.gd")
 const Settings := preload("res://scripts/settings.gd")
 const Field := preload("res://scripts/field.gd")
 const DIFFICULTY_NAMES := {"easy": "Easy", "normal": "Normal", "hard": "Hard"}
 
-var _header: VBoxContainer     # title, subtitle, hands
+var _header: VBoxContainer     # the logo
+var _logo: TextureRect
 var _main: VBoxContainer       # the three big choices
 var _join: VBoxContainer       # number pad
 var _wait: VBoxContainer       # "your code is ..." / "joining ..."
@@ -60,22 +62,14 @@ func _ready() -> void:
 	_header = VBoxContainer.new()
 	_header.add_theme_constant_override("separation", 20)
 	column.add_child(_header)
-	var title := UI.label("Warring Hands", 96)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_header.add_child(title)
-	var subtitle := UI.label("Childhood Game Gone Aggro", 34)
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_header.add_child(subtitle)
-	var hands := HBoxContainer.new()
-	hands.alignment = BoxContainer.ALIGNMENT_CENTER
-	for kind in 3:
-		var icon := TextureRect.new()
-		icon.texture = UI.kind_icon(kind)
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.custom_minimum_size = Vector2(110, 110)
-		hands.add_child(icon)
-	_header.add_child(hands)
+	# The logo (assets/ui/logo.png, made by tools/make_logo.py), as wide as fits.
+	_logo = TextureRect.new()
+	_logo.texture = LOGO
+	_logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_header.add_child(_logo)
+	_fit_logo()
+	resized.connect(_fit_logo)
 
 	_main = VBoxContainer.new()
 	_main.add_theme_constant_override("separation", 18)
@@ -170,6 +164,17 @@ func _ready() -> void:
 	_status.add_theme_color_override("font_color", Color("#c0506a"))
 	column.add_child(_status)
 	_show(_main)
+
+
+## The logo: up to 1100 px wide, at most 90% of the screen's width and a
+## third of its height (the buttons need the rest).
+func _fit_logo() -> void:
+	if _logo == null:
+		return
+	var screen: Vector2 = get_viewport_rect().size
+	var aspect: float = float(LOGO.get_height()) / LOGO.get_width()
+	var w: float = minf(minf(1100.0, screen.x * 0.9), screen.y * 0.34 / aspect)
+	_logo.custom_minimum_size = Vector2(w, w * aspect)
 
 
 ## Web only: asks the website (not the saved copy) which version is current.
