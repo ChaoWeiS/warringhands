@@ -70,6 +70,16 @@
 - Resource spots hold 2000 (stone, wood) / 1000 (metal) and disappear when empty.
 - Still to come: depleted spots should vanish visually; more drop-off points.
 
+## Enemy AI (prototype)
+- Plays the blue side by the same rules, giving the same kinds of orders a player can (so it stays lockstep-safe). Thinks once a second (`scripts/sim/ai.gd`).
+- Workers: one on each resource (each on its own fastest resource), plus two extra on whatever its favourite unit costs.
+- Builds a quarry, mill and forge beside its HQ, the favourite's factory first.
+- **Counters you:** its favourite unit is whatever beats your most common type. Other types are only trained while the favourite outnumbers each of them 2 to 1.
+- Defends: enemies within 60 of its buildings get its whole idle army sent at them.
+- Attacks: first wave at 2.5 min (needs 6+ units), then every 45 s, each wave 2 units bigger, at your HQ.
+- Against a player who does nothing it wins in about 3 minutes.
+- Ideas: difficulty levels (timings, wave sizes), smarter targeting (go for workers / factories), retreating.
+
 ## Upgrades and buildings
 - Upgrade with wood: **flight**. With stone: **tougher**. With metal: **hits harder**.
 - Upgrade a unit with its own resource: small boost to all stats.

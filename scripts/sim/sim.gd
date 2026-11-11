@@ -33,6 +33,7 @@ signal building_destroyed(id: int)
 signal game_over(winner: int)
 
 const NavGrid := preload("res://scripts/sim/nav_grid.gd")
+const AI := preload("res://scripts/sim/ai.gd")
 
 ## Sim units per map unit.
 const SCALE := 100
@@ -134,6 +135,7 @@ var _next_id: int = 1
 var _pending: Dictionary = {}  # tick -> Array of commands
 var _accum: float = 0.0
 var _nav = null  # NavGrid, built on first use
+var _ais: Dictionary = {}  # team -> computer opponent
 
 ## One walkable grid per island, shared by every sim using it (building it
 ## takes a moment).
@@ -261,6 +263,15 @@ func nav():
 	return _nav
 
 
+## Lets the computer play a team (it gives orders like a player would).
+func enable_ai(team: int) -> void:
+	_ais[team] = AI.new(team)
+
+
+func ai_of(team: int):
+	return _ais.get(team, null)
+
+
 func hq_of(team: int) -> Dictionary:
 	for b in buildings:
 		if b.team == team and b.btype == "hq":
@@ -318,6 +329,11 @@ func _step() -> void:
 	for command in _pending.get(tick, []):
 		_apply(command)
 	_pending.erase(tick)
+	var ai_teams: Array = _ais.keys()
+	ai_teams.sort()
+	for team in ai_teams:
+		if tick % AI.INTERVAL == team:
+			_ais[team].think(self)
 	for u in units:
 		u.px = u.x
 		u.pz = u.z

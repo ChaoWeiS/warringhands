@@ -66,6 +66,7 @@ func _run() -> void:
 	await frames(5)
 	field = root.get_node("Main/World/Field")
 	root.get_node("Main/Sim").set_process(false)
+	root.get_node("Main/Sim")._ais.clear()  # these tests drive both sides by hand
 	check("arena is open ground", field.is_walkable(arena) and field.is_walkable(arena + Vector2(25, 0)))
 
 	# Damage table.

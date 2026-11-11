@@ -44,6 +44,7 @@ func _ready() -> void:
 	buildings_view = get_node(buildings_path)
 	hud = get_node(hud_path)
 	hud.setup(sim, PLAYER_TEAM)
+	sim.enable_ai(1 - PLAYER_TEAM)  # the computer plays the other side
 	panes.tapped.connect(_on_tapped)
 	panes.lassoed.connect(_on_lassoed)
 	panes.register_blocker(bar)

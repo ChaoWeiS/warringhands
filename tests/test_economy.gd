@@ -58,6 +58,7 @@ func _run() -> void:
 	await frames(5)
 	field = root.get_node("Main/World/Field")
 	root.get_node("Main/Sim").set_process(false)
+	root.get_node("Main/Sim")._ais.clear()  # these tests drive both sides by hand
 
 	# Bases.
 	var s := new_sim()

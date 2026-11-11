@@ -13,6 +13,7 @@ Early prototype:
 - Each pane has its own camera: two fingers to pan and pinch-zoom
 - Terrain: lakes, forests and plateaus; units find their way around them (selected units show their route)
 - Economy: HQ, gathering stone / wood / metal, build factories, train units; destroy the enemy HQ to win
+- Enemy AI: gathers, builds, trains units that counter yours, defends and sends attack waves
 - Combat: rock beats scissors beats paper beats rock (counter hits do double damage); units fight enemies they spot
 - Units: tap or lasso to select, tap the ground (in any pane) to move; selection bar with hand icons and counts
 

@@ -124,6 +124,7 @@ func _run() -> void:
 	bar = root.get_node("Main/HUD/SelectionBar")
 	field = root.get_node("Main/World/Field")
 	sim.set_process(false)  # tests step the sim by hand
+	sim._ais.clear()  # ...and both sides
 
 	var mine: Array = team_ids(0)
 	var theirs: Array = team_ids(1)
