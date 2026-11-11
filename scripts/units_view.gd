@@ -63,8 +63,23 @@ const DEATH_HOLD := 0.5     # seconds the fallen hand lies there before fading
 const HP_BAR_PX := Vector2(90, 10)   # in sprite pixels
 const HP_BAR_HEIGHT := 8.4           # above the ground (map units)
 const HP_BAR_BG := Color(0.25, 0.22, 0.33, 0.85)
+## Damage numbers: Fredoka (assets/fonts/, SIL Open Font License) at its
+## boldest: round and chunky, like the logo's lettering.
+const DAMAGE_FONT := preload("res://assets/fonts/Fredoka.ttf")
+static var _damage_font: FontVariation = null
+
+
+static func damage_font() -> FontVariation:
+	if _damage_font == null:
+		_damage_font = FontVariation.new()
+		_damage_font.base_font = DAMAGE_FONT
+		var wght: int = TextServerManager.get_primary_interface().name_to_tag("wght")
+		_damage_font.variation_opentype = {wght: 700}
+	return _damage_font
+
+
 const DAMAGE_COLORS := {1: Color("#ff5a6e"), 0: Color("#ffffff"), -1: Color("#d9d4e6")}
-const DAMAGE_SIZES := {1: 115, 0: 85, -1: 68}
+const DAMAGE_SIZES := {1: 135, 0: 100, -1: 80}
 
 var sim: Node
 var _views: Dictionary = {}  # unit id -> {root, ring, sprite, base, hp bars, swing}
@@ -245,9 +260,10 @@ func _show_hit(target_id: int, attacker_id: int, damage: int, strength: int) -> 
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.render_priority = 3
+	label.font = damage_font()
 	label.font_size = DAMAGE_SIZES[strength]
-	label.outline_size = 18
-	label.outline_modulate = Color(0.3, 0.22, 0.35)
+	label.outline_size = 30  # a fat dark rim: readable over anything
+	label.outline_modulate = Color(0.24, 0.15, 0.28)
 	label.modulate = DAMAGE_COLORS[strength]
 	label.pixel_size = 0.03
 	label.position = view.root.position + Vector3(randf_range(-1.5, 1.5), 7.5, 0)

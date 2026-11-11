@@ -12,8 +12,6 @@ extends Node3D
 
 const UI := preload("res://scripts/ui_style.gd")
 const GroundShadow := preload("res://scripts/ground_shadow.gd")
-## Shadow size (map units across) under a stone pile, lumber camp, crystals.
-const SPOT_SHADOWS := [15.0, 17.0, 13.0]
 const PINES := [preload("res://assets/env/pine_1.png"), preload("res://assets/env/pine_2.png")]
 const CRYSTALS := [preload("res://assets/env/crystals_1.png"), preload("res://assets/env/crystals_2.png")]
 const ROCKS := [preload("res://assets/env/rocks_1.png"), preload("res://assets/env/rocks_2.png")]
@@ -112,7 +110,7 @@ func _make_tree(n: Dictionary) -> Dictionary:
 	mm.visible_instance_count = index + 1
 	mm.set_instance_transform(index, Transform3D(Basis().scaled(Vector3.ONE * size), pos))
 	# Soft shadow on the ground (the same look as everything else's).
-	var shadow: MeshInstance3D = GroundShadow.make(5.0 * size, 0.5)
+	var shadow: MeshInstance3D = GroundShadow.make(3.4 * size, 0.32)
 	shadow.position += pos
 	add_child(shadow)
 	return {"tree": true, "batch": batch, "index": index, "pos": pos, "size": size, "shadow": shadow}
@@ -148,7 +146,6 @@ func _make(n: Dictionary) -> Dictionary:
 	root.position = Vector3(n.x / float(sim.SCALE), 0, n.z / float(sim.SCALE))
 	add_child(root)
 
-	root.add_child(GroundShadow.make(SPOT_SHADOWS[n.res], 0.45))
 	match n.res:
 		0: _make_stone(root)
 		1: _make_camp(root)
@@ -222,6 +219,10 @@ func _picture(root: Node3D, tex: Texture2D, width: float, at: Vector3) -> Sprite
 	s.offset = Vector2(0, tex.get_height() * 0.5)
 	s.position = at
 	root.add_child(s)
+	# Its own shadow, tucked in under its base.
+	var shade: MeshInstance3D = GroundShadow.make(width * 0.5, 0.28)
+	shade.position += Vector3(at.x, 0, at.z)
+	root.add_child(shade)
 	return s
 
 

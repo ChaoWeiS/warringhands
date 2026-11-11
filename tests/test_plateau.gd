@@ -32,10 +32,10 @@ func _run() -> void:
 	sim.set_process(false)
 	sim._ais.clear()
 	sim.clear_units()
-	var poly: PackedVector2Array = field.plateaus[0]
-	var top: Vector2 = field._poly_center(poly)
-	# Start on the far side of the plateau from its ramps' line.
 	var r: Dictionary = field.ramps[0]
+	var poly: PackedVector2Array = field.plateaus[r.plateau]
+	var top: Vector2 = field._poly_center(poly)
+	# Start off to the side of the plateau, away from its ramp.
 	var start: Vector2 = top + r.dir.orthogonal() * 40.0
 	var grid = sim.nav()
 	var cell: Vector2i = grid.nearest_walkable(grid.cell_of(roundi(start.x * 100), roundi(start.y * 100)))

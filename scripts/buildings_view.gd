@@ -236,7 +236,7 @@ func _on_added(id: int) -> void:
 			# its width deep) is centred on the footprint.
 			art.position = Vector3(0, 0, ART_WIDTH[b.btype] * ART_BASE_DEPTH)
 			model.add_child(art)
-			var shade: MeshInstance3D = GroundShadow.make(r + 4.0, 0.4)
+			var shade: MeshInstance3D = GroundShadow.make(r + 2.0, 0.3, 0.55)
 			root.add_child(shade)
 			var patch := MeshInstance3D.new()
 			var disc := CylinderMesh.new()

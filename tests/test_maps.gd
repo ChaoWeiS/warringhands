@@ -86,8 +86,13 @@ func _run() -> void:
 		# Plateaus: walkable on top, reached by ramps, cliff edge blocked.
 		var tops_ok := true
 		var cliff_ok := true
-		var ramps_ok: bool = field.ramps.size() == field.plateaus.size() * 2
+		var ramps_ok: bool = field.ramps.size() >= 1 and field.climbable.size() >= 1
 		for i in field.plateaus.size():
+			if not field.climbable.has(i):
+				# Scenery: no way up.
+				var mid: Vector2 = field._poly_center(field.plateaus[i])
+				ramps_ok = ramps_ok and not field.is_walkable(mid)
+				continue
 			var poly: PackedVector2Array = field.plateaus[i]
 			var c: Vector2 = field._poly_center(poly)
 			var top_cell: Vector2i = grid.cell_of(roundi(c.x * 100), roundi(c.y * 100))
@@ -100,8 +105,8 @@ func _run() -> void:
 				var edge: Vector2 = field._edge_point(poly, dir)
 				if field.ramp_at(edge) < 0 and field.ramp_at(edge + dir * 2.0) < 0:
 					cliff_ok = cliff_ok and not field.is_walkable(edge)
-		check("%s: every plateau top (%d) can be walked up to" % [name, field.plateaus.size()], tops_ok)
-		check("%s: ...by its two ramps; the rest of the cliff is blocked" % name, ramps_ok and cliff_ok)
+		check("%s: the plateaus with ramps (%d of %d) can be walked up to" % [name, field.climbable.size(), field.plateaus.size()], tops_ok)
+		check("%s: ...only by their ramps (%d); other cliffs and plateaus are blocked" % [name, field.ramps.size()], ramps_ok and cliff_ok)
 		var no_build := true
 		for poly in field.plateaus:
 			no_build = no_build and not sim.can_place("quarry", field._poly_center(poly))

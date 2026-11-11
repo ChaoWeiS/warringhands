@@ -45,9 +45,9 @@ var LAKES: Array = []
 var FORESTS: Array = []
 var PLATEAUS: Array = []
 const PLATEAU_HEIGHT := 5.0
-## Plateaus are walkable on top, reached by ramps cut into the cliff: two
-## per plateau (towards the island centre and away; mirrored like the rest).
-## The cliff edge (CLIFF_BAND wide) is blocked everywhere else.
+## Plateaus with ramps (the map says where) are walkable on top, reached by
+## those ramps; the cliff edge (CLIFF_BAND wide) is blocked everywhere else.
+## Plateaus without ramps are solid scenery.
 const RAMP_LENGTH := 14.0
 const RAMP_HALF_WIDTH := 5.5
 const CLIFF_BAND := 3.0
@@ -77,7 +77,9 @@ var forests: Array = []    # {center, radius, trees: Array[Vector2]}
 ## Ramps up the plateaus: {plateau (index), edge: Vector2 (top of the ramp,
 ## on the cliff), dir: Vector2 (downhill), half_width, length}.
 var ramps: Array = []
-var _plateau_tops: Array = []   # plateaus shrunk by CLIFF_BAND: walkable
+## Indices (in `plateaus`) of the ones with ramps.
+var climbable: Array = []
+var _plateau_tops: Array = []   # climbable plateaus shrunk by CLIFF_BAND: walkable
 var _plateau_outer: Array = []  # plateaus grown by UNIT_CLEARANCE: cliff + top
 
 # Shapes ground units can't enter, already grown by UNIT_CLEARANCE.
@@ -111,16 +113,23 @@ func build() -> void:
 			_block_poly(poly)
 	for plateau in PLATEAUS:
 		var blobs: Array = _mirrored_blob(plateau[0], plateau[1], plateau[2], plateau[3])
-		# Ramp directions: towards the island centre and away (a plateau in
-		# the very middle uses its own rotation).
-		var towards: Vector2 = -plateau[0].normalized() if plateau[0] != Vector2.ZERO else Vector2.from_angle(plateau[3])
+		var angles: Array = plateau[4] if plateau.size() > 4 else []
 		for i in blobs.size():
 			var poly: PackedVector2Array = blobs[i]
 			plateaus.append(poly)
+			if angles.is_empty():
+				_block_poly(poly)  # scenery: can't be climbed
+				continue
+			climbable.append(plateaus.size() - 1)
 			_plateau_tops.append(_offset(poly, -CLIFF_BAND))
 			_plateau_outer.append(_offset(poly, UNIT_CLEARANCE))
-			var d: Vector2 = towards if i == 0 else -towards  # the twin is turned
-			for dir in [d, -d]:
+			var dirs: Array = []
+			for deg in angles:
+				var d: Vector2 = Vector2.from_angle(deg_to_rad(deg))
+				dirs.append(d if i == 0 else -d)  # the twin is turned
+				if blobs.size() == 1:
+					dirs.append(-d)  # in the very middle: its own twin
+			for dir in dirs:
 				ramps.append({"plateau": plateaus.size() - 1, "edge": _edge_point(poly, dir),
 						"dir": dir, "half_width": RAMP_HALF_WIDTH, "length": RAMP_LENGTH})
 	for forest in FORESTS:
