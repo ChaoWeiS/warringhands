@@ -33,6 +33,12 @@ signal building_destroyed(id: int)
 signal game_over(winner: int)
 ## HP restored to a building this tick (all its repairers together).
 signal building_repaired(building_id: int, amount: int)
+## Online: our orders for a future tick, to send to the other player.
+signal turn_ready(at_tick: int, commands: Array)
+## Online: a fingerprint of the game at a tick, to compare with theirs.
+signal hash_ready(at_tick: int, value: int)
+## Online: the two games no longer match (should never happen).
+signal desynced(at_tick: int)
 
 const NavGrid := preload("res://scripts/sim/nav_grid.gd")
 const AI := preload("res://scripts/sim/ai.gd")
@@ -43,6 +49,10 @@ const TICK_RATE := 20
 const TICK_TIME := 1.0 / TICK_RATE
 ## Commands run this many ticks after they're given.
 const COMMAND_DELAY := 2
+## Online: orders are sent this many ticks ahead (300 ms) to hide the network
+## delay. Every tick waits until both players' orders for it are in.
+const NET_DELAY := 6
+const HASH_EVERY := 20
 ## Gap between units when a group moves together (sim units).
 const SPACING := 1000
 ## Each unit's round body (sim units). Bodies don't overlap: units closer
@@ -159,6 +169,15 @@ var winner: int = -1
 var _by_id: Dictionary = {}  # units and buildings
 var _next_id: int = 1
 var _pending: Dictionary = {}  # tick -> Array of commands
+## Online play (lockstep): both devices run this same simulation and only
+## swap orders. See start_online().
+var online := false
+var local_team := 0
+var stalled := false             # waiting for the other player's orders
+var _outbox: Array = []          # our orders not yet sent
+var _turns: Dictionary = {}      # tick -> {seat: Array of commands}
+var _sent_until := -1            # last tick we've sent our orders for
+var _hashes: Dictionary = {}     # tick -> {seat: fingerprint}
 var _accum: float = 0.0
 var _nav = null  # NavGrid, built on first use
 var _ais: Dictionary = {}  # team -> computer opponent
@@ -181,9 +200,87 @@ func _process(delta: float) -> void:
 	_accum += delta
 	var steps := 0
 	while _accum >= TICK_TIME and steps < 5:
+		if online and not _online_ready():
+			stalled = true
+			_accum = minf(_accum, TICK_TIME)
+			break
+		stalled = false
 		_accum -= TICK_TIME
 		_step()
 		steps += 1
+
+
+## Starts lockstep play as `team` (0 or 1). From now on our orders are sent
+## out (turn_ready) and ticks wait for the other player's (receive_turn).
+func start_online(team: int) -> void:
+	online = true
+	local_team = team
+	_sent_until = NET_DELAY - 1  # the first ticks have no orders, for both
+
+
+## The other player's orders for a tick. `seat` comes from the server, so
+## the orders can only move that seat's own units.
+func receive_turn(at_tick: int, seat: int, commands: Array) -> void:
+	if seat == local_team or at_tick < tick:
+		return
+	var stamped: Array = []
+	for c in commands:
+		if c is Dictionary:
+			var copy: Dictionary = c.duplicate(true)
+			copy.by = seat
+			stamped.append(copy)
+	_turn_slot(at_tick)[seat] = stamped
+
+
+## The other player's fingerprint of the game at a tick.
+func receive_hash(at_tick: int, seat: int, value: int) -> void:
+	_hash_slot(at_tick)[seat] = value
+	_compare_hashes(at_tick)
+
+
+## Online: may we run the current tick? (Sends our orders on the way.)
+func _online_ready() -> bool:
+	while _sent_until < tick + NET_DELAY:
+		_sent_until += 1
+		var mine: Array = _outbox
+		_outbox = []
+		_turn_slot(_sent_until)[local_team] = mine
+		turn_ready.emit(_sent_until, mine)
+	if tick < NET_DELAY:
+		return true
+	return _turns.has(tick) and _turns[tick].size() == 2
+
+
+func _turn_slot(at_tick: int) -> Dictionary:
+	if not _turns.has(at_tick):
+		_turns[at_tick] = {}
+	return _turns[at_tick]
+
+
+func _hash_slot(at_tick: int) -> Dictionary:
+	if not _hashes.has(at_tick):
+		_hashes[at_tick] = {}
+	return _hashes[at_tick]
+
+
+func _compare_hashes(at_tick: int) -> void:
+	var slot: Dictionary = _hashes.get(at_tick, {})
+	if slot.size() == 2:
+		if slot[0] != slot[1]:
+			desynced.emit(at_tick)
+		_hashes.erase(at_tick)
+
+
+## A fingerprint of everything that matters in the game.
+func state_hash() -> int:
+	var parts: Array = [tick, resources]
+	for u in units:
+		parts.append([u.id, u.x, u.z, u.hp, u.target, u.job])
+	for b in buildings:
+		parts.append([b.id, b.hp, b.progress, b.queue.size()])
+	for n in nodes:
+		parts.append([n.id, n.amount])
+	return hash(parts)
 
 
 ## How far we are between the last tick and the next (0-1), for smoothing.
@@ -381,6 +478,10 @@ func command_repair(team: int, building_id: int) -> void:
 # --- Simulation ----------------------------------------------------------------
 
 func _queue(command: Dictionary) -> void:
+	if online:
+		command.by = local_team
+		_outbox.append(command)
+		return
 	var at: int = tick + COMMAND_DELAY
 	if not _pending.has(at):
 		_pending[at] = []
@@ -391,6 +492,13 @@ func _step() -> void:
 	for command in _pending.get(tick, []):
 		_apply(command)
 	_pending.erase(tick)
+	if online:
+		# Both players' orders, always seat 0's first.
+		var turn: Dictionary = _turns.get(tick, {})
+		for seat in [0, 1]:
+			for command in turn.get(seat, []):
+				_apply(command)
+		_turns.erase(tick)
 	var ai_teams: Array = _ais.keys()
 	ai_teams.sort()
 	for team in ai_teams:
@@ -412,10 +520,26 @@ func _step() -> void:
 	_push_out_of_buildings()  # buildings always win over fanning out
 	_check_stuck()
 	tick += 1
+	if online and tick % HASH_EVERY == 0:
+		var h: int = state_hash()
+		_hash_slot(tick)[local_team] = h
+		hash_ready.emit(tick, h)
+		_compare_hashes(tick)
 	ticked.emit()
 
 
 func _apply(command: Dictionary) -> void:
+	if command.has("by"):
+		# Online: a player may only give orders to their own side.
+		if command.has("team") and command.team != command.by:
+			return
+		if command.has("ids"):
+			var own: Array = []
+			for id in command.ids:
+				var u: Dictionary = _by_id.get(id, {})
+				if not u.is_empty() and not u.has("btype") and u.team == command.by:
+					own.append(id)
+			command.ids = own
 	match command.type:
 		"move", "attack_move":
 			_apply_move(command)

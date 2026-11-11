@@ -8,6 +8,26 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 status=0
+
+# The multiplayer relay server, for tests/test_online.gd (skipped without Node).
+relay_pid=""
+if command -v node >/dev/null 2>&1; then
+	if [ ! -d server/node_modules ]; then
+		(cd server && npm ci --no-fund --no-audit >/dev/null 2>&1)
+	fi
+	echo "=== server (npm test)"
+	server_log="$(cd server && npm test --silent 2>&1)"
+	echo "$server_log" | grep -E "^(PASS|FAIL)|FAILURES"
+	if echo "$server_log" | grep -qE "^FAIL" || ! echo "$server_log" | grep -q "FAILURES: 0"; then
+		echo "!!! server tests failed"
+		status=1
+	fi
+	(cd server && PORT=18766 exec node index.js >/dev/null 2>&1) &
+	relay_pid=$!
+	export WH_SERVER="ws://127.0.0.1:18766"
+	sleep 1
+fi
+trap '[ -n "$relay_pid" ] && kill "$relay_pid" 2>/dev/null' EXIT
 for test in tests/test_*.gd; do
 	echo "=== $test"
 	log="$(mktemp)"

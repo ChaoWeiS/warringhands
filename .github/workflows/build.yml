@@ -21,10 +21,14 @@ jobs:
       - name: Install Godot and export templates
         run: .github/scripts/install-godot.sh
 
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
       - name: Import project
         run: godot --headless --import
 
-      - name: Run tests
+      - name: Run tests (including the multiplayer relay server)
         run: tests/run_tests.sh
 
   web:

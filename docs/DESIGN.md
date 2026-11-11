@@ -123,8 +123,13 @@
 - Godot 4.6, GL Compatibility renderer (Android, iOS, web).
 - Panes: each is a SubViewport sharing one 3D world, with its own camera. Layout is a tree of splits.
 - Multiplayer: deterministic lockstep (send commands only). Game logic uses integers / fixed point.
+- **Online play (first version):** start menu → Create Online Game (shows a 4-digit code) or Join Online Game (number pad). Two players, red (creator) vs blue.
+  - Relay server `server/index.js` (Node + ws): pairs players by code, passes messages, stamps each with the sender's seat. Free hosting on Render via `render.yaml`. The game's server address lives in `scripts/net/net_config.gd` (or `?server=wss://...` on the web page).
+  - `scripts/net/net_session.gd` connects the sim: orders are sent 6 ticks (300 ms) ahead, encoded in Godot's binary format (no JSON floats, no objects); every tick waits for both players' orders, seat 0's applied first. A player's orders only work on their own side.
+  - Every second both sides compare a fingerprint of the game; a mismatch ends the game ("out of sync"). The other player leaving ends it too. "Waiting for the other player…" shows while stalled.
+  - Tests: `tests/test_lockstep.gd` (two games wired directly), `tests/test_online.gd` (real server, two menus, two games over the network), `server/test.js`.
+  - Still to come: reconnecting after a dropped connection, quick match, more than 2 players, chat / emotes.
 - Sim (`scripts/sim/sim.gd`): 20 ticks/s, positions in whole sim units (100 per map unit), commands run 2 ticks after they are given. Tested: same orders give identical results. Pathfinding uses a walkable grid (`scripts/sim/nav_grid.gd`) with whole-number routes. Still to do for online play: make sure every device builds the identical grid (it's derived from the island's shapes with decimals), e.g. ship it prebuilt or compare a checksum at match start.
 - Tests: `tests/run_tests.sh` (panes, map stillness, units). CI runs them on every push.
-- Relay / matchmaking: Nakama (planned).
 - Full screen: a button under the resource counter (browsers only allow full screen from a tap). The web build is also an installable web app (fullscreen, landscape, app icon `assets/icon.png`): "Add to Home Screen" opens it with no address bar, which is the only way on iPhone.
 - Builds: GitHub Actions exports Web (GitHub Pages) and an Android debug APK. iOS builds on the Mac with Xcode.

@@ -25,9 +25,10 @@ extends Node
 @export var buildings_path: NodePath
 @export var hud_path: NodePath
 
-## Which team this device controls.
-const PLAYER_TEAM := 0
+## Which team this device controls (online: the seat the server gave us).
+var player_team := 0
 const UI := preload("res://scripts/ui_style.gd")
+const StartMenu := preload("res://scripts/start_menu.gd")
 ## How close (pixels) a tap must be to a unit to pick it.
 const TAP_RADIUS := 44.0
 ## Two taps this close in time (ms) and space (px), in the same pane, make a
@@ -59,8 +60,8 @@ func _ready() -> void:
 	bar = get_node(bar_path)
 	buildings_view = get_node(buildings_path)
 	hud = get_node(hud_path)
-	hud.setup(sim, PLAYER_TEAM)
-	sim.enable_ai(1 - PLAYER_TEAM)  # the computer plays the other side
+	hud.setup(sim, player_team)
+	sim.enable_ai(1 - player_team)  # the computer plays the other side (vs Computer)
 	panes.tapped.connect(_on_tapped)
 	panes.lassoed.connect(_on_lassoed)
 	panes.register_blocker(bar)
@@ -68,7 +69,7 @@ func _ready() -> void:
 		panes.register_blocker(control)
 	bar.filter_pressed.connect(_on_filter)
 	bar.clear_pressed.connect(func(): _select([]))
-	hud.train_pressed.connect(func(id): sim.command_train(PLAYER_TEAM, id))
+	hud.train_pressed.connect(func(id): sim.command_train(player_team, id))
 	hud.play_again_pressed.connect(func(): get_tree().reload_current_scene())
 	sim.unit_died.connect(_on_unit_died)
 	sim.building_destroyed.connect(func(id):
@@ -77,11 +78,46 @@ func _ready() -> void:
 			kept.erase(id)
 			_select_buildings(kept))
 	sim.game_over.connect(func(winner): hud.show_game_over(winner))
+	# The start menu (not when a test drives the game).
+	if get_tree().get_script() == null:
+		_show_start_menu()
+
+
+func _show_start_menu() -> void:
+	sim.set_process(false)  # nothing moves until a game is picked
+	var menu: Control = StartMenu.new()
+	hud.get_parent().add_child(menu)
+	panes.register_blocker(menu)
+	menu.vs_computer.connect(func():
+		menu.queue_free()
+		sim.set_process(true))
+	menu.online_ready.connect(func(session, seat):
+		menu.queue_free()
+		start_online(session, seat))
+
+
+## Online against a friend: we play `seat`'s side, no computer player.
+func start_online(session: Node, seat: int) -> void:
+	add_child(session)
+	player_team = seat
+	sim._ais.clear()
+	_select([])
+	_select_buildings([])
+	hud.setup(sim, seat)
+	session.attach(sim)
+	session.opponent_left.connect(func():
+		if sim.winner < 0:
+			sim.set_process(false)
+			hud.show_message("Your opponent left"))
+	session.desynced.connect(func():
+		sim.set_process(false)
+		hud.show_message("Games went out of sync"))
+	sim.set_process(true)
 
 
 func _process(_delta: float) -> void:
 	# Range circles while placing (an HQ can go anywhere).
-	buildings_view.show_build_range(PLAYER_TEAM, hud.armed_build() != "" and hud.armed_build() != "hq")
+	buildings_view.show_build_range(player_team, hud.armed_build() != "" and hud.armed_build() != "hq")
 	_place_building_panel()
 
 
@@ -129,7 +165,7 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		var b: Dictionary = sim.get_entity(own_building)
 		if double and b.hp < b.max_hp:
 			# Double tap a damaged building: units nearby come to fix it.
-			sim.command_repair(PLAYER_TEAM, own_building)
+			sim.command_repair(player_team, own_building)
 			hud.toast("Units nearby are coming to repair the %s" % UI.BUILDING_NAMES[b.btype])
 			_building_camera = camera
 			_select_building(own_building)
@@ -174,12 +210,12 @@ func _place(btype: String, ground: Vector2) -> void:
 	var spec: Dictionary = sim.BUILDINGS[btype]
 	var x: int = roundi(ground.x * sim.SCALE)
 	var z: int = roundi(ground.y * sim.SCALE)
-	if btype != "hq" and not sim.in_build_range(PLAYER_TEAM, x, z):
+	if btype != "hq" and not sim.in_build_range(player_team, x, z):
 		hud.toast("Too far: build inside the circles around your buildings")
 		view.show_move_marker(Vector3(ground.x, 0, ground.y), true)
 		return
-	if sim.can_place(btype, ground, PLAYER_TEAM) and sim.can_afford(PLAYER_TEAM, spec.res, spec.cost):
-		sim.command_build(PLAYER_TEAM, btype, ground)
+	if sim.can_place(btype, ground, player_team) and sim.can_afford(player_team, spec.res, spec.cost):
+		sim.command_build(player_team, btype, ground)
 		view.show_move_marker(Vector3(ground.x, 0, ground.y))
 		hud.clear_build()
 	else:
@@ -191,7 +227,7 @@ func _place(btype: String, ground: Vector2) -> void:
 func _on_lassoed(camera: Camera3D, polygon: PackedVector2Array) -> void:
 	var ids: Array = []
 	for u in sim.units:
-		if u.team != PLAYER_TEAM:
+		if u.team != player_team:
 			continue
 		var p: Vector2 = camera.unproject_position(view.world_position(u.id))
 		if Geometry2D.is_point_in_polygon(p, polygon):
@@ -201,7 +237,7 @@ func _on_lassoed(camera: Camera3D, polygon: PackedVector2Array) -> void:
 		return
 	var bids: Array = []
 	for b in sim.buildings:
-		if b.team != PLAYER_TEAM:
+		if b.team != player_team:
 			continue
 		var base := Vector3(b.x, 0, b.z) / float(sim.SCALE)
 		for height in [0.0, BUILDING_MIDDLE]:
@@ -255,7 +291,7 @@ func _select_same_kind_in_pane(camera: Camera3D, kind: int) -> void:
 	var visible := Rect2(Vector2.ZERO, camera.get_viewport().get_visible_rect().size)
 	var ids: Array = []
 	for u in sim.units:
-		if u.team == PLAYER_TEAM and u.kind == kind \
+		if u.team == player_team and u.kind == kind \
 				and visible.has_point(camera.unproject_position(view.world_position(u.id))):
 			ids.append(u.id)
 	_select(ids)
@@ -280,7 +316,7 @@ func _unit_at(camera: Camera3D, point: Vector2, own: bool) -> int:
 	var best := -1
 	var best_dist := TAP_RADIUS
 	for u in sim.units:
-		if (u.team == PLAYER_TEAM) != own:
+		if (u.team == player_team) != own:
 			continue
 		var p: Vector2 = camera.unproject_position(view.world_position(u.id))
 		var d: float = p.distance_to(point)
@@ -296,7 +332,7 @@ func _building_at(camera: Camera3D, point: Vector2, ground: Variant, own: bool) 
 	var best := 0
 	var best_foot := -INF
 	for b in sim.buildings:
-		if (b.team == PLAYER_TEAM) != own:
+		if (b.team == player_team) != own:
 			continue
 		var rect: Rect2 = buildings_view.screen_rect(camera, b.id)
 		if rect.has_area() and rect.grow(6).has_point(point) and rect.end.y > best_foot:
@@ -307,7 +343,7 @@ func _building_at(camera: Camera3D, point: Vector2, ground: Variant, own: bool) 
 	# Or on its footprint on the ground.
 	var g: Vector2 = Vector2(ground.x, ground.z) * float(sim.SCALE)
 	for b in sim.buildings:
-		if (b.team == PLAYER_TEAM) != own:
+		if (b.team == player_team) != own:
 			continue
 		if g.distance_to(Vector2(b.x, b.z)) <= b.radius + 150:
 			return b.id

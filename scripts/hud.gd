@@ -44,6 +44,7 @@ var _train_button: Button         # first row's train button (for tests)
 var _panel_buildings: Array = []  # selected building ids
 var _over_label: Label
 var _toast: Label
+var _waiting: Label
 var _toast_tween: Tween
 
 
@@ -68,6 +69,13 @@ func _ready() -> void:
 	_toast.add_theme_constant_override("outline_size", 10)
 	_toast.modulate.a = 0.0
 	add_child(_toast)
+	_waiting = UI.label("Waiting for the other player…", 30)
+	_waiting.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_waiting.position.y = 140
+	_waiting.add_theme_color_override("font_outline_color", Color.WHITE)
+	_waiting.add_theme_constant_override("outline_size", 10)
+	_waiting.visible = false
+	add_child(_waiting)
 
 
 ## A short message near the top of the screen that fades away.
@@ -92,6 +100,8 @@ func _process(_delta: float) -> void:
 		var spec: Dictionary = sim.BUILDINGS[btype]
 		_build_options[btype].disabled = not sim.can_afford(team, spec.res, spec.cost)
 	_refresh_building_panel()
+	# Online: say so when we're waiting for the other player's orders.
+	_waiting.visible = sim.online and sim.stalled
 
 
 ## The build the player picked and still has to place ("" if none).
@@ -147,7 +157,13 @@ func show_buildings(ids: Array) -> void:
 
 
 func show_game_over(winner: int) -> void:
-	_over_label.text = "Victory!" if winner == team else "Defeat"
+	show_message("Victory!" if winner == team else "Defeat")
+
+
+## The end screen with any message (e.g. "Your opponent left").
+func show_message(text: String) -> void:
+	_over_label.text = text
+	_over_label.add_theme_font_size_override("font_size", 110 if text.length() < 12 else 64)
 	game_over_screen.visible = true
 
 

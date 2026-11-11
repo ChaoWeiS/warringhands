@@ -1,0 +1,12 @@
+# One-click setup for the multiplayer relay on Render (free plan):
+# Render dashboard -> New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: warring-hands-relay
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
