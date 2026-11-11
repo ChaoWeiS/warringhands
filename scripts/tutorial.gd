@@ -39,6 +39,7 @@ var STEPS: Array = [
 	{"text": "Draw a loop around several hands with one finger to select them all.", "on": ["lasso"]},
 	{"text": "Tap the ground to send them there.\nTo unselect, tap the screen with two fingers at once (mouse: right click).", "on": ["move", "attack_move"]},
 	{"text": "Hold: with hands selected, press the stop-sign button on the left (under the sword). They stop and stay put, and only fight what comes within reach.", "on": ["hold"]},
+	{"text": "Queue: keep a finger on the 1-2-3 button (or hold Shift) and tap a few places: your hands go to each in turn. Hold cancels the plan.", "on": ["queue"]},
 	{"text": "Move the camera: drag with two fingers, pinch to zoom.\n(Mouse: right-drag to move, wheel to zoom.)", "poll": "_camera_moved", "enter": "_note_cameras"},
 	{"text": "Double tap a hand: every hand of that kind on screen gets selected.", "on": ["select_kind"]},
 	{"text": "Gather: with hands selected, tap your HQ (the town hall).\nRocks dig stone, papers cut wood, scissors mine metal.", "on": ["harvest", "gather"]},

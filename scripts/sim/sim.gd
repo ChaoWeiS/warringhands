@@ -289,7 +289,7 @@ func _compare_hashes(at_tick: int) -> void:
 func state_hash() -> int:
 	var parts: Array = [tick, resources]
 	for u in units:
-		parts.append([u.id, u.x, u.z, u.hp, u.target, u.job])
+		parts.append([u.id, u.x, u.z, u.hp, u.target, u.job, u.orders.size()])
 	for b in buildings:
 		parts.append([b.id, b.hp, b.progress, b.queue.size()])
 	for n in nodes:
@@ -321,28 +321,36 @@ func unit_ground(id: int) -> Vector2:
 ## Orders units to move to a ground point. Takes effect COMMAND_DELAY ticks
 ## from now. The point is turned into whole sim units right here, which is
 ## exactly what would be sent to the other player online.
-func command_move(ids: Array, ground: Vector3) -> void:
-	_queue({
+## (Every unit order can be `queued`: added after what the units are
+## already doing instead of replacing it. See _enqueue.)
+func command_move(ids: Array, ground: Vector3, queued: bool = false) -> void:
+	_queue(_maybe_queued({
 		"type": "move",
 		"ids": ids.duplicate(),
 		"x": roundi(ground.x * SCALE),
 		"z": roundi(ground.z * SCALE),
-	})
+	}, queued))
+
+
+static func _maybe_queued(command: Dictionary, queued: bool) -> Dictionary:
+	if queued:
+		command["queued"] = true
+	return command
 
 
 ## Attack-move: go to a ground point, fighting any enemy met on the way.
-func command_attack_move(ids: Array, ground: Vector3) -> void:
-	_queue({
+func command_attack_move(ids: Array, ground: Vector3, queued: bool = false) -> void:
+	_queue(_maybe_queued({
 		"type": "attack_move",
 		"ids": ids.duplicate(),
 		"x": roundi(ground.x * SCALE),
 		"z": roundi(ground.z * SCALE),
-	})
+	}, queued))
 
 
 ## Attack one particular enemy, following it until it's dead.
-func command_attack(ids: Array, target_id: int) -> void:
-	_queue({"type": "attack", "ids": ids.duplicate(), "target": target_id})
+func command_attack(ids: Array, target_id: int, queued: bool = false) -> void:
+	_queue(_maybe_queued({"type": "attack", "ids": ids.duplicate(), "target": target_id}, queued))
 
 
 func has_pending_commands() -> bool:
@@ -491,14 +499,14 @@ func command_train(team: int, building_id: int) -> void:
 
 
 ## Send units to gather from a resource spot.
-func command_gather(ids: Array, node_id: int) -> void:
-	_queue({"type": "gather", "ids": ids.duplicate(), "node": node_id})
+func command_gather(ids: Array, node_id: int, queued: bool = false) -> void:
+	_queue(_maybe_queued({"type": "gather", "ids": ids.duplicate(), "node": node_id}, queued))
 
 
 ## Each unit gathers the resource it's fastest at (rock: stone, paper: wood,
 ## scissors: metal), from the spot of it nearest its HQ.
-func command_harvest(ids: Array) -> void:
-	_queue({"type": "harvest", "ids": ids.duplicate()})
+func command_harvest(ids: Array, queued: bool = false) -> void:
+	_queue(_maybe_queued({"type": "harvest", "ids": ids.duplicate()}, queued))
 
 
 ## Gives up: the other side wins.
@@ -582,6 +590,7 @@ func _step() -> void:
 		u.px = u.x
 		u.pz = u.z
 	_construct_and_train()
+	_advance_queues()
 	_work()
 	_fight()
 	for u in units:
@@ -614,11 +623,16 @@ func _apply(command: Dictionary) -> void:
 				if not u.is_empty() and not u.has("btype") and u.team == command.by:
 					own.append(id)
 			command.ids = own
-	if command.has("ids") and command.type != "hold":
+	if command.get("queued", false) and QUEUEABLE.has(command.type):
+		_enqueue(command)
+		return
+	if command.has("ids"):
 		for id in command.ids:
 			var held: Dictionary = _by_id.get(id, {})
 			if not held.is_empty() and not held.has("btype"):
-				held.hold = false  # a new order lets a held unit go
+				held.orders.clear()  # a plain order (or Hold) replaces the plan
+				if command.type != "hold":
+					held.hold = false  # a new order lets a held unit go
 	match command.type:
 		"hold":
 			_apply_hold(command)
@@ -645,6 +659,88 @@ func _apply(command: Dictionary) -> void:
 
 
 ## Spreads the group into a square formation around the target point.
+## Orders that can be queued.
+const QUEUEABLE := ["move", "attack_move", "attack", "gather", "harvest"]
+
+
+## A queued order: each unit gets its own step (a move's formation spot
+## worked out now), done at once if it's idle with nothing queued,
+## otherwise after what it's already got.
+func _enqueue(command: Dictionary) -> void:
+	var ids: Array = command.ids.duplicate()
+	ids.sort()
+	var group: Array = []
+	for id in ids:
+		var u: Dictionary = _by_id.get(id, {})
+		if not u.is_empty() and not u.has("btype"):
+			group.append(u)
+	var spots: Array = []
+	if command.type == "move" or command.type == "attack_move":
+		spots = _formation(group.size(), command.x, command.z)
+	for i in group.size():
+		var u: Dictionary = group[i]
+		var step := {"type": command.type}
+		match command.type:
+			"move", "attack_move":
+				step.x = spots[i].x
+				step.z = spots[i].y
+			"attack":
+				step.target = command.target
+			"gather":
+				step.node = command.node
+		u.hold = false
+		if u.orders.is_empty() and _is_idle(u):
+			_run_step(u, step)
+		else:
+			u.orders.append(step)
+
+
+## Spots for a group of n in a square formation around (x, z).
+func _formation(n: int, x: int, z: int) -> Array:
+	var cols := 1
+	while cols * cols < n:
+		cols += 1
+	var rows: int = (n + cols - 1) / cols
+	var out: Array = []
+	for i in n:
+		var c: int = i % cols
+		var r: int = i / cols
+		out.append(Vector2i(x + (c * 2 - (cols - 1)) * SPACING / 2, z + (r * 2 - (rows - 1)) * SPACING / 2))
+	return out
+
+
+## Nothing on: not walking, not fighting, no job.
+func _is_idle(u: Dictionary) -> bool:
+	return not u.moving and u.target == 0 and u.job == "" and not u.attack_move
+
+
+func _run_step(u: Dictionary, step: Dictionary) -> void:
+	var command: Dictionary = step.duplicate()
+	command.ids = [u.id]
+	match step.type:
+		"move", "attack_move":
+			_apply_move(command)
+		"attack":
+			_apply_attack(command)
+		"gather":
+			_apply_gather(command)
+		"harvest":
+			_apply_harvest(command)
+
+
+## Units that have finished what they were doing start their next step
+## (a step whose target is gone is skipped).
+func _advance_queues() -> void:
+	for u in units:
+		while not u.orders.is_empty() and _is_idle(u):
+			var step: Dictionary = u.orders.pop_front()
+			if step.type == "attack" and not _by_id.has(step.target):
+				continue
+			if step.type == "gather" and get_node_by_id(step.node).is_empty():
+				continue
+			_run_step(u, step)
+
+
 func _apply_move(command: Dictionary) -> void:
 	var ids: Array = command.ids.duplicate()
 	ids.sort()  # same order on every device
@@ -943,6 +1039,7 @@ func _assign_gather(u: Dictionary, node: Dictionary) -> void:
 
 
 func _clear_orders(u: Dictionary) -> void:
+	u.orders.clear()
 	u.hold = false
 	u.ordered = false
 	u.attack_move = false
@@ -1523,7 +1620,7 @@ func _add_unit(team: int, kind: int, at: Vector2i) -> void:
 		"hp": MAX_HP, "target": 0, "ordered": false, "next_attack": 0,
 		"attack_tick": -1000, "hurt_tick": -1000, "repath": 0,
 		"attack_move": false, "dest_x": at.x, "dest_z": at.y, "focus": false, "chasing": false,
-		"hold": false, "job": "", "node": 0, "phase": "", "timer": 0, "carry": 0, "carry_res": 0,
+		"hold": false, "orders": [], "job": "", "node": 0, "phase": "", "timer": 0, "carry": 0, "carry_res": 0,
 		"work_x": 0, "work_z": 0, "work_res": 0, "tries": 0,
 	}
 	_next_id += 1

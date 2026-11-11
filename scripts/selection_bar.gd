@@ -9,6 +9,8 @@ extends VBoxContainer
 
 signal filter_pressed(kind: int)
 signal hold_pressed
+## Queue held down / let go.
+signal queue_changed(held: bool)
 ## Attack mode switched on / off.
 signal attack_toggled(armed: bool)
 
@@ -19,6 +21,9 @@ const TEXT_COLOR := Color("#4a4560")
 
 var _kind_buttons: Array = []
 var _attack: Button
+## Held down: orders are added to the units' plans instead of replacing them.
+var queue_held := false
+var queue_button: Button
 ## Attack and Hold, stacked (placed on screen by the HUD).
 var actions := VBoxContainer.new()
 
@@ -43,6 +48,13 @@ func _ready() -> void:
 	hold.tooltip_text = "Hold"
 	hold.pressed.connect(func(): hold_pressed.emit())
 	actions.add_child(hold)
+	# Queue: hold it down (with one finger) while giving orders with another.
+	queue_button = UI.icon_button("queue")
+	queue_button.tooltip_text = "Queue (hold, or Shift)"
+	queue_button.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
+	queue_button.button_down.connect(func(): _set_queue(true))
+	queue_button.button_up.connect(func(): _set_queue(false))
+	actions.add_child(queue_button)
 	add_sibling.call_deferred(actions)
 	visible = false
 	actions.visible = false
@@ -58,8 +70,17 @@ func show_counts(counts: Array) -> void:
 		total += counts[kind]
 	visible = total > 0
 	actions.visible = visible
+	if not visible and queue_held:
+		_set_queue(false)
 	if not visible:
 		set_attack_armed(false)
+
+
+func _set_queue(on: bool) -> void:
+	queue_held = on
+	queue_button.pivot_offset = queue_button.size * 0.5
+	queue_button.scale = Vector2.ONE * (1.12 if on else 1.0)
+	queue_changed.emit(on)
 
 
 func is_attack_armed() -> bool:

@@ -321,17 +321,39 @@ func _draw_routes() -> void:
 	var scale_factor: float = float(sim.SCALE)
 	for id in _selected:
 		var u: Dictionary = sim.get_unit(id)
-		if u.is_empty() or not u.moving or u.path.is_empty():
+		if u.is_empty() or ((not u.moving or u.path.is_empty()) and u.orders.is_empty()):
 			continue
 		var points: Array = [Vector2(_views[id].root.position.x, _views[id].root.position.z)]
-		for wp in u.path:
-			points.append(Vector2(wp.x, wp.y) / scale_factor)
+		if u.moving:
+			for wp in u.path:
+				points.append(Vector2(wp.x, wp.y) / scale_factor)
+		# Then every queued step, in order.
+		for step in u.orders:
+			var at: Variant = _step_point(step)
+			if at != null:
+				points.append(at)
+		if points.size() < 2:
+			continue
 		if not started:
 			_routes_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 			started = true
 		_add_dashes(points)
 	if started:
 		_routes_mesh.surface_end()
+
+
+## Where a queued step leads (map units), or null.
+func _step_point(step: Dictionary) -> Variant:
+	match step.type:
+		"move", "attack_move":
+			return Vector2(step.x, step.z) / float(sim.SCALE)
+		"attack":
+			var t: Dictionary = sim.get_entity(step.target)
+			return null if t.is_empty() else Vector2(t.x, t.z) / float(sim.SCALE)
+		"gather":
+			var n: Dictionary = sim.get_node_by_id(step.node)
+			return null if n.is_empty() else Vector2(n.x, n.z) / float(sim.SCALE)
+	return null
 
 
 func _ground_height(p: Vector2) -> float:

@@ -196,6 +196,41 @@ def white_flag() -> Image.Image:
     return img.resize((SIZE, SIZE), Image.LANCZOS)
 
 
+def queue_path() -> Image.Image:
+    """Queue: a dotted path through three numbered stops."""
+    from PIL import ImageFont
+    k = 4
+    big = SIZE * k
+    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (92, 37, 28, 255)
+    stops = [(58, 132), (98, 94), (138, 60)]
+    # Dashed S-curve through the stops.
+    pts = []
+    for i in range(len(stops) - 1):
+        (x0, y0), (x1, y1) = stops[i], stops[i + 1]
+        for t in np.linspace(0, 1, 40):
+            bend = np.sin(t * np.pi) * (14 if i == 0 else -12)
+            pts.append((x0 + (x1 - x0) * t + bend * 0.6, y0 + (y1 - y0) * t + bend))
+    for j in range(0, len(pts) - 1, 6):
+        a, b = pts[j], pts[min(j + 3, len(pts) - 1)]
+        d.line([(a[0] * k, a[1] * k), (b[0] * k, b[1] * k)], fill=outline, width=7 * k)
+    font = ImageFont.truetype("assets/fonts/Fredoka.ttf", 30 * k)
+    try:
+        font.set_variation_by_axes([125, 700])
+    except Exception:
+        pass
+    colors = [(255, 127, 154), (111, 182, 255), (240, 190, 70)]
+    for n, ((x, y), col) in enumerate(zip(stops, colors), start=1):
+        r = 21
+        d.ellipse([(x - r) * k, (y - r) * k, (x + r) * k, (y + r) * k], fill=outline)
+        r2 = r - 4
+        d.ellipse([(x - r2) * k, (y - r2) * k, (x + r2) * k, (y + r2) * k], fill=col + (255,))
+        d.text((x * k, y * k + 2 * k), str(n), font=font, fill=(255, 255, 255, 255), anchor="mm",
+               stroke_width=3 * k, stroke_fill=outline)
+    return img.resize((SIZE, SIZE), Image.LANCZOS)
+
+
 def save(symbol: Image.Image, path: str) -> None:
     frame = Image.fromarray((empty_frame() * 255).round().astype(np.uint8), "RGBA")
     frame.alpha_composite(symbol)
@@ -207,3 +242,4 @@ if __name__ == "__main__":
     save(stop_palm(), "assets/env/button_hold.png")
     save(gear(), "assets/env/button_settings.png")
     save(white_flag(), "assets/env/button_surrender.png")
+    save(queue_path(), "assets/env/button_queue.png")

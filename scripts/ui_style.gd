@@ -180,6 +180,7 @@ const BUTTON_ICONS := {
 	"build": preload("res://assets/env/button_build.png"),
 	"attack": preload("res://assets/env/button_attack.png"),
 	"hold": preload("res://assets/env/button_hold.png"),
+	"queue": preload("res://assets/env/button_queue.png"),
 	"settings": preload("res://assets/env/button_settings.png"),
 	"surrender": preload("res://assets/env/button_surrender.png"),
 }

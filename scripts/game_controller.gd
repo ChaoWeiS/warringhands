@@ -413,8 +413,8 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 			_select_building(own_building)
 		elif not selection.is_empty() and b.btype == "hq":
 			# Units sent to the HQ go and gather what they're best at.
-			sim.command_harvest(selection)
-			did.emit("harvest")
+			sim.command_harvest(selection, _queueing())
+			_did_order("harvest")
 			view.show_move_marker(Vector3(b.x / float(sim.SCALE), 0, b.z / float(sim.SCALE)))
 			hud.toast("Off to gather: rocks stone, papers wood, scissors metal")
 		else:
@@ -432,26 +432,42 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		return
 	var node := _resource_at(camera, point)
 	if node != 0 and not bar.is_attack_armed():
-		sim.command_gather(selection, node)
-		did.emit("gather")
+		sim.command_gather(selection, node, _queueing())
+		_did_order("gather")
 		view.show_move_marker(ground)
 		return
 	if bar.is_attack_armed():
-		sim.command_attack_move(selection, ground)
-		did.emit("attack_move")
+		sim.command_attack_move(selection, ground, _queueing())
+		_did_order("attack_move")
 		view.show_move_marker(ground, true)
-		bar.set_attack_armed(false)
+		if not _queueing():
+			bar.set_attack_armed(false)  # (queueing: keep it for the next stop)
 	else:
-		sim.command_move(selection, ground)
-		did.emit("move")
+		sim.command_move(selection, ground, _queueing())
+		_did_order("move")
 		view.show_move_marker(ground)
 
 
 func _order_attack(target: int) -> void:
-	sim.command_attack(selection, target)
-	did.emit("attack")
+	sim.command_attack(selection, target, _queueing())
+	_did_order("attack")
 	view.show_attack_marker(target)
-	bar.set_attack_armed(false)
+	if not _queueing():
+		bar.set_attack_armed(false)
+
+
+## An order was given (for the voices and the tutorial; "queue" too when
+## it was queued).
+func _did_order(action: String) -> void:
+	did.emit(action)
+	if _queueing():
+		did.emit("queue")
+
+
+## Orders given now go after what the units are doing (the Queue button is
+## held, or Shift on a keyboard).
+func _queueing() -> bool:
+	return bar.queue_held or Input.is_key_pressed(KEY_SHIFT)
 
 
 func _tap_distance(camera: Camera3D, point: Vector2, unit_id: int) -> float:
