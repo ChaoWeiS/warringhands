@@ -67,7 +67,8 @@
 - **Training:** tap your factory, then the + button: 60 of its resource, 5 s each, up to 5 queued. New units walk out towards the island centre.
 - Buildings block walking, push units out, can be attacked (10 per hit) and show HP bars. HQ 2000 HP, factories 800.
 - Destroying the enemy HQ = **Victory**; losing yours = **Defeat** (Play again).
-- Resource spots (`scripts/resources_view.gd`), each on a tinted patch of ground with a floating badge (resource colour + amount left):
+- Resources have icons (rocks, logs, ingots; `assets/env/icon_*.png`), used in the counter at the top right and on the map.
+- Resource spots (`scripts/resources_view.gd`), each on a tinted patch of ground with a floating badge (resource icon + amount left):
   - **Stone**: rock piles (painted art).
   - **Wood**: lumber camps (pines and a log pile), and **every forest tree** (100 wood each). A cut-down tree is gone and its ground opens up for walking (and building), so forests thin out over a match.
   - **Metal**: a cluster of aqua crystals.

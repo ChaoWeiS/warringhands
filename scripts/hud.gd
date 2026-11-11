@@ -133,7 +133,7 @@ func _build_resource_bar() -> void:
 		var icon := TextureRect.new()
 		icon.texture = UI.res_icon(res)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.custom_minimum_size = Vector2(34, 34)
+		icon.custom_minimum_size = Vector2(44, 44)
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		chip.add_child(icon)
 		var l := UI.label("0", 30)

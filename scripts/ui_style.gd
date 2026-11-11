@@ -9,10 +9,14 @@ const CELL := 128
 const ICON_INSET := Rect2(8, 12, 112, 114)
 ## Resource colours: stone, wood, metal.
 const RES_COLORS := [Color("#b9b2cc"), Color("#cf9f74"), Color("#8fd6d0")]
+const RES_ICONS := [
+	preload("res://assets/env/icon_stone.png"),
+	preload("res://assets/env/icon_wood.png"),
+	preload("res://assets/env/icon_metal.png"),
+]
 const RES_NAMES := ["stone", "wood", "metal"]
 const BUILDING_NAMES := {"hq": "HQ", "quarry": "Quarry", "mill": "Paper Mill", "forge": "Forge"}
 
-static var _res_icons: Array = []
 
 
 static func button(color: Color, pressed_color: Color = Color.TRANSPARENT, font_size: int = 30) -> Button:
@@ -52,18 +56,9 @@ static func kind_icon(kind: int) -> AtlasTexture:
 	return icon
 
 
-## A round dot in a resource's colour.
-static func res_icon(res: int) -> ImageTexture:
-	if _res_icons.is_empty():
-		for c in RES_COLORS:
-			var img := Image.create(40, 40, false, Image.FORMAT_RGBA8)
-			for y in 40:
-				for x in 40:
-					var d: float = Vector2(x + 0.5 - 20, y + 0.5 - 20).length()
-					if d <= 19.0:
-						img.set_pixel(x, y, Color.WHITE if d > 15.5 else c)
-			_res_icons.append(ImageTexture.create_from_image(img))
-	return _res_icons[res]
+## A resource's icon: rocks (stone), logs (wood), ingots (metal).
+static func res_icon(res: int) -> Texture2D:
+	return RES_ICONS[res]
 
 
 static func label(text: String, size: int = 28) -> Label:

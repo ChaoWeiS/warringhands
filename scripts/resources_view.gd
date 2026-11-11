@@ -181,11 +181,11 @@ func _make(n: Dictionary) -> Dictionary:
 	var top: float = TOPS[n.res] + BADGE_GAP
 	var icon := Sprite3D.new()
 	icon.texture = UI.res_icon(n.res)
-	icon.pixel_size = 0.1
+	icon.pixel_size = 0.04
 	icon.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	icon.no_depth_test = true
 	icon.render_priority = 2
-	icon.position = Vector3(-3.0, top, 0)
+	icon.position = Vector3(-3.2, top, 0)
 	root.add_child(icon)
 	var label := Label3D.new()
 	label.text = str(n.amount)
