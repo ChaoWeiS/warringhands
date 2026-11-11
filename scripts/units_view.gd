@@ -26,9 +26,16 @@ const MARKER_COLOR := Color("#fff3b0")
 const SPRITE_PIXEL_SIZE := 0.06
 ## Height of the hand's middle above the ground, for picking.
 const SPRITE_HEIGHT := 3.0
+## Walking hops: how high (map units) and how many per second.
+const HOP_HEIGHT := 1.6
+const HOPS_PER_SECOND := 3.2
+## How much the team base shrinks at the top of a hop (like a shadow).
+const HOP_BASE_SHRINK := 0.25
+## A little squash on landing and stretch in the air.
+const HOP_SQUASH := 0.08
 
 var sim: Node
-var _views: Dictionary = {}  # unit id -> {root, ring, sprite}
+var _views: Dictionary = {}  # unit id -> {root, ring, sprite, base, hop}
 var _selected: Dictionary = {}
 var _frames_by_kind: Array = []  # SpriteFrames per kind
 
@@ -42,8 +49,9 @@ func _ready() -> void:
 	_update_positions()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_update_positions()
+	_update_hops(delta)
 
 
 ## Where a unit is drawn right now (middle of its sprite), for picking.
@@ -101,6 +109,32 @@ func _update_positions() -> void:
 			view.sprite.flip_h = u.x < u.px
 
 
+## Walking units hop. A unit that stops finishes its current hop and lands.
+## Purely visual (not part of the sim), so it can use frame time freely.
+func _update_hops(delta: float) -> void:
+	for u in sim.units:
+		var view: Dictionary = _views.get(u.id, {})
+		if view.is_empty():
+			continue
+		var phase: float = view.hop  # 0..PI = one hop; 0 = on the ground
+		if u.moving or phase > 0.0:
+			phase += delta * HOPS_PER_SECOND * view.hop_speed * PI
+			if phase >= PI:
+				# Landed. Keep hopping if still walking, otherwise stop here.
+				phase = fmod(phase, PI) if u.moving else 0.0
+		view.hop = phase
+		var lift: float = sin(phase)  # 0 on the ground, 1 at the top
+		var sprite: AnimatedSprite3D = view.sprite
+		sprite.position.y = view.sprite_y + lift * HOP_HEIGHT
+		# Stretch in the air, squash near the ground (only while hopping).
+		var squash: float = 0.0
+		if phase > 0.0:
+			squash = HOP_SQUASH * (lift * 2.0 - 1.0)
+		sprite.scale = Vector3(1.0 - squash * 0.5, 1.0 + squash, 1.0)
+		var shrink: float = 1.0 - HOP_BASE_SHRINK * lift
+		view.base.scale = Vector3(shrink, 1.0, shrink)
+
+
 func _make_view(u: Dictionary) -> void:
 	var root := Node3D.new()
 	add_child(root)
@@ -144,7 +178,14 @@ func _make_view(u: Dictionary) -> void:
 	sprite.frame = u.id % FRAMES
 	sprite.speed_scale = 0.85 + 0.3 * float((u.id * 37) % 10) / 10.0
 
-	_views[u.id] = {"root": root, "ring": ring, "sprite": sprite}
+	_views[u.id] = {
+		"root": root, "ring": ring, "sprite": sprite, "base": base,
+		"sprite_y": sprite.position.y,
+		"hop": 0.0,  # 0 = standing on the ground
+		# Slightly different hop speeds so a group drifts out of step
+		# instead of bouncing in unison.
+		"hop_speed": 0.88 + 0.24 * float((u.id * 53) % 11) / 10.0,
+	}
 
 
 func _build_frames(kind: int) -> SpriteFrames:
