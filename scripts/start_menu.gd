@@ -18,6 +18,7 @@ const Maps := preload("res://scripts/maps.gd")
 const MatchSetup := preload("res://scripts/match_setup.gd")
 const Settings := preload("res://scripts/settings.gd")
 const Field := preload("res://scripts/field.gd")
+const Changelog := preload("res://scripts/changelog.gd")
 const DIFFICULTY_NAMES := {"easy": "Easy", "normal": "Normal", "hard": "Hard"}
 
 var _header: VBoxContainer     # the logo
@@ -43,6 +44,7 @@ var preview_sfx: Callable = func(): pass
 var _update_button: Button
 var _version_label: Label
 var _checking_update := false
+var news_window: Control = null
 
 
 func _ready() -> void:
@@ -159,11 +161,23 @@ func _ready() -> void:
 	_update_button = _big_button("New version: tap to update", Color("#fbe3ea"), _update_now)
 	_update_button.visible = false
 	bottom.add_child(_update_button)
+	var version_row := HBoxContainer.new()
+	version_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	version_row.add_theme_constant_override("separation", 14)
 	_version_label = UI.label("version " + BuildInfo.VERSION, 20)
 	_version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	bottom.add_child(_version_label)
+	version_row.add_child(_version_label)
+	var news := UI.button(Color("#fff3b0"), Color("#ffe9a0"), 20)
+	news.text = "What's new"
+	news.pressed.connect(show_news)
+	version_row.add_child(news)
+	bottom.add_child(version_row)
 	add_child(bottom)
 	_check_for_update()
+
+	# Something new since you last looked: show it once.
+	if Settings.get_choice("seen_news", "") != Changelog.latest_id() and get_tree().get_script() == null:
+		show_news.call_deferred()
 
 	_status = UI.label("", 28)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -181,6 +195,62 @@ func _fit_logo() -> void:
 	var aspect: float = float(LOGO.get_height()) / LOGO.get_width()
 	var w: float = minf(minf(1100.0, screen.x * 0.9), screen.y * 0.34 / aspect)
 	_logo.custom_minimum_size = Vector2(w, w * aspect)
+
+
+## The "What's new" window: every update, newest first. Marks it seen.
+func show_news() -> void:
+	if is_instance_valid(news_window):
+		return
+	Settings.set_choice("seen_news", Changelog.latest_id())
+	var s: float = UI.ui_scale()
+	var shade := ColorRect.new()
+	shade.color = Color(0.25, 0.2, 0.35, 0.35)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	shade.add_to_group("modal")
+	news_window = shade
+	add_child(shade)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UI.panel_box(Color(1, 1, 1, 0.97)))
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	shade.add_child(panel)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", roundi(14 * s))
+	panel.add_child(column)
+	var title := UI.label("What's new", roundi(48 * s))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(title)
+	var scroll := ScrollContainer.new()
+	var screen: Vector2 = get_viewport_rect().size
+	scroll.custom_minimum_size = Vector2(minf(980.0, screen.x * 0.86), minf(720.0, screen.y * 0.62))
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	column.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", roundi(10 * s))
+	scroll.add_child(list)
+	for entry in Changelog.ENTRIES:
+		var head := UI.label("%s  ·  %s" % [entry.title, entry.date], roundi(32 * s))
+		head.add_theme_color_override("font_color", Color("#b0607a"))
+		list.add_child(head)
+		for item in entry.items:
+			var line := UI.label("•  " + item, roundi(24 * s))
+			line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			line.custom_minimum_size.x = scroll.custom_minimum_size.x - 40
+			list.add_child(line)
+		var gap := Control.new()
+		gap.custom_minimum_size.y = 10 * s
+		list.add_child(gap)
+	var done := UI.button(Color("#e7e1f5"), Color("#d6cdef"), 30)
+	done.text = "Got it"
+	done.custom_minimum_size.x = 240 * s
+	done.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	done.pressed.connect(func(): shade.queue_free())
+	column.add_child(done)
+	news_window.set_meta("done", done)
+	news_window.set_meta("list", list)
 
 
 ## Web only: asks the website (not the saved copy) which version is current.

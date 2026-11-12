@@ -45,6 +45,23 @@ func _run() -> void:
 	await frames(1)
 	var menu: Control = _menu()
 
+	# What's new: opens with every update, marks it seen, closes.
+	var Changelog = load("res://scripts/changelog.gd")
+	var ids: Array = Changelog.ENTRIES.map(func(e): return e.id)
+	var unique := {}
+	for id in ids:
+		unique[id] = true
+	check("every What's new entry has its own id (%d entries)" % ids.size(), unique.size() == ids.size() and ids.size() >= 1)
+	Settings.set_choice("seen_news", "")
+	menu.show_news()
+	await frames(1)
+	var heads: int = menu.news_window.get_meta("list").get_children().filter(func(c): return c is Label and "  ·  " in c.text).size()
+	check("What's new lists every update", is_instance_valid(menu.news_window) and heads == ids.size())
+	check("...and remembers it's been seen", Settings.get_choice("seen_news", "") == Changelog.latest_id())
+	menu.news_window.get_meta("done").pressed.emit()
+	await frames(1)
+	check("...Got it closes it", not is_instance_valid(menu.news_window))
+
 	# Play vs Computer: the setup screen.
 	menu._open_setup("computer")
 	await frames(1)
