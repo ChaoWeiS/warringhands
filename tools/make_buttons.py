@@ -217,7 +217,7 @@ def queue_path() -> Image.Image:
         d.line([(a[0] * k, a[1] * k), (b[0] * k, b[1] * k)], fill=outline, width=7 * k)
     font = ImageFont.truetype("assets/fonts/Fredoka.ttf", 30 * k)
     try:
-        font.set_variation_by_axes([125, 700])
+        font.set_variation_by_axes([700, 100])
     except Exception:
         pass
     colors = [(255, 127, 154), (111, 182, 255), (240, 190, 70)]
