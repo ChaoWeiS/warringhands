@@ -113,5 +113,17 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # A run that sat in GitHub's queue for a long time must not publish
+      # older code over a newer version: only deploy the newest commit.
+      - id: latest
+        run: |
+          newest=$(git ls-remote "https://github.com/${{ github.repository }}" refs/heads/main | cut -f1)
+          if [ "$newest" = "${{ github.sha }}" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "Not the newest commit on main ($newest); skipping the deploy."
+          fi
       - id: deployment
+        if: steps.latest.outputs.ok == 'true'
         uses: actions/deploy-pages@v4
