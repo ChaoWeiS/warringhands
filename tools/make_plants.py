@@ -19,6 +19,8 @@ K = 4  # drawn this many times larger, then shrunk (smooth edges)
 INK = (72, 12, 10)
 # Plants: a deep green-brown ink, so small tufts read as green, not dirt.
 PLANT_INK = (46, 74, 30)
+# Outline for pictures the game tints (it's multiplied by the ground colour).
+TINTED_INK = (168, 180, 156)
 
 
 def _blade(d, base, angle, length, width, fill):
@@ -37,18 +39,18 @@ def _blade(d, base, angle, length, width, fill):
     d.polygon(pts_l + pts_r[::-1], fill=fill)
 
 
-def _outline(shape: Image.Image, px: int) -> Image.Image:
+def _outline(shape: Image.Image, px: int, ink=PLANT_INK) -> Image.Image:
     """The shape with an ink outline round it."""
     alpha = shape.getchannel("A")
     grown = alpha.filter(ImageFilter.MaxFilter(px * 2 + 1))
-    ink = Image.new("RGBA", shape.size, PLANT_INK + (0,))
-    ink.putalpha(grown)
-    ink.alpha_composite(shape)
-    return ink
+    out = Image.new("RGBA", shape.size, ink + (0,))
+    out.putalpha(grown)
+    out.alpha_composite(shape)
+    return out
 
 
-def _finish(big: Image.Image) -> Image.Image:
-    big = _outline(big, 2 * K)
+def _finish(big: Image.Image, ink=PLANT_INK) -> Image.Image:
+    big = _outline(big, 2 * K, ink)
     small = big.resize((SIZE, SIZE), Image.LANCZOS)
     return small
 
@@ -129,9 +131,16 @@ def bush(base, shade, light, seed):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    # Grass tufts are drawn pale and tinted in the game by the ground
+    # colour under them (a touch darker), so they sit in the grass instead
+    # of standing out from it.
+    for name, big in {
+        "grass_1": tuft((255, 255, 250), (226, 234, 216), 1),
+        "grass_2": tuft((250, 252, 244), (220, 230, 210), 2, blades=9, height=0.5, spread=1.1),
+    }.items():
+        _finish(big, TINTED_INK).save(OUT / f"plant_{name}.png")
+        print("wrote", OUT / f"plant_{name}.png")
     pieces = {
-        "grass_1": tuft((168, 214, 130), (120, 176, 95), 1),
-        "grass_2": tuft((150, 200, 115), (104, 160, 82), 2, blades=9, height=0.5, spread=1.1),
         "flowers_pink": flowers((255, 160, 190), (255, 225, 120), 3),
         "flowers_white": flowers((255, 250, 240), (255, 205, 90), 4),
         "flowers_lilac": flowers((205, 175, 245), (255, 235, 150), 5),

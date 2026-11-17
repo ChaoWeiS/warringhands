@@ -5,9 +5,11 @@ extends Node3D
 ## seed, so a map always looks the same.
 
 const PLANTS := [
-	["grass_1", 7.0, 10], ["grass_2", 6.0, 10], ["flowers_pink", 7.0, 3],
-	["flowers_white", 7.0, 3], ["flowers_lilac", 7.0, 2], ["bush", 8.0, 2],
-]  # picture, height (map units), how common
+	["grass_1", 7.0, 10, true], ["grass_2", 6.0, 10, true], ["flowers_pink", 7.0, 3, false],
+	["flowers_white", 7.0, 3, false], ["flowers_lilac", 7.0, 2, false], ["bush", 8.0, 2, false],
+]  # picture, height (map units), how common, tinted by the ground under it
+## Tinted plants: this much darker than the ground they grow on.
+const TINT_DARKEN := 0.08
 ## Patches of plants, and plants per patch (at most).
 const PATCHES := 150
 const PER_PATCH := 7
@@ -65,7 +67,18 @@ func _place() -> void:
 				continue
 			var kind: int = main if rng.randf() < 0.7 else _pick(rng, weights)
 			var h: float = field.height_at(p)
-			_spots[kind].append({"pos": Vector3(p.x, h, p.y), "scale": rng.randf_range(0.75, 1.2)})
+			_spots[kind].append({"pos": Vector3(p.x, h, p.y), "scale": rng.randf_range(0.75, 1.2),
+					"tint": _ground_tint(p, h)})
+
+
+## The ground colour where a plant grows, a little darker.
+func _ground_tint(p: Vector2, h: float) -> Color:
+	var ground: Color = field._ground_colour(p)
+	if h > field.PLATEAU_HEIGHT * 1.5:
+		ground = field.PLATEAU_TOP.lightened(0.18)
+	elif h > 0.5:
+		ground = field.PLATEAU_TOP
+	return ground.darkened(TINT_DARKEN)
 
 
 func _pick(rng: RandomNumberGenerator, weights: int) -> int:
@@ -107,11 +120,18 @@ func _make_batch(i: int) -> MultiMeshInstance3D:
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	mat.billboard_keep_scale = true
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var tinted: bool = PLANTS[i][3]
+	mat.vertex_color_use_as_albedo = tinted
+	mat.vertex_color_is_srgb = tinted
 	quad.material = mat
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = tinted
 	mm.mesh = quad
 	mm.instance_count = _spots[i].size()
+	if tinted:
+		for k in _spots[i].size():
+			mm.set_instance_color(k, _spots[i][k].tint)
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
