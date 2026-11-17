@@ -116,6 +116,10 @@ var _blockers: Array = []  # on-screen controls (buttons) panes must ignore
 
 
 func _ready() -> void:
+	# Every drag event, not one merged per frame: when the game is busy and
+	# frames slow down, merged events leave a lasso with long straight
+	# jumps between points.
+	Input.use_accumulated_input = false
 	_world = get_node(world_path)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_overlay = Control.new()
@@ -304,7 +308,7 @@ func _finish_solo(finger: Dictionary) -> void:
 			placed.emit(leaf.camera, finger.pos - leaf.rect.position)
 		return
 	if finger.lasso:
-		var path: PackedVector2Array = finger.path
+		var path: PackedVector2Array = smooth_path(finger.path)
 		if path.size() >= 3:
 			var local := PackedVector2Array()
 			for point in path:
@@ -724,10 +728,49 @@ func _draw_cut_preview(finger: Dictionary) -> void:
 
 
 func _draw_lasso(path: PackedVector2Array) -> void:
-	if path.size() >= 3 and not Geometry2D.triangulate_polygon(path).is_empty():
-		_overlay.draw_colored_polygon(path, LASSO_FILL)
-	_overlay.draw_polyline(path, LASSO_LINE, 4.0, true)
-	_overlay.draw_dashed_line(path[path.size() - 1], path[0], LASSO_LINE, 2.0, 12.0)
+	var smooth: PackedVector2Array = smooth_path(path)
+	# The fill from a thinned copy: cheap to triangulate however long the
+	# lasso gets.
+	var fill: PackedVector2Array = _thin(smooth, 96)
+	if fill.size() >= 3 and not Geometry2D.triangulate_polygon(fill).is_empty():
+		_overlay.draw_colored_polygon(fill, LASSO_FILL)
+	_overlay.draw_polyline(smooth, LASSO_LINE, 4.0, true)
+	_overlay.draw_dashed_line(smooth[smooth.size() - 1], smooth[0], LASSO_LINE, 2.0, 12.0)
+
+
+## A finger's path made smooth: a curve through the points (Catmull-Rom),
+## with more in-between points where the points are far apart (which is
+## what happens when frames are slow).
+static func smooth_path(path: PackedVector2Array) -> PackedVector2Array:
+	var n: int = path.size()
+	if n < 3:
+		return path
+	var out := PackedVector2Array()
+	for i in n - 1:
+		var p0: Vector2 = path[maxi(i - 1, 0)]
+		var p1: Vector2 = path[i]
+		var p2: Vector2 = path[i + 1]
+		var p3: Vector2 = path[mini(i + 2, n - 1)]
+		var steps: int = clampi(ceili(p1.distance_to(p2) / 6.0), 1, 16)
+		for k in steps:
+			var t: float = float(k) / steps
+			var t2: float = t * t
+			var t3: float = t2 * t
+			out.append(0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+					+ (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3))
+	out.append(path[n - 1])
+	return out
+
+
+## Every so many points, to keep at most `most`.
+static func _thin(path: PackedVector2Array, most: int) -> PackedVector2Array:
+	if path.size() <= most:
+		return path
+	var out := PackedVector2Array()
+	var step: float = float(path.size()) / most
+	for i in most:
+		out.append(path[int(i * step)])
+	return out
 
 
 ## Grip knob in the middle of a divider, so it reads as "grab me".
