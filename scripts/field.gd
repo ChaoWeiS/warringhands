@@ -20,19 +20,20 @@ extends Node3D
 
 # Pastel palette
 const SKY := Color("#a9d6eb")
-const DEEP_SEA := Color("#8ec5e0")
-const SHALLOW_SEA := Color("#b9e3f0")
-const SAND := Color("#f6e7c1")
-const CLIFF := Color("#e8d3a8")
-const GRASS := Color("#c3e6ad")
-const GRASS_DARK := Color("#addb96")
+const DEEP_SEA := Color("#5386c1")
+const SHALLOW_SEA := Color("#97cbd6")
+const SAND := Color("#f0e4c4")
+const CLIFF := Color("#d4bf93")
+const GRASS := Color("#c8e0b7")
+const GRASS_DARK := Color("#99c184")
 const STONE := Color("#cbc5da")
 const TRUNK := Color("#d9b48f")
 const LEAVES := Color("#f6c3d8")
 const METAL := Color("#a9e7e2")
-const LAKE := Color("#a6d9ee")
-const LAKE_DEEP := Color("#8ec8e3")
-const PLATEAU_TOP := Color("#d3ecbf")
+const LAKE := Color("#a3d5ea")
+const LAKE_DEEP := Color("#8cc3dd")
+const PLATEAU_TOP := Color("#a8d493")
+const HILLSIDE := Color("#88bd6f")
 const CROWNS := [Color("#b8e0a0"), Color("#a6d68f"), Color("#cfe8b4"), Color("#b8e0a0"), Color("#f6c3d8")]
 
 ## Which map (scripts/maps.gd); empty = MatchSetup.map. The layout below
@@ -547,7 +548,7 @@ func _add_hillsides(h: Dictionary) -> void:
 	# out to the ground, easing down; the slope narrows (steepens) into the
 	# cliff at both ends. Smooth shading, grassy colour.
 	var lift: float = 0.45 if h.base == 0.0 else 0.03
-	var color: Color = PLATEAU_TOP.lerp(GRASS, 0.45) if h.base == 0.0 else PLATEAU_TOP.lightened(0.06)
+	var color: Color = HILLSIDE if h.base == 0.0 else HILLSIDE.lerp(PLATEAU_TOP, 0.5)
 	for arc in h.arcs:
 		var rows: Array = []
 		var steps := 28
