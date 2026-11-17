@@ -20,19 +20,20 @@ extends Node3D
 
 # Pastel palette
 const SKY := Color("#a9d6eb")
-const DEEP_SEA := Color("#8ec5e0")
-const SHALLOW_SEA := Color("#b9e3f0")
-const SAND := Color("#f6e7c1")
-const CLIFF := Color("#e8d3a8")
-const GRASS := Color("#c3e6ad")
-const GRASS_DARK := Color("#addb96")
+const DEEP_SEA := Color("#5386c1")
+const SHALLOW_SEA := Color("#97cbd6")
+const SAND := Color("#f0e4c4")
+const CLIFF := Color("#d4bf93")
+const GRASS := Color("#c8e0b7")
+const GRASS_DARK := Color("#99c184")
 const STONE := Color("#cbc5da")
 const TRUNK := Color("#d9b48f")
 const LEAVES := Color("#f6c3d8")
 const METAL := Color("#a9e7e2")
-const LAKE := Color("#a6d9ee")
-const LAKE_DEEP := Color("#8ec8e3")
-const PLATEAU_TOP := Color("#d3ecbf")
+const LAKE := Color("#a3d5ea")
+const LAKE_DEEP := Color("#8cc3dd")
+const PLATEAU_TOP := Color("#a8d493")
+const HILLSIDE := Color("#88bd6f")
 const CROWNS := [Color("#b8e0a0"), Color("#a6d68f"), Color("#cfe8b4"), Color("#b8e0a0"), Color("#f6c3d8")]
 
 ## Which map (scripts/maps.gd); empty = MatchSetup.map. The layout below
@@ -504,24 +505,168 @@ func _build_environment() -> void:
 	add_child(sun)
 
 
+## How far the shore is moved out (+) or in (-) from the coastline at
+## angle `a` (radians round the island), for `which` edge: the waterline
+## ("water") or where grass starts ("grass"). Looks only: walking still
+## follows the coastline.
+func _shore_shift(a: float, which: String) -> float:
+	if which == "water":
+		# Coves and spits: from 3 in to 7 out.
+		return 2.0 + 3.0 * sin(3.0 * a + 0.7) + 2.0 * sin(7.0 * a + 2.1)
+	# Grass: narrow sand in places, broad beaches in others (4 to 30 in).
+	var wide: float = 0.5 + 0.5 * sin(2.0 * a + 4.0) * sin(5.0 * a + 1.3)
+	return -(4.0 + 22.0 * wide * wide + 3.0 * sin(11.0 * a))
+
+
+## The coastline pushed out (or in) by `shift(angle) + extra`, straight
+## away from the island centre (so rings never fold over themselves).
+func _shore_ring(which: String, extra: float = 0.0) -> PackedVector2Array:
+	var c := get_center()
+	var ring := PackedVector2Array()
+	for p in coastline:
+		var d: Vector2 = p - c
+		var a: float = d.angle()
+		var shift: float = (_shore_shift(a, which) if which != "" else 0.0) + extra
+		ring.append(c + d.normalized() * (d.length() + shift))
+	return ring
+
+
+const SEA_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, blend_mix, depth_draw_opaque;
+uniform vec4 foam : source_color = vec4(1.0, 0.99, 0.95, 1.0);
+varying float dist;
+varying float along;
+void vertex() {
+	dist = UV.y;
+	along = UV.x;
+}
+void fragment() {
+	vec3 c = COLOR.rgb;
+	float t = TIME;
+	// Foam at the waterline, lapping in and out.
+	float lap = 1.2 + 1.3 * sin(t * 0.9 + along * 0.11) + 0.5 * sin(t * 1.7 + along * 0.31);
+	float edge = 1.0 - smoothstep(lap, lap + 1.6, dist);
+	// Soft wave lines rolling in towards the beach.
+	float w = fract(dist / 10.0 + t * 0.10 + 0.25 * sin(along * 0.045));
+	float line = smoothstep(0.0, 0.05, w) * (1.0 - smoothstep(0.05, 0.16, w));
+	line *= (1.0 - smoothstep(5.0, 34.0, dist)) * 0.4;
+	// A little sparkle further out.
+	float glint = pow(max(0.0, sin(along * 0.37 + dist * 0.9 + t * 1.3) * sin(along * 0.23 - dist * 0.6 - t * 0.7)), 60.0);
+	glint *= smoothstep(12.0, 40.0, dist) * 0.3;
+	ALBEDO = mix(c, foam.rgb, clamp(edge * 0.9 + line + glint, 0.0, 1.0));
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+	// Clear near the beach, so the sand shows through.
+	ALPHA = mix(0.45, 1.0, smoothstep(0.0, 10.0, dist)) + edge * 0.5;
+}
+"""
+
+
+## The sea: rings out from the waterline, shallow turquoise by the beach
+## fading to deep blue, with foam, rolling waves and a few glints.
 func _build_sea() -> void:
-	var sea := MeshInstance3D.new()
-	var plane := PlaneMesh.new()
-	plane.size = map_size * 6.0
-	sea.mesh = plane
-	sea.position = Vector3(get_center().x, -2.0, get_center().y)
-	sea.material_override = _material(DEEP_SEA)
-	add_child(sea)
+	var c := get_center()
+	var water: PackedVector2Array = _shore_ring("water")
+	# Distance out from the waterline for each ring, and its colour.
+	var steps := [0.0, 2.0, 5.0, 9.0, 14.0, 20.0, 28.0, 38.0, 52.0, 70.0, 95.0, map_size.x * 3.0]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	var n: int = water.size()
+	var along := PackedFloat32Array()
+	var total := 0.0
+	for i in n + 1:
+		along.append(total)
+		total += water[i % n].distance_to(water[(i + 1) % n])
+	var rows: Array = []
+	for d in steps:
+		var row: Array = []
+		for i in n + 1:
+			var p: Vector2 = water[i % n]
+			var out: Vector2 = (p - c).normalized()
+			row.append(p + out * d)
+		rows.append(row)
+	for r in steps.size() - 1:
+		for i in n:
+			for tri in [[[r, i], [r + 1, i], [r + 1, i + 1]], [[r, i], [r + 1, i + 1], [r, i + 1]]]:
+				var pts: Array = tri.map(func(v): return Vector3(rows[v[0]][v[1]].x, 0.05, rows[v[0]][v[1]].y))
+				for q in _front_up(pts):
+					var v: Array = tri[pts.find(q)]
+					var d: float = steps[v[0]]
+					st.set_color(_sea_colour(d))
+					st.set_uv(Vector2(along[v[1]], d))
+					st.add_vertex(q)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var shader := Shader.new()
+	shader.code = SEA_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
 
-	_add_flat(_offset(coastline, 22.0), -1.2, SHALLOW_SEA)
+
+func _sea_colour(d: float) -> Color:
+	var shallow: Color = SHALLOW_SEA.lerp(Color("#bfe9e4"), 0.35)
+	if d < 30.0:
+		return shallow.lerp(SHALLOW_SEA, smoothstep(0.0, 30.0, d))
+	return SHALLOW_SEA.lerp(DEEP_SEA, smoothstep(30.0, 110.0, d))
 
 
+## The island: sand from under the water up to a wandering grass edge
+## (wet and darker at the water), then grass.
 func _build_island() -> void:
-	var beach: PackedVector2Array = _offset(coastline, 8.0)
-	_add_flat(beach, 0.0, SAND)
-	_add_skirt(beach, 0.0, -2.5, CLIFF)
-	_add_flat(_offset(coastline, -10.0), 0.15, GRASS)
-	_add_flat(_offset(coastline, -80.0), 0.3, GRASS_DARK)
+	var c := get_center()
+	var outer: PackedVector2Array = _shore_ring("water", 14.0)
+	_add_flat(outer, -0.6, SAND.darkened(0.12))
+	_add_skirt(outer, -0.6, -3.0, SAND.darkened(0.2))
+	# Wet sand by the water, drying towards the grass.
+	var rows: Array = []
+	for k in 5:
+		var t: float = k / 4.0
+		var row: Array = []
+		var water: PackedVector2Array = _shore_ring("water", lerpf(10.0, -3.0, t))
+		for i in water.size() + 1:
+			var p: Vector2 = water[i % water.size()]
+			row.append(Vector3(p.x, lerpf(-0.6, 0.0, t), p.y))
+		rows.append(row)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	for r in rows.size() - 1:
+		for i in rows[r].size() - 1:
+			for tri in [[[r, i], [r + 1, i], [r + 1, i + 1]], [[r, i], [r + 1, i + 1], [r, i + 1]]]:
+				var pts: Array = tri.map(func(v): return rows[v[0]][v[1]])
+				for q in _front_up(pts):
+					var v: Array = tri[pts.find(q)]
+					st.set_color(SAND.darkened(lerpf(0.12, 0.0, v[0] / 4.0)))
+					st.add_vertex(q)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := _material(Color.WHITE)
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	mi.material_override = m
+	add_child(mi)
+	_add_flat(_shore_ring("water", -3.0), 0.0, SAND)
+	_add_flat(_shore_ring("grass"), 0.15, GRASS)
+	# Grass darkens gradually inland (no hard line).
+	var fade_rows: Array = []
+	var cols: Array = []
+	for k in INLAND_FADE.size():
+		var ring: PackedVector2Array = _shore_ring("", -INLAND_FADE[k])
+		var row: Array = []
+		var col_row: Array = []
+		for i in ring.size() + 1:
+			var p: Vector2 = ring[i % ring.size()]
+			row.append(Vector3(p.x, 0.3, p.y))
+			col_row.append(_ground_colour(p))
+		fade_rows.append(row)
+		cols.append(col_row)
+	_strip_mesh(fade_rows, GRASS, cols)
+	_add_flat(_shore_ring("", -INLAND_FADE[-1]), 0.3, GRASS_DARK)
 
 
 func _build_terrain() -> void:
@@ -547,9 +692,15 @@ func _add_hillsides(h: Dictionary) -> void:
 	# out to the ground, easing down; the slope narrows (steepens) into the
 	# cliff at both ends. Smooth shading, grassy colour.
 	var lift: float = 0.45 if h.base == 0.0 else 0.03
-	var color: Color = PLATEAU_TOP.lerp(GRASS, 0.45) if h.base == 0.0 else PLATEAU_TOP.lightened(0.06)
+	# Colours blend from the hilltop, through the hillside green, into the
+	# ground at the foot, with a little unevenness so it looks grown, not
+	# built.
+	var lower: bool = h.base == 0.0
+	var top_col: Color = PLATEAU_TOP if lower else PLATEAU_TOP.lightened(0.18)
+	var mid_col: Color = HILLSIDE if lower else HILLSIDE.lerp(PLATEAU_TOP, 0.5)
 	for arc in h.arcs:
 		var rows: Array = []
+		var cols: Array = []
 		var steps := 28
 		for k in steps + 1:
 			var ang: float = arc[0] + lerpf(-arc[1], arc[1], float(k) / steps)
@@ -558,14 +709,40 @@ func _add_hillsides(h: Dictionary) -> void:
 			var w: float = _arc_weight(h, rim + dir)
 			var width: float = maxf(h.width * w, 0.4)
 			var row: Array = []
+			var col_row: Array = []
+			var foot_col: Color = _ground_colour(rim + dir * width) if lower else PLATEAU_TOP
 			for j in 9:
 				var f: float = j / 8.0
 				var p: Vector2 = rim + dir * (lerpf(-0.8, width, f))
 				var y: float = lerpf(h.base, h.top, 0.5 + 0.5 * cos(PI * clampf(f, 0.0, 1.0)))
 				y = h.top + 0.02 if j == 0 else maxf(y, h.base + lift)
 				row.append(Vector3(p.x, y, p.y))
+				# Top -> hillside green (steepest part) -> the ground below.
+				var col: Color = top_col.lerp(mid_col, smoothstep(0.0, 0.45, f)) if f < 0.5 \
+						else mid_col.lerp(foot_col, smoothstep(0.5, 1.0, f))
+				if j > 0 and j < 8:
+					var n: float = sin(p.x * 0.21 + p.y * 0.13) * sin(p.x * 0.07 - p.y * 0.17)
+					col = col.lightened(0.05 * n) if n > 0.0 else col.darkened(-0.05 * n)
+				col_row.append(col)
 			rows.append(row)
-		_strip_mesh(rows, color)
+			cols.append(col_row)
+		_strip_mesh(rows, mid_col, cols)
+
+
+## How far in from the coast the grass starts darkening, and where it's
+## fully dark.
+const INLAND_FADE := [45.0, 60.0, 75.0, 90.0, 105.0, 120.0]
+
+
+## The ground colour at `p`: light grass by the coast, darkening inland.
+func _ground_colour(p: Vector2) -> Color:
+	var d: Vector2 = p - get_center()
+	var a: float = d.angle()
+	var wobble: float = 1.0
+	for wave in COAST_WAVES:
+		wobble += wave[1] * sin(wave[0] * a + wave[2])
+	var depth: float = island_radius * wobble - d.length()
+	return GRASS.lerp(GRASS_DARK, smoothstep(INLAND_FADE[0], INLAND_FADE[-1], depth))
 
 
 ## The triangle's corners in the order that makes it face up.
@@ -574,11 +751,19 @@ static func _up_facing(tri: Array) -> Array:
 	return tri if n.y > 0 else [tri[0], tri[2], tri[1]]
 
 
+## The triangle wound so its front faces up (Godot's front faces are
+## clockwise seen from the front), for meshes given an up normal.
+static func _front_up(tri: Array) -> Array:
+	var up: Array = _up_facing(tri)
+	return [up[0], up[2], up[1]]
+
+
 ## A smooth-shaded surface through rows of points (each row across, the
 ## rows following on).
-func _strip_mesh(rows: Array, color: Color) -> void:
+func _strip_mesh(rows: Array, color: Color, colors: Array = []) -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var tinted: bool = not colors.is_empty()
 	for i in rows.size() - 1:
 		var a_row: Array = rows[i]
 		var b_row: Array = rows[i + 1]
@@ -587,12 +772,20 @@ func _strip_mesh(rows: Array, color: Color) -> void:
 			var a1: Vector3 = a_row[k + 1]
 			var b0: Vector3 = b_row[k]
 			var b1: Vector3 = b_row[k + 1]
+			var tint := {}
+			if tinted:
+				tint = {a0: colors[i][k], a1: colors[i][k + 1], b0: colors[i + 1][k], b1: colors[i + 1][k + 1]}
 			for v in _up_facing([a0, b1, a1]) + _up_facing([a0, b0, b1]):
+				if tinted:
+					st.set_color(tint[v])
 				st.add_vertex(v)
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
-	mi.material_override = _material(color)
+	var m := _material(Color.WHITE if tinted else color)
+	m.vertex_color_use_as_albedo = tinted
+	m.vertex_color_is_srgb = tinted
+	mi.material_override = m
 	add_child(mi)
 
 

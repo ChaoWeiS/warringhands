@@ -12,6 +12,7 @@ extends Node3D
 
 const UI := preload("res://scripts/ui_style.gd")
 const GroundShadow := preload("res://scripts/ground_shadow.gd")
+const Greenery := preload("res://scripts/greenery_view.gd")
 const PINES := [preload("res://assets/env/pine_1.png"), preload("res://assets/env/pine_2.png")]
 const CRYSTALS := [preload("res://assets/env/crystals_1.png"), preload("res://assets/env/crystals_2.png")]
 const ROCKS := [preload("res://assets/env/rocks_1.png"), preload("res://assets/env/rocks_2.png")]
@@ -38,6 +39,11 @@ func _ready() -> void:
 	sim = get_node(sim_path)
 	for i in PINES.size():
 		_batches.append(_make_batch(PINES[i]))
+	if sim.field != null:
+		var greenery: Node3D = Greenery.new()
+		greenery.name = "Greenery"
+		add_child(greenery)
+		greenery.setup(sim, sim.field)
 	_sync()
 
 
