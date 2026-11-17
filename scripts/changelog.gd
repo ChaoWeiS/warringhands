@@ -6,6 +6,18 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-18-world",
+		"date": "18 Nov 2026",
+		"title": "A livelier island",
+		"items": [
+			"New map colours.",
+			"The sea fades from turquoise shallows to deep blue, with foam and waves rolling onto the beach.",
+			"Beaches change width around the island, from narrow strips to wide sandy coves.",
+			"Hillsides blend softly into the grass and hilltops.",
+			"Grass tufts, flowers and bushes grow across the grassland.",
+		],
+	},
+	{
 		"id": "2026-11-18-lasso",
 		"date": "18 Nov 2026",
 		"title": "Smoother lasso",
