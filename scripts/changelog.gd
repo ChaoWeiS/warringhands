@@ -6,6 +6,14 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-18-lasso",
+		"date": "18 Nov 2026",
+		"title": "Smoother lasso",
+		"items": [
+			"The lasso stays a smooth curve even when a busy battle slows the game down.",
+		],
+	},
+	{
 		"id": "2026-11-12-queue",
 		"date": "12 Nov 2026",
 		"title": "Plan ahead",

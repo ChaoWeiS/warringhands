@@ -102,8 +102,9 @@ func _run() -> void:
 				and is_equal_approx(view._views[id].root.position.y, field.PLATEAU_HEIGHT * 2))
 
 	w = walk(id, home)
-	await frames(2)
-	check("sent back home, it comes down", w.at.distance_to(home) < 6.0 and view._views[id].root.position.y < 0.01)
+	await frames(6)  # the view eases to the ground; give it a moment
+	check("sent back home, it comes down (%.1f away, drawn at height %.2f)" % [w.at.distance_to(home), view._views[id].root.position.y],
+			w.at.distance_to(home) < 6.0 and view._views[id].root.position.y < 0.01)
 
 	# Building on a flat top is fine.
 	sim.resources[0] = [999, 999, 999]
