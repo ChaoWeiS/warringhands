@@ -35,6 +35,13 @@ signal right_clicked(camera: Camera3D)
 ## While true (a building is picked), one finger drags a preview instead of
 ## drawing a loop, and lifting it emits `placed` (not over a button).
 var placing := false
+## Whether panes can be cut (the campaign turns it off until it's taught).
+var cutting := true:
+	set(on):
+		cutting = on
+		if _overlay != null:
+			_overlay.queue_redraw()
+		queue_redraw()
 
 @export var world_path: NodePath
 ## Smallest a pane can be (width or height). Smaller panes snap shut.
@@ -634,8 +641,10 @@ func _divider_at(p: Vector2) -> PaneNode:
 	return best
 
 
-## Each tab as [side, draw rect, touch rect].
+## Each tab as [side, draw rect, touch rect] (none while cutting is off).
 func _tabs(leaf: PaneNode) -> Array:
+	if not cutting:
+		return []
 	var r: Rect2 = leaf.rect
 	var c: Vector2 = r.get_center()
 	var long := tab_length

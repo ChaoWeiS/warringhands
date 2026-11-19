@@ -71,5 +71,26 @@ const MAPS := {
 }
 
 
+## The campaign's own small island (not in the map list): just your
+## base, a stone pile, a lumber camp and crystals close by, a little wood,
+## and the enemy's camp across a short meadow.
+const TRAINING := {
+	"name": "Training Island",
+	"blurb": "Where the campaign's lessons happen.",
+	"radius": 175.0,
+	"coast": [[2, 0.14, 0.0], [4, 0.04, 1.3], [6, 0.025, 2.9]],
+	"lakes": [],
+	"forests": [[Vector2(-55, 105), 13.0, 41]],
+	"plateaus": [],
+	"stones": [Vector2(-110, -47)],
+	"woods": [Vector2(-112, 48)],
+	"metals": [Vector2(-155, 22)],
+	"hq": Vector2i(-115, 0),
+	"army": Vector2i(-72, 0),
+}
+
+
 static func get_map(id: String) -> Dictionary:
+	if id == "training":
+		return TRAINING
 	return MAPS.get(id, MAPS.island)

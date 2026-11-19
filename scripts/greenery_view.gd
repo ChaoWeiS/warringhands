@@ -53,7 +53,9 @@ func _place() -> void:
 		weights += plant[2]
 	var made := 0
 	var tries := 0
-	while made < PATCHES and tries < PATCHES * 20:
+	# As many patches for the island's size (the full count on a 330 island).
+	var patches: int = roundi(PATCHES * pow(field.island_radius / 330.0, 2.0))
+	while made < patches and tries < patches * 20:
 		tries += 1
 		var c := Vector2(rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.y, box.end.y))
 		if not _open(c, grass):

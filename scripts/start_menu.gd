@@ -6,7 +6,8 @@ extends Control
 ## Emits vs_computer, or online_ready(session, seat) once both players are in.
 
 signal vs_computer
-signal tutorial
+## The campaign: play this chapter.
+signal tutorial(chapter: int)
 signal online_ready(session: Node, seat: int)
 
 const UI := preload("res://scripts/ui_style.gd")
@@ -16,6 +17,7 @@ const BuildInfo := preload("res://scripts/build_info.gd")
 const LOGO := preload("res://assets/ui/logo.png")
 const Maps := preload("res://scripts/maps.gd")
 const MatchSetup := preload("res://scripts/match_setup.gd")
+const Campaign := preload("res://scripts/campaign.gd")
 const Settings := preload("res://scripts/settings.gd")
 const Field := preload("res://scripts/field.gd")
 const Changelog := preload("res://scripts/changelog.gd")
@@ -27,6 +29,8 @@ var _main: VBoxContainer       # the three big choices
 var _join: VBoxContainer       # number pad
 var _wait: VBoxContainer       # "your code is ..." / "joining ..."
 var _setup: VBoxContainer      # map (and difficulty) before a game
+var _chapters: VBoxContainer   # the campaign's chapter list
+var _skip_campaign: Button
 var _setup_title: Label
 var _setup_go: Button
 var _difficulty_row: HBoxContainer
@@ -75,7 +79,7 @@ func _ready() -> void:
 
 	_main = VBoxContainer.new()
 	_main.add_theme_constant_override("separation", 18)
-	_main.add_child(_big_button("Tutorial", Color("#fbf1d6"), func(): tutorial.emit()))
+	_main.add_child(_big_button("Campaign", Color("#fbf1d6"), _open_campaign))
 	_main.add_child(_big_button("Play vs Computer", Color("#e7e1f5"), func(): _open_setup("computer")))
 	_main.add_child(_big_button("Create Online Game", Color("#fbe3ea"), func(): _open_setup("online")))
 	_main.add_child(_big_button("Join Online Game", Color("#d3ece8"), func(): _show(_join)))
@@ -116,6 +120,9 @@ func _ready() -> void:
 	column.add_child(_join)
 
 	_build_setup(column)
+	_chapters = VBoxContainer.new()
+	_chapters.add_theme_constant_override("separation", roundi(10 * UI.ui_scale()))
+	column.add_child(_chapters)
 
 	_wait = VBoxContainer.new()
 	_wait.add_theme_constant_override("separation", 18)
@@ -331,9 +338,9 @@ func _big_button(text: String, color: Color, action: Callable) -> Button:
 
 
 func _show(part: Control) -> void:
-	for p in [_main, _join, _wait, _setup]:
+	for p in [_main, _join, _wait, _setup, _chapters]:
 		p.visible = p == part
-	_header.visible = part != _join and part != _setup  # these need the room
+	_header.visible = part != _join and part != _setup and part != _chapters  # these need the room
 	_status.text = ""
 	if part == _join:
 		_typed = ""
@@ -346,6 +353,61 @@ func _back() -> void:
 		_session.queue_free()
 		_session = null
 	_show(_main)
+
+
+# --- Campaign: the chapter list -----------------------------------------------
+
+## The chapters, one button each: done ones ticked off, the next one to
+## play highlighted. Tapping one plays it.
+func _open_campaign() -> void:
+	for c in _chapters.get_children():
+		c.queue_free()
+	var s: float = UI.ui_scale()
+	var title := UI.label("Campaign", 52)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_chapters.add_child(title)
+	var done: Array = Campaign.done()
+	var next: int = Campaign.next_up()
+	for i in Campaign.CHAPTERS.size():
+		var ch: Dictionary = Campaign.CHAPTERS[i]
+		var finished: bool = i in done
+		var color: Color = Color("#fff3b0") if i == next and not finished else (Color("#e3f2dc") if finished else Color(1, 1, 1, 0.9))
+		var b := UI.button(color, color.darkened(0.1), 28)
+		b.text = "%d.  %s%s" % [i + 1, ch.title, "   (done)" if finished else ""]
+		b.tooltip_text = ch.blurb
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.custom_minimum_size = Vector2(620, 66) * s
+		b.pressed.connect(func(): tutorial.emit(i))
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", roundi(16 * s))
+		row.add_child(b)
+		var blurb := UI.label(ch.blurb, 20)
+		blurb.custom_minimum_size = Vector2(360, 0) * s
+		blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row.add_child(blurb)
+		_chapters.add_child(row)
+	var bottom := HBoxContainer.new()
+	bottom.alignment = BoxContainer.ALIGNMENT_CENTER
+	bottom.add_theme_constant_override("separation", roundi(16 * s))
+	var back_button := _big_button("Back", Color(1, 1, 1, 0.9), _back)
+	back_button.custom_minimum_size = Vector2(300, 80) * s
+	bottom.add_child(back_button)
+	# Skip the lessons: straight into a real battle on the main island.
+	_skip_campaign = _big_button("Skip tutorial: battle!", Color("#fbe3ea"), func():
+		MatchSetup.map = "island"
+		MatchSetup.difficulty = Settings.get_choice("difficulty", "normal")
+		vs_computer.emit())
+	_skip_campaign.custom_minimum_size = Vector2(420, 80) * s
+	bottom.add_child(_skip_campaign)
+	_chapters.add_child(bottom)
+	_show(_chapters)
+
+
+## The chapter list's button for chapter i (for tests).
+func chapter_button(i: int) -> Button:
+	var rows: Array = _chapters.get_children().filter(func(c): return c is HBoxContainer)
+	return rows[i].get_child(0) if i < rows.size() else null
 
 
 # --- Match setup: map, difficulty ---------------------------------------------
@@ -478,7 +540,7 @@ func _open_setup(what: String) -> void:
 	_difficulty_row.visible = what == "computer"
 	MatchSetup.difficulty = Settings.get_choice("difficulty", "normal")
 	_show(_setup)
-	_pick_map(MatchSetup.map)
+	_pick_map(MatchSetup.map if MatchSetup.map in Maps.ORDER else "island")  # not the campaign's island
 	_pick_difficulty(MatchSetup.difficulty)
 
 

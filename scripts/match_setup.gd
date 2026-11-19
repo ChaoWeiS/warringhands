@@ -18,5 +18,7 @@ static var built_map := ""
 static var difficulty := "normal"
 ## {} or {"mode": "computer" | "tutorial" | "online", "seat": int}.
 static var pending := {}
+## The campaign chapter to play (mode "tutorial").
+static var chapter := 0
 ## An online match's session, carried across the reload.
 static var session: Node = null

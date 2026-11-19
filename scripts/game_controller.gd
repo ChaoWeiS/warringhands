@@ -35,6 +35,7 @@ var player_team := 0
 const UI := preload("res://scripts/ui_style.gd")
 const StartMenu := preload("res://scripts/start_menu.gd")
 const Tutorial := preload("res://scripts/tutorial.gd")
+const Campaign := preload("res://scripts/campaign.gd")
 const Sounds := preload("res://scripts/sounds.gd")
 const Music := preload("res://scripts/music.gd")
 const Settings := preload("res://scripts/settings.gd")
@@ -163,8 +164,9 @@ func _show_start_menu() -> void:
 	menu.vs_computer.connect(func():
 		menu.queue_free()
 		_begin("computer"))
-	menu.tutorial.connect(func():
+	menu.tutorial.connect(func(chapter: int):
 		menu.queue_free()
+		MatchSetup.chapter = chapter
 		_begin("tutorial"))
 	menu.online_ready.connect(func(session, seat):
 		menu.queue_free()
@@ -184,7 +186,7 @@ func _begin_match(mode_name: String, session_node: Node, seat: int) -> void:
 	self.mode = mode_name
 	self.session = session_node
 	if mode == "tutorial":
-		MatchSetup.map = "island"  # the lessons are written for it
+		MatchSetup.map = Campaign.map_of(MatchSetup.chapter)  # the lessons are written for it
 	elif mode == "online" and session != null and session.map != "":
 		MatchSetup.map = session.map  # the host's pick
 	if MatchSetup.map != MatchSetup.built_map:
@@ -287,23 +289,29 @@ func focus_home() -> void:
 		leaf.camera.refit()
 
 
-## Tutorial: our army alone on the island (enemies come for the last lesson),
-## with a step-by-step card at the top.
-func start_tutorial() -> Control:
+## The campaign (tutorial): a chapter of lessons with a step-by-step card at
+## the top. Our army alone on the island (the lessons bring their own
+## enemies), except in a chapter that is a real battle.
+func start_tutorial(chapter: int = MatchSetup.chapter) -> Control:
 	sim._ais.clear()
-	for u in sim.units.duplicate():
-		if u.team != player_team:
-			sim.units.erase(u)
-			sim._by_id.erase(u.id)
-			view.forget(u.id)
-	hud.surrender_button.visible = false  # the tutorial has its own Quit
+	if not Campaign.CHAPTERS[clampi(chapter, 0, Campaign.CHAPTERS.size() - 1)].get("enemies", false):
+		for u in sim.units.duplicate():
+			if u.team != player_team:
+				sim.units.erase(u)
+				sim._by_id.erase(u.id)
+				view.forget(u.id)
+	hud.surrender_button.visible = false  # the campaign has its own Menu button
+	focus_home()
 	var tutorial: Control = Tutorial.new()
-	tutorial.setup(self, sim, panes, hud)
+	tutorial.setup(self, sim, panes, hud, chapter)
 	hud.get_parent().add_child(tutorial)
 	panes.register_blocker(tutorial.card())
 	music.play("battle")
-	focus_home()
-	tutorial.finished.connect(func(): get_tree().reload_current_scene())
+	tutorial.finished.connect(quit_to_menu)
+	tutorial.next_chapter.connect(func(i: int):
+		MatchSetup.chapter = i
+		MatchSetup.pending = {"mode": "tutorial"}
+		get_tree().reload_current_scene.call_deferred())
 	sim.set_process(true)
 	return tutorial
 
@@ -593,6 +601,7 @@ func _on_filter(kind: int) -> void:
 func _unselect_all() -> void:
 	_select([])
 	_select_buildings([])
+	did.emit("unselect")
 
 
 func _select(ids: Array) -> void:

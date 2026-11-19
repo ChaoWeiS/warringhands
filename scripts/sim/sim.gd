@@ -33,6 +33,8 @@ signal building_destroyed(id: int)
 signal game_over(winner: int)
 ## HP restored to a building this tick (all its repairers together).
 signal building_repaired(building_id: int, amount: int)
+## A gatherer dropped its load at a building (for the tutorial).
+signal delivered(team: int, res: int, amount: int, building_id: int)
 ## Online: our orders for a future tick, to send to the other player.
 signal turn_ready(at_tick: int, commands: Array)
 ## Online: a fingerprint of the game at a tick, to compare with theirs.
@@ -1169,6 +1171,7 @@ func _work() -> void:
 					continue
 				if _near_edge(u, drop.x, drop.z, drop.radius):
 					resources[u.team][u.carry_res] += u.carry
+					delivered.emit(u.team, u.carry_res, u.carry, drop.id)
 					u.carry = 0
 					u.phase = "to_node"
 					u.moving = false
@@ -1349,6 +1352,23 @@ func _spawn_bases() -> void:
 		if tree:
 			_tree_pos[n.id] = spot.pos
 		_next_id += 1
+
+
+## A new resource spot (the tutorial puts some near your base). It blocks
+## walking like the map's own; `pos` and `radius` in map units.
+func add_node(res: int, pos: Vector2, radius: float) -> Dictionary:
+	var n := {
+		"id": _next_id, "res": res,
+		"x": roundi(pos.x * SCALE), "z": roundi(pos.y * SCALE),
+		"radius": roundi(radius * SCALE), "amount": NODE_AMOUNT[res], "tree": false,
+	}
+	_next_id += 1
+	nodes.append(n)
+	_nodes_by_id[n.id] = n
+	var grid = nav()
+	if grid != null:
+		grid.set_blocked(n.x, n.z, n.radius, true)
+	return n
 
 
 static func _dist2(a: Dictionary, b: Dictionary) -> int:

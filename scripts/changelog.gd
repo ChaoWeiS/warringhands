@@ -6,6 +6,18 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-20-campaign",
+		"date": "20 Nov 2026",
+		"title": "Campaign",
+		"items": [
+			"The tutorial is now a Campaign: seven short chapters on a small Training Island, from moving the camera to your first real battle.",
+			"Arrows point at what each step is about, with pictures for the HQ, the rock-paper-scissors circle and the factories.",
+			"Learn which factory takes which resource and makes which hand, and why building it right beside the resource matters.",
+			"Only the buttons you've learned show, so there's less to get lost in. Each chapter ends with a Victory.",
+			"Already know how to play? Campaign → Skip tutorial: battle!",
+		],
+	},
+	{
 		"id": "2026-11-18-world",
 		"date": "18 Nov 2026",
 		"title": "A livelier island",
