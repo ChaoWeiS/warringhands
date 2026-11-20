@@ -586,6 +586,10 @@ func _new_session() -> Node:
 		var keep := _status
 		_back()
 		keep.text = message)
+	_session.waking.connect(func():
+		_wait_title.text = "Waking up the game server…"
+		_status.text = "This can take up to a minute the first time.")
+	_session.connected.connect(func(): _status.text = "")
 	_session.started.connect(func(seat):
 		var session: Node = _session
 		_session = null

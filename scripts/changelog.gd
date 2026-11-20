@@ -16,6 +16,8 @@ const ENTRIES := [
 			"All the buttons are in one column on the left: Build above the screen-cutting tab, Attack, Hold, Queue and Group below it. Your selected hands show in a row along the bottom, out of the way.",
 			"Health bars go green, then yellow, then red, and get bigger when you zoom out, like the damage numbers.",
 			"Stronger red and blue team colours, so it's easy to tell the sides apart.",
+			"Online: if the game server is asleep, the game waits for it to wake up (up to a minute) instead of saying it can't reach it.",
+			"The online server has moved to Singapore, for less lag in Asia.",
 		],
 	},
 	{

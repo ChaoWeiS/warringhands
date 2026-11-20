@@ -13,6 +13,8 @@ signal connected
 signal created(code: String)
 signal started(seat: int)
 signal failed(message: String)
+## The server didn't answer yet (a free server asleep): still trying.
+signal waking
 signal opponent_left
 signal desynced
 ## Both players have loaded the game: start the countdown together.
@@ -48,6 +50,15 @@ var _socket := WebSocketPeer.new()
 var _open := false
 var _waiting: Array = []  # messages to send once connected
 var _was_closed := true
+## A free server sleeps when unused and takes up to a minute to wake: keep
+## trying to connect this long before giving up.
+const WAKE_WAIT_MS := 75000
+const RETRY_MS := 2500
+var _url := ""
+var _give_up_at := 0
+var _retry_at := 0
+var _said_waking := false
+var _ever_open := false
 
 
 ## Set by tests (a local server).
@@ -67,11 +78,19 @@ static func server_url() -> String:
 
 
 func connect_to(url: String) -> void:
+	_url = url
+	_give_up_at = Time.get_ticks_msec() + WAKE_WAIT_MS
+	_said_waking = false
+	_open_socket()
+
+
+func _open_socket() -> void:
 	_socket = WebSocketPeer.new()
 	_open = false
 	_was_closed = false
-	var err := _socket.connect_to_url(url)
+	var err := _socket.connect_to_url(_url)
 	if err != OK:
+		_give_up_at = 0
 		failed.emit("Can't reach the game server")
 
 
@@ -179,14 +198,21 @@ func reset_for_rematch() -> void:
 func leave() -> void:
 	_socket.close()
 	_was_closed = true
+	_retry_at = 0
+	_give_up_at = 0
 
 
 func _process(_delta: float) -> void:
+	if _retry_at > 0 and Time.get_ticks_msec() >= _retry_at:
+		_retry_at = 0
+		_open_socket()
+		return
 	_socket.poll()
 	var state := _socket.get_ready_state()
 	if state == WebSocketPeer.STATE_OPEN:
 		if not _open:
 			_open = true
+			_ever_open = true
 			connected.emit()
 			for msg in _waiting:
 				_socket.send_text(JSON.stringify(msg))
@@ -199,6 +225,12 @@ func _process(_delta: float) -> void:
 		if seat >= 0:
 			_gone = true
 			opponent_left.emit()  # we lost the connection mid-game
+		elif not _ever_open and Time.get_ticks_msec() < _give_up_at:
+			# Not answering yet: probably waking up. Try again shortly.
+			if not _said_waking:
+				_said_waking = true
+				waking.emit()
+			_retry_at = Time.get_ticks_msec() + RETRY_MS
 		else:
 			failed.emit("Can't reach the game server")
 
