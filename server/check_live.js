@@ -5,7 +5,7 @@
 // Run: cd server && node check_live.js wss://...
 const WebSocket = require("ws");
 
-const url = process.argv[2] || "wss://warring-hands-relay.onrender.com";
+const url = process.argv[2] || "wss://warring-hands.onrender.com";
 const httpUrl = url.replace(/^ws/, "http");
 
 function open(label) {

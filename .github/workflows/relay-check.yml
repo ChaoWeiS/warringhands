@@ -17,5 +17,5 @@ jobs:
           node-version: 20
       - run: npm ci --no-fund --no-audit
         working-directory: server
-      - run: node check_live.js wss://warring-hands-relay.onrender.com
+      - run: node check_live.js wss://warring-hands.onrender.com
         working-directory: server
