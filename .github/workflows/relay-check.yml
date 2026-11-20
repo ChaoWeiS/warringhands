@@ -1,0 +1,21 @@
+name: Relay check
+# Plays the start of an online game against the live relay server (create,
+# join, pass an order). Run it by hand from the Actions tab, or it runs on
+# changes to the server.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["server/**", ".github/workflows/relay-check.yml"]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci --no-fund --no-audit
+        working-directory: server
+      - run: node check_live.js wss://warring-hands-relay.onrender.com
+        working-directory: server
