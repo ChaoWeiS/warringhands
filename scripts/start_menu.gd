@@ -526,7 +526,7 @@ func _draw_map_preview(pic: Control, id: String) -> void:
 		pic.draw_colored_polygon(scaled.call(poly), Color("#8ec8e3"))
 	for f in p.forests:
 		pic.draw_circle(f[0] * k, f[1] * k, Color("#9fd18a"))
-	var colors := [Color("#ff7f9a"), Color("#6fb6ff")]
+	var colors := [Color("#e8475f"), Color("#2f7fe0")]
 	for i in 2:
 		var c: Vector2 = p.hqs[i] * k
 		pic.draw_rect(Rect2(c - Vector2(7, 7), Vector2(14, 14)), Color("#5f5873"))

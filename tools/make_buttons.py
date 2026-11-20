@@ -231,6 +231,31 @@ def queue_path() -> Image.Image:
     return img.resize((SIZE, SIZE), Image.LANCZOS)
 
 
+def group_lasso() -> Image.Image:
+    """Group select: a dashed lasso loop round three little hands' dots."""
+    k = 4
+    big = SIZE * k
+    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (92, 37, 28, 255)
+    cx, cy, rx, ry = 98, 92, 52, 40
+    # Dashed loop, with a small tail where the finger started.
+    n = 64
+    pts = [(cx + rx * np.cos(t), cy + ry * np.sin(t)) for t in np.linspace(0.35, 0.35 + 2 * np.pi * 0.94, n)]
+    for j in range(0, n - 1, 3):
+        a, b = pts[j], pts[min(j + 2, n - 1)]
+        d.line([(a[0] * k, a[1] * k), (b[0] * k, b[1] * k)], fill=outline, width=7 * k)
+    tail = [pts[0], (pts[0][0] + 10, pts[0][1] + 22), (pts[0][0] + 26, pts[0][1] + 30)]
+    d.line([(x * k, y * k) for x, y in tail], fill=outline, width=7 * k, joint="curve")
+    colors = [(255, 127, 154), (111, 182, 255), (240, 190, 70)]
+    for (x, y), col in zip([(76, 98), (100, 76), (122, 100)], colors):
+        r = 15
+        d.ellipse([(x - r) * k, (y - r) * k, (x + r) * k, (y + r) * k], fill=outline)
+        r2 = r - 4
+        d.ellipse([(x - r2) * k, (y - r2) * k, (x + r2) * k, (y + r2) * k], fill=col + (255,))
+    return img.resize((SIZE, SIZE), Image.LANCZOS)
+
+
 def save(symbol: Image.Image, path: str) -> None:
     frame = Image.fromarray((empty_frame() * 255).round().astype(np.uint8), "RGBA")
     frame.alpha_composite(symbol)
@@ -243,3 +268,4 @@ if __name__ == "__main__":
     save(gear(), "assets/env/button_settings.png")
     save(white_flag(), "assets/env/button_surrender.png")
     save(queue_path(), "assets/env/button_queue.png")
+    save(group_lasso(), "assets/env/button_group.png")

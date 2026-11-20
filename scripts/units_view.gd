@@ -17,6 +17,7 @@ extends Node3D
 
 @export var sim_path: NodePath
 
+const UI := preload("res://scripts/ui_style.gd")
 const ATLAS := preload("res://assets/units/hands.png")
 const CELL := 192
 ## The ground line in each atlas cell, this many px above its bottom.
@@ -39,7 +40,7 @@ const IMPACT_POP := 1.18
 const LOOPS := {"idle": true, "move": true, "attack": false, "defend": true, "death": false}
 
 ## Team colours, used for the base under each unit.
-const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
+const TEAM_COLORS := [Color("#e8475f"), Color("#2f7fe0")]  # strong red and blue, easy to tell apart
 const RING_COLOR := Color("#ffffff")
 const MARKER_COLOR := Color("#fff3b0")
 const ATTACK_MARKER_COLOR := Color("#ff7a7a")
@@ -63,6 +64,9 @@ const DEATH_HOLD := 0.5     # seconds the fallen hand lies there before fading
 const HP_BAR_PX := Vector2(90, 10)   # in sprite pixels
 const HP_BAR_HEIGHT := 8.4           # above the ground (map units)
 const HP_BAR_BG := Color(0.25, 0.22, 0.33, 0.85)
+## How much bigger health bars and numbers draw (set each frame from the
+## most zoomed-out camera: 1 at normal zoom).
+var zoom_scale := 1.0
 ## Damage numbers: Fredoka (assets/fonts/, SIL Open Font License) at its
 ## boldest: round and chunky, like the logo's lettering.
 const DAMAGE_FONT := preload("res://assets/fonts/Fredoka.ttf")
@@ -228,6 +232,11 @@ func _update_combat_look() -> void:
 		if damaged:
 			var width: int = maxi(1, int(HP_BAR_PX.x * u.hp / sim.MAX_HP))
 			view.hp_fill.region_rect = Rect2(0, 0, width, HP_BAR_PX.y)
+			view.hp_fill.modulate = UI.health_color(float(u.hp) / sim.MAX_HP)
+			# Zoomed out: bigger, so it can still be read.
+			var k: float = minf(zoom_scale, 2.0)
+			view.hp_bg.scale = Vector3.ONE * k
+			view.hp_fill.scale = Vector3.ONE * k
 
 
 ## Floating damage number: big and red for a counter hit, small and pale
@@ -269,8 +278,9 @@ func _show_hit(target_id: int, attacker_id: int, damage: int, strength: int) -> 
 	label.position = view.root.position + Vector3(randf_range(-1.5, 1.5), 7.5, 0)
 	add_child(label)
 	var tween := create_tween().set_parallel(true)
-	label.scale = Vector3.ONE * 1.6  # punches in, then floats up
-	tween.tween_property(label, "scale", Vector3.ONE, 0.18).set_ease(Tween.EASE_OUT)
+	var k: float = minf(zoom_scale, 3.0)  # zoomed out: bigger, to stay readable
+	label.scale = Vector3.ONE * 1.6 * k  # punches in, then floats up
+	tween.tween_property(label, "scale", Vector3.ONE * k, 0.18).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "position:y", label.position.y + 4.0, 0.8).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "modulate:a", 0.0, 0.8).set_delay(0.3)
 	tween.chain().tween_callback(label.queue_free)
@@ -439,7 +449,7 @@ func _make_view(u: Dictionary) -> void:
 	# HP bar (shown once damaged): dark back, team-coloured fill shrinking
 	# from the right.
 	var hp_bg := _hp_bar_sprite(HP_BAR_BG, true)
-	var hp_fill := _hp_bar_sprite(TEAM_COLORS[u.team].lightened(0.15), false)
+	var hp_fill := _hp_bar_sprite(UI.HEALTH_GREEN, false)
 	hp_fill.render_priority = 2
 	root.add_child(hp_bg)
 	root.add_child(hp_fill)

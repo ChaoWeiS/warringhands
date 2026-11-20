@@ -26,19 +26,20 @@
 - Ideas to explore: drag units from one pane to a destination in another; pin a pane to a group.
 
 ## Controls
-- **One finger, units:** tap to select, draw a loop to lasso, tap ground to move/attack.
-- **Two fingers, camera:** drag to pan, pinch to zoom (with limits; fully zoomed out = whole map).
+- **One finger:** drag to move the camera (like a map app); tap a hand to select it (tap a selected hand again to let go of just it; tap an unselected one to pick only it); tap ground to move/attack.
+- **Group (button, left column, under Queue):** keep a finger on it and draw a loop with another finger to select everything inside. A mouse loops with a left drag and moves the camera with a right drag.
+- **Two fingers:** pinch to zoom (and pan while pinching); a quick two-finger tap unselects everything.
 - Zoomed out, units become simple icons.
 - Groups: lasso then save to a numbered button; filter a selection by gesture type.
 - Tablet: two hands can work two panes at once (multi-touch per pane).
 
 ## Units and orders (prototype)
 - Each side starts with 4 rocks, 4 papers, 4 scissors.
-- Unit art: animated hand sprites with five animations of 5 frames each: **idle**, **moving** (hops along with dust puffs), **attack** (wind-up, lunge, POW! / SLAP! / SNIP!), **defend** (crying when hit) and **dying** (dizzy, keels over, a little ghost floats up). On a team-coloured base (pink vs blue). Source: `art_source/hands_sheet_v2.png`, cut by `tools/cut_hand_sprites.py` into `assets/units/hands.png` (192 px cells, row = kind × 5 + animation).
-- **One finger:** tap your unit to select it; draw a loop to lasso; tap the ground to move the selection there (they spread into a square formation).
+- Unit art: animated hand sprites with five animations of 5 frames each: **idle**, **moving** (hops along with dust puffs), **attack** (wind-up, lunge, POW! / SLAP! / SNIP!), **defend** (crying when hit) and **dying** (dizzy, keels over, a little ghost floats up). On a team-coloured base (strong red vs blue, easy to tell apart). Health bars go green, yellow at 40%, red at 20%, and grow when zoomed out (as do damage and repair numbers) so they stay readable. Source: `art_source/hands_sheet_v2.png`, cut by `tools/cut_hand_sprites.py` into `assets/units/hands.png` (192 px cells, row = kind × 5 + animation).
+- **One finger:** tap your unit to select it (again to let it go); hold Group and draw a loop to lasso; tap the ground to move the selection there (they spread into a square formation).
 - Selection is shared by all panes: select in one pane, tap the destination in another.
-- Selection (right side, level with Build): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type. **Attack** (sword icon; arms an attack-move for the next ground tap, grows while armed) and **Hold** (open palm on a red stop sign: the selection stops and stays put, fighting only what comes within reach, no chasing, until its next order) sit on the left, just under **Build** (hammer and pickaxe; grows a little while picking / placing, tap again to stop). Icons: `art_source/env/button_*.png`; Hold and Settings are built on the Build frame in lilac by `tools/make_buttons.py`.
-- Left column: **Build** about a third of the way down (lower on short screens), its options opening upwards; Attack / Hold below it. On phones (short screen side under ~560 CSS px) all game buttons are 35% bigger.
+- Selection (a row along the bottom left, beside the button column): each selected type as its hand icon with a count ("× 4"); tap one to keep only that type. **Attack** (sword icon; arms an attack-move for the next ground tap, grows while armed) and **Hold** (open palm on a red stop sign: the selection stops and stays put, fighting only what comes within reach, no chasing, until its next order) sit in the left column under the screen-cutting tab (with Queue and Group); **Build** is above the tab (hammer and pickaxe; grows a little while picking / placing, tap again to stop). Icons: `art_source/env/button_*.png`; Hold and Settings are built on the Build frame in lilac by `tools/make_buttons.py`.
+- Left column: **Build** just above the left screen-cutting tab, its options opening upwards; under the tab Attack, Hold, Queue and Group, stacked (shrunk a little if a short screen can't fit them). The selected hands are a row along the bottom, beside the column. On phones (short screen side under ~560 CSS px) all game buttons are 35% bigger.
 - A game starts zoomed in on your HQ and army (not the whole map).
 - A second finger in the pane cancels a tap or lasso (it becomes a camera gesture).
 - **Pathfinding:** units plan a route around lakes, forests, plateaus and resource props (A* on a 4-unit grid, smoothed into straight runs). An order onto blocked ground (e.g. a lake) goes to the nearest open spot. Selected units show their route as a dashed line on the ground.

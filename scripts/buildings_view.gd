@@ -11,12 +11,16 @@ extends Node3D
 ## A construction just finished (shown once per building).
 signal finished(building_id: int)
 
+const UI := preload("res://scripts/ui_style.gd")
 const GroundShadow := preload("res://scripts/ground_shadow.gd")
-const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
+const TEAM_COLORS := [Color("#e8475f"), Color("#2f7fe0")]  # strong red and blue, easy to tell apart
 const TRIM := Color("#e2cfae")
 const STONE := Color("#c9c3d6")
 const HP_BAR_BG := Color(0.25, 0.22, 0.33, 0.85)
 const HP_BAR_PX := Vector2(160, 14)
+## How much bigger health bars and numbers draw (set each frame from the
+## most zoomed-out camera: 1 at normal zoom).
+var zoom_scale := 1.0
 const PIXEL := 0.06
 const ART := {
 	"hq": preload("res://assets/env/hq.png"),
@@ -81,6 +85,9 @@ func _process(delta: float) -> void:
 		if damaged:
 			var width: int = maxi(1, int(HP_BAR_PX.x * b.hp / b.max_hp))
 			view.hp_fill.region_rect = Rect2(0, 0, width, HP_BAR_PX.y)
+			view.hp_fill.modulate = UI.health_color(float(b.hp) / b.max_hp)
+			view.hp_bg.scale = Vector3.ONE * zoom_scale
+			view.hp_fill.scale = Vector3.ONE * zoom_scale
 
 
 ## While placing a building: circles around the team's buildings showing
@@ -276,7 +283,7 @@ func _on_added(id: int) -> void:
 	ring.visible = _selected_ids.has(id)
 	root.add_child(ring)
 	var hp_bg := _bar(HP_BAR_BG, true, 33.0 if b.btype == "hq" else 25.0)
-	var hp_fill := _bar(TEAM_COLORS[b.team].lightened(0.15), false, 33.0 if b.btype == "hq" else 25.0)
+	var hp_fill := _bar(UI.HEALTH_GREEN, false, 33.0 if b.btype == "hq" else 25.0)
 	hp_fill.render_priority = 2
 	root.add_child(hp_bg)
 	root.add_child(hp_fill)
@@ -320,7 +327,7 @@ func _float_number(building_id: int, text: String, color: Color) -> void:
 	label.font_size = 80
 	label.outline_size = 16
 	label.outline_modulate = Color(0.3, 0.22, 0.35)
-	label.pixel_size = 0.03
+	label.pixel_size = 0.03 * minf(zoom_scale, 3.0)  # zoomed out: bigger, to stay readable
 	label.position = view.root.position + Vector3(randf_range(-3, 3), 12.0, 0)
 	add_child(label)
 	var tween := create_tween().set_parallel(true)

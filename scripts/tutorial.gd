@@ -333,7 +333,7 @@ func _show_picture(which: String) -> void:
 			for kind in 3:
 				var cell := _row(6)
 				cell.add_child(_art(_hand(kind), 70))
-				cell.add_child(UI.label("→", 30))
+				cell.add_child(ArrowGlyph.new())
 				cell.add_child(_art(ICONS[kind], 52))
 				row.add_child(cell)
 			_picture_slot.add_child(row)
@@ -387,6 +387,20 @@ static func _hand(kind: int) -> Texture2D:
 	a.atlas = HANDS
 	a.region = Rect2(0, kind * 5 * 192, 192, 192)
 	return a
+
+
+## A small drawn arrow pointing right (the font has no arrow character).
+class ArrowGlyph extends Control:
+	func _init() -> void:
+		custom_minimum_size = Vector2(34, 30) * UI.ui_scale()
+
+	func _draw() -> void:
+		var s: float = UI.ui_scale()
+		var mid: float = size.y * 0.5
+		var ink := Color("#8d6fc0")
+		draw_line(Vector2(2 * s, mid), Vector2(size.x - 12 * s, mid), ink, 5 * s, true)
+		draw_colored_polygon(PackedVector2Array([Vector2(size.x - 2 * s, mid),
+				Vector2(size.x - 16 * s, mid - 10 * s), Vector2(size.x - 16 * s, mid + 10 * s)]), ink)
 
 
 ## The rock-paper-scissors circle: each hand with an arrow to the one it beats.
@@ -508,6 +522,8 @@ func _ui_target(parts: PackedStringArray) -> Dictionary:
 			c = hud._train_button
 		"resources":
 			c = hud.resource_bar
+		"group":
+			c = hud.group_button
 		"minimap":
 			var leaves: Array = panes._leaves()
 			c = game.minimap.map_of(leaves[0]) if not leaves.is_empty() else null

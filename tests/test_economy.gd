@@ -506,10 +506,23 @@ func _run() -> void:
 	sim._pending.clear()
 	game._select(mine.slice(0, 2))
 	check("lassoing units after that drops the buildings", game.selected_buildings.is_empty())
-	# Double tap a unit: all your units of that type in the pane.
-	game._last_tap.camera = null
+	# Tapping a selected hand lets go of just it; an unselected one (with a
+	# group picked) is picked on its own.
 	var rock0: Dictionary = sim.units.filter(func(u): return u.team == 0 and u.kind == ROCK).front()
 	var rock_px: Vector2 = cam.unproject_position(view_units.world_position(rock0.id))
+	var others: Array = mine.filter(func(id): return id != rock0.id).slice(0, 3)
+	game._select(others + [rock0.id])
+	game._last_tap.camera = null
+	game._on_tapped(cam, rock_px)
+	check("tapping a selected hand unselects just that one", game.selection == others)
+	game._last_tap.camera = null
+	game._on_tapped(cam, rock_px)
+	check("tapping an unselected hand with a group picked: just that one", game.selection == [rock0.id])
+	game._last_tap.camera = null
+	game._on_tapped(cam, rock_px)
+	check("tapping the only selected hand again: nothing selected", game.selection.is_empty())
+	# Double tap a unit: all your units of that type in the pane.
+	game._last_tap.camera = null
 	game._on_tapped(cam, rock_px)
 	var after_one: Array = game.selection.duplicate()
 	game._on_tapped(cam, rock_px)

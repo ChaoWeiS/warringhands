@@ -181,10 +181,23 @@ const BUTTON_ICONS := {
 	"attack": preload("res://assets/env/button_attack.png"),
 	"hold": preload("res://assets/env/button_hold.png"),
 	"queue": preload("res://assets/env/button_queue.png"),
+	"group": preload("res://assets/env/button_group.png"),
 	"settings": preload("res://assets/env/button_settings.png"),
 	"surrender": preload("res://assets/env/button_surrender.png"),
 }
 const ICON_BUTTON_SIZE := 96.0
+## Health bars: green, yellow from 40% down, red from 20% down.
+const HEALTH_GREEN := Color("#5cc85a")
+const HEALTH_YELLOW := Color("#f2c84b")
+const HEALTH_RED := Color("#e5534b")
+
+
+static func health_color(fraction: float) -> Color:
+	if fraction <= 0.2:
+		return HEALTH_RED
+	if fraction <= 0.4:
+		return HEALTH_YELLOW
+	return HEALTH_GREEN
 
 
 ## A square button that's just a picture (the picture has its own frame).

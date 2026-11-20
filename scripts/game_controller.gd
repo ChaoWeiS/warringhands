@@ -58,6 +58,8 @@ const ResourcesView := preload("res://scripts/resources_view.gd")
 var selection: Array = []  # unit ids
 var selected_buildings: Array = []
 var sounds: Node
+## The hand a tap just unselected (a quick second tap still picks its kind).
+var _tapped_off := -1
 var music: Node
 var _building_camera: Camera3D = null  # pane camera the buildings were picked in
 var _last_tap := {"camera": null, "point": Vector2.ZERO, "time": -100000}
@@ -119,6 +121,10 @@ func _ready() -> void:
 	panes.register_blocker(bar.actions)
 	hud.below_build = bar.actions
 	hud.right_column = bar
+	hud.tab_reach = panes.tab_touch_size.x * 0.5
+	# Group: while held, a finger draws a loop to select (else it moves the camera).
+	hud.group_button.button_down.connect(func(): _set_grouping(true))
+	hud.group_button.button_up.connect(func(): _set_grouping(false))
 	for control in hud.blockers():
 		panes.register_blocker(control)
 	bar.filter_pressed.connect(_on_filter)
@@ -349,6 +355,14 @@ func start_online(session: Node, seat: int) -> void:
 
 
 func _process(_delta: float) -> void:
+	# Zoomed out, health bars and numbers draw bigger so they stay readable
+	# (sized for the most zoomed-out pane).
+	var widest := HOME_ZOOM
+	for leaf in panes._leaves():
+		widest = maxf(widest, leaf.camera.units_per_pixel)
+	var k: float = clampf(widest / HOME_ZOOM, 1.0, 4.0)
+	view.zoom_scale = k
+	buildings_view.zoom_scale = k
 	# Range circles while placing (an HQ can go anywhere).
 	buildings_view.show_build_range(player_team, hud.armed_build() != "" and hud.armed_build() != "hq")
 	panes.placing = hud.armed_build() != ""
@@ -402,12 +416,21 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		_order_attack(foe)
 		return
 	if id != -1 and not bar.is_attack_armed():
-		if double and selection.has(id):
+		if double and (selection.has(id) or id == _tapped_off):
 			_select_same_kind_in_pane(camera, sim.get_unit(id).kind)
 			did.emit("select_kind")
+		elif selection.has(id):
+			# Tapping a selected hand unselects it (the rest stay picked).
+			var rest: Array = selection.duplicate()
+			rest.erase(id)
+			_select(rest)
+			_tapped_off = id
+			did.emit("unselect_one")
 		else:
+			# An unselected hand: just that one (the rest let go).
 			_select([id])
 			did.emit("select")
+		_tapped_off = id if not selection.has(id) and _tapped_off == id else -1
 		return
 	var own_building := _building_at(camera, point, ground, true)
 	if own_building != 0 and not bar.is_attack_armed():
@@ -598,6 +621,14 @@ func _on_filter(kind: int) -> void:
 
 
 ## A two-finger tap (or a right click): nothing selected, hands or buildings.
+func _set_grouping(on: bool) -> void:
+	panes.grouping = on
+	hud.panes_grouping = on
+	hud.group_button.modulate = Color(1.12, 1.05, 1.05) if on else Color.WHITE
+	if on:
+		did.emit("group")
+
+
 func _unselect_all() -> void:
 	_select([])
 	_select_buildings([])

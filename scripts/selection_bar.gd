@@ -1,9 +1,9 @@
-extends VBoxContainer
-## What's selected, in a column on the right (placed by the HUD, level with
-## Build): each unit type's hand icon with a count ("× 4"). Tap one to keep
+extends HBoxContainer
+## What's selected, in a row at the bottom left (placed by the HUD, beside
+## the Group button): each unit type's hand icon with a count ("× 4"). Tap one to keep
 ## only that type. Attack (sword; then tap the ground: attack-move) and
 ## Hold (open palm on a stop sign: stop and stay put) are in `actions`, a
-## small stack the HUD places on the left under Build. (Unselecting is a
+## small stack the HUD places on the left, under the screen-cutting tab. (Unselecting is a
 ## two-finger tap.)
 ## Both are hidden when nothing is selected.
 
@@ -24,7 +24,8 @@ var _attack: Button
 ## Held down: orders are added to the units' plans instead of replacing them.
 var queue_held := false
 var queue_button: Button
-## Attack and Hold, stacked (placed on screen by the HUD).
+## Attack, Hold and Queue, stacked (placed on screen by the HUD, on the
+## left under the screen-cutting tab).
 var actions := VBoxContainer.new()
 
 

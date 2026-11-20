@@ -8,7 +8,7 @@ extends Control
 
 const Settings := preload("res://scripts/settings.gd")
 const UI := preload("res://scripts/ui_style.gd")
-const TEAM_COLORS := [Color("#ff7f9a"), Color("#6fb6ff")]
+const TEAM_COLORS := [Color("#e8475f"), Color("#2f7fe0")]  # strong red and blue, easy to tell apart
 const SEA := Color("#b9e3f0")
 const LAND := Color("#c3e6ad")
 const SAND := Color("#f6e7c1")

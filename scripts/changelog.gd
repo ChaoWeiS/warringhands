@@ -6,6 +6,19 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-21-controls",
+		"date": "21 Nov 2026",
+		"title": "Easier controls",
+		"items": [
+			"Move the camera with one finger, like a map.",
+			"New Group button (left, under Queue): keep a finger on it and draw a loop with another to select a group. On a computer, just drag a loop.",
+			"Tap a selected hand again to let it go; tap another hand to pick just that one.",
+			"All the buttons are in one column on the left: Build above the screen-cutting tab, Attack, Hold, Queue and Group below it. Your selected hands show in a row along the bottom, out of the way.",
+			"Health bars go green, then yellow, then red, and get bigger when you zoom out, like the damage numbers.",
+			"Stronger red and blue team colours, so it's easy to tell the sides apart.",
+		],
+	},
+	{
 		"id": "2026-11-20-campaign",
 		"date": "20 Nov 2026",
 		"title": "Campaign",
@@ -14,7 +27,7 @@ const ENTRIES := [
 			"Arrows point at what each step is about, with pictures for the HQ, the rock-paper-scissors circle and the factories.",
 			"Learn which factory takes which resource and makes which hand, and why building it right beside the resource matters.",
 			"Only the buttons you've learned show, so there's less to get lost in. Each chapter ends with a Victory.",
-			"Already know how to play? Campaign → Skip tutorial: battle!",
+			"Already know how to play? Open Campaign and tap Skip tutorial: battle!",
 		],
 	},
 	{

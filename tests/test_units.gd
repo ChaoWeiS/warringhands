@@ -60,11 +60,14 @@ func loop_points(corners: Array) -> Array:
 	return points
 
 
+## A loop drawn with one finger while the Group button is held.
 func lasso(corners: Array) -> void:
 	var points := loop_points(corners)
+	panes.grouping = true
 	touch(0, points[0], true)
 	drag_path(0, points.slice(1))
 	touch(0, points[points.size() - 1], false)
+	panes.grouping = false
 
 
 func screen_pos(leaf, id: int) -> Vector2:
@@ -212,6 +215,22 @@ func _run() -> void:
 	got.sort()
 	check("lasso selects all 12 of our units (got %d)" % got.size(), got == mine)
 	await shot("units_2_lassoed")
+
+	# One finger without the Group button moves the camera (like a map) and
+	# doesn't select or give an order.
+	var cam0: Camera3D = panes._leaves()[0].camera
+	var before_target: Vector3 = cam0.target
+	var before_sel: Array = game.selection.duplicate()
+	var c0: Vector2 = panes._leaves()[0].rect.get_center()
+	touch(0, c0, true)
+	drag_path(0, [c0 + Vector2(40, 0), c0 + Vector2(120, 30), c0 + Vector2(200, 40)])
+	touch(0, c0 + Vector2(200, 40), false)
+	await process_frame
+	check("one finger drags the camera like a map (moved %.1f)" % cam0.target.distance_to(before_target),
+			cam0.target.distance_to(before_target) > 120.0 * cam0.units_per_pixel and game.selection == before_sel)
+	cam0.target = before_target
+	cam0.refit()
+	await process_frame
 
 	# Filter to paper only.
 	bar.filter_pressed.emit(SimScript.Kind.PAPER)

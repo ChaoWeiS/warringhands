@@ -47,6 +47,13 @@ var preview_sfx: Callable = func(): pass
 var below_build: Control = null
 ## Shown on the right, level with Build (the selection's hand chips).
 var right_column: Control = null
+## Group: hold it down (one finger) and draw a loop with another to select.
+var group_button: Button
+## How far above and below the middle the left cutting tab's touch area
+## reaches (set by the game from the panes).
+var tab_reach := 60.0
+## While Group is held (set by the game).
+var panes_grouping := false
 var build_menu: VBoxContainer
 var building_panel: PanelContainer
 var game_over_screen: Control
@@ -82,6 +89,10 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_resource_bar()
 	_build_fullscreen_button()
+	group_button = UI.icon_button("group")
+	group_button.tooltip_text = "Group select (hold, then draw a loop)"
+	group_button.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
+	add_child(group_button)
 	_build_build_menu()
 	_build_building_panel()
 	_build_game_over()
@@ -171,26 +182,47 @@ func _process(_delta: float) -> void:
 	_waiting.visible = _stall_time > 0.75
 
 
-## Left column: the Build button about a third of the way down (lower if
-## its options wouldn't fit above it), options stacking upwards from it, and
-## `below_build` (Attack / Hold) just under it.
+## Left side, one column: Build just above the screen-cutting tab (its
+## options stacking upwards), `below_build` (Attack / Hold / Queue) and the
+## Group button just under the tab; the selection (hand chips) in a row
+## along the bottom beside the column.
 func _layout_left() -> void:
 	var s: float = UI.ui_scale()
 	var margin: float = 24.0
 	var gap: float = 12.0 * s
-	var option_h: float = roundf(84 * s)
+	var screen: Vector2 = get_viewport_rect().size
+	# The left screen-cutting tab sits halfway down: Build goes above it,
+	# the orders (Attack, Hold, Queue) and Group below it, all in one column.
+	var tab_half: float = tab_reach
+	var mid: float = screen.y * 0.5
 	var toggle_h: float = _build_toggle.custom_minimum_size.y
-	var options: int = _build_options.size()
-	var top: float = maxf(get_viewport_rect().size.y / 3.0, 16.0 + options * (option_h + gap))
 	build_menu.reset_size()
-	build_menu.position = Vector2(margin, top + toggle_h - build_menu.size.y)
+	var build_bottom: float = mid - tab_half - gap
+	build_menu.position = Vector2(margin, maxf(16.0, build_bottom - build_menu.size.y))
+	var top: float = mid + tab_half + gap
+	var column: Array = []
 	if below_build != null:
-		below_build.reset_size()
-		below_build.position = Vector2(margin, top + toggle_h + gap * 2.0)
-	# The selection (hand chips) on the right, level with Build.
+		column.append(below_build)
+	column.append(group_button)
+	# Shrunk a little if the screen is too short for the whole column.
+	var needed := 0.0
+	for c in column:
+		c.reset_size()
+		needed += c.get_combined_minimum_size().y
+	needed += gap * (column.size() - 1)
+	var room: float = screen.y - margin - top
+	var fit: float = clampf(room / needed, 0.6, 1.0) if needed > 0.0 else 1.0
+	var y: float = top
+	for c in column:
+		c.pivot_offset = Vector2.ZERO
+		c.scale = Vector2.ONE * fit
+		c.position = Vector2(margin, y)
+		y += c.get_combined_minimum_size().y * fit + gap * fit
+	# The selection (hand chips) in a row along the bottom, right of the column.
 	if right_column != null:
 		right_column.reset_size()
-		right_column.position = Vector2(get_viewport_rect().size.x - margin - right_column.size.x, top)
+		var column_w: float = group_button.get_combined_minimum_size().x * fit
+		right_column.position = Vector2(margin + column_w + gap * 2.0, screen.y - margin - right_column.size.y)
 
 
 ## The build the player picked and still has to place ("" if none).
@@ -279,7 +311,7 @@ func show_message(text: String) -> void:
 
 ## Controls that touches on the map should ignore.
 func blockers() -> Array:
-	return [resource_bar, fullscreen_button, settings_button, surrender_button, build_menu, building_panel, game_over_screen]
+	return [resource_bar, fullscreen_button, settings_button, surrender_button, build_menu, building_panel, game_over_screen, group_button]
 
 
 # --- Building the pieces ---------------------------------------------------------

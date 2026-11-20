@@ -35,6 +35,10 @@ signal right_clicked(camera: Camera3D)
 ## While true (a building is picked), one finger drags a preview instead of
 ## drawing a loop, and lifting it emits `placed` (not over a button).
 var placing := false
+## While true (the Group button is held), one finger draws a loop to
+## select instead of moving the camera. A mouse always loops with the left
+## button (and moves the camera with the right).
+var grouping := false
 ## Whether panes can be cut (the campaign turns it off until it's taught).
 var cutting := true:
 	set(on):
@@ -212,8 +216,10 @@ func _on_touch(event: InputEventScreenTouch) -> void:
 				return
 			finger.mode = Mode.PANE
 			finger.leaf = leaf
-			finger.solo = true  # still a possible tap / lasso
+			finger.solo = true  # still a possible tap / lasso / pan
 			finger.lasso = false
+			finger.panning = false
+			finger.mouse = event.device == InputEvent.DEVICE_ID_EMULATION
 			finger.path = PackedVector2Array([p])
 			# A second finger in a pane means a camera gesture: cancel any tap,
 			# lasso or accidental cut the first finger had started.
@@ -253,6 +259,7 @@ func _on_drag(event: InputEventScreenDrag) -> void:
 	if not _fingers.has(event.index):
 		return
 	var finger: Dictionary = _fingers[event.index]
+	var moved: Vector2 = event.position - finger.pos
 	finger.pos = event.position
 	match finger.mode:
 		Mode.DIVIDER:
@@ -270,8 +277,10 @@ func _on_drag(event: InputEventScreenDrag) -> void:
 			elif finger.get("solo", false):
 				if placing:
 					pointer_moved.emit(finger.leaf.camera, finger.pos - finger.leaf.rect.position)
-				else:
+				elif grouping or finger.mouse or finger.lasso:
 					_track_lasso(finger)
+				else:
+					_track_pan(finger, moved)
 	_overlay.queue_redraw()
 
 
@@ -292,7 +301,18 @@ func _on_mouse_button(event: InputEventMouseButton) -> void:
 			_mouse_pan_leaf = leaf if event.pressed else null
 
 
-# --- One-finger tap and lasso --------------------------------------------------
+# --- One finger: tap, move the camera, or (Group held) lasso ------------------
+
+## One finger dragging moves the camera (like a map app), once it has
+## moved more than a tap would.
+func _track_pan(finger: Dictionary, relative: Vector2) -> void:
+	if not finger.panning:
+		if finger.pos.distance_to(finger.start) <= tap_slop:
+			return
+		finger.panning = true
+		relative = finger.pos - finger.start  # catch up on the first bit
+	finger.leaf.camera.pan_by_screen(relative)
+
 
 func _track_lasso(finger: Dictionary) -> void:
 	var p: Vector2 = finger.pos
@@ -314,6 +334,8 @@ func _finish_solo(finger: Dictionary) -> void:
 		if not _blocked(finger.pos) and leaf.rect.has_point(finger.pos):
 			placed.emit(leaf.camera, finger.pos - leaf.rect.position)
 		return
+	if finger.get("panning", false):
+		return  # a camera drag, not a tap
 	if finger.lasso:
 		var path: PackedVector2Array = smooth_path(finger.path)
 		if path.size() >= 3:
