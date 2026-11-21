@@ -158,3 +158,8 @@
 - Updates: the installed web app keeps a saved copy of the game. Each web build is stamped with its commit (`scripts/build_info.gd`, `version.txt` on the site); the start menu shows the version and, when the site has a newer one, a "New version: tap to update" button that clears the saved copy and reloads.
 - Full screen: a button under the resource counter (browsers only allow full screen from a tap). The web build is also an installable web app (fullscreen, landscape, app icon `assets/icon.png`): "Add to Home Screen" opens it with no address bar, which is the only way on iPhone.
 - Builds: GitHub Actions exports Web (GitHub Pages) and an Android debug APK. iOS builds on the Mac with Xcode.
+
+## Web download
+
+The web page loads the engine (`index.wasm`, the same for any Godot game) and the game (`index.pck`) before anything shows. The music is left out of `index.pck` (export filter) and published as `music.pck` (the "Music Pack" export preset, built in CI); `scripts/music.gd` fetches it in the background once the game runs, adds it with `load_resource_pack` (not replacing the game's own files), and starts whatever track was asked for meanwhile. Music is Ogg Vorbis at about 96 kbps (`tools/prep_music.sh`).
+

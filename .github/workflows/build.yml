@@ -50,6 +50,9 @@ jobs:
           mkdir -p build/web
           godot --headless --export-release "Web" build/web/index.html
           test -f build/web/index.html
+          # The music, fetched by the game after it starts (scripts/music.gd).
+          godot --headless --export-pack "Music Pack" build/web/music.pck
+          test -s build/web/music.pck
           # The start menu compares this with its own version to offer updates.
           echo "${GITHUB_RUN_NUMBER}" > build/web/version.txt
 

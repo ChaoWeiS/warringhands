@@ -6,6 +6,15 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-21-faster",
+		"date": "21 Nov 2026",
+		"title": "Faster start",
+		"items": [
+			"The game opens sooner: the music now downloads in the background after it starts, and fades in when it's ready.",
+			"The music files are half the size, so the whole game is a smaller download.",
+		],
+	},
+	{
 		"id": "2026-11-21-campaign2",
 		"date": "21 Nov 2026",
 		"title": "A clearer campaign",
