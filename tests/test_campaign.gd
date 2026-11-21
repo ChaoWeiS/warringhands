@@ -252,6 +252,9 @@ func _run() -> void:
 	check("a new paper and scissors move on", await until_past(2, 300))
 	tut._skip.pressed.emit()
 	check("a raid comes (marching, not waiting)", tut._enemies.size() == 3 and not sim.get_unit(tut._enemies[0]).hold)
+	await frames(40)
+	check("...no spotlight here (you need to see your hands to loop them), and an arrow at the Group button",
+			tut._dim < 0.05 and pointing("ui:group"))
 	var raid: Dictionary = sim.get_unit(tut._enemies[0])
 	sim.command_attack_move(mine(), Vector3(raid.x / 100.0, 0, raid.z / 100.0))
 	check("beating it moves on", await until_past(4, 2000))

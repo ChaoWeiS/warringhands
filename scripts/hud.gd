@@ -47,6 +47,10 @@ var preview_sfx: Callable = func(): pass
 var below_build: Control = null
 ## Shown on the right, level with Build (the selection's hand chips).
 var right_column: Control = null
+## Which side of the selected buildings the panel is on (1 right, -1 left,
+## 0 not picked yet), and for which selection.
+var _panel_side := 0
+var _panel_key := ""
 ## Group: hold it down (one finger) and draw a loop with another to select.
 var group_button: Button
 ## How far above and below the middle the left cutting tab's touch area
@@ -238,8 +242,14 @@ func clear_build() -> void:
 
 ## Puts the building panel beside `target` (screen rect of the selected
 ## buildings), inside `bounds` (their pane): to the right, or to the left if
-## there's no room. An empty target puts it back at the bottom centre.
-func place_building_panel(target: Rect2, bounds: Rect2) -> void:
+## there's no room. The side is picked once for a selection (`key`) and then
+## kept, so the panel doesn't jump across when its text grows (e.g. "(2
+## queued)"); on the left it grows leftwards. An empty target puts it back at
+## the bottom centre.
+func place_building_panel(target: Rect2, bounds: Rect2, key: String = "") -> void:
+	if key != _panel_key:
+		_panel_key = key
+		_panel_side = 0
 	if not target.has_area():
 		building_panel.anchor_left = 0.5
 		building_panel.anchor_right = 0.5
@@ -254,9 +264,9 @@ func place_building_panel(target: Rect2, bounds: Rect2) -> void:
 		return
 	var size: Vector2 = building_panel.get_combined_minimum_size()
 	var gap := 14.0
-	var x: float = target.end.x + gap
-	if x + size.x > bounds.end.x:
-		x = target.position.x - gap - size.x
+	if _panel_side == 0:
+		_panel_side = 1 if target.end.x + gap + size.x <= bounds.end.x else -1
+	var x: float = target.end.x + gap if _panel_side > 0 else target.position.x - gap - size.x
 	var y: float = target.get_center().y - size.y * 0.5
 	var screen: Vector2 = get_viewport_rect().size
 	x = clampf(x, 8.0, maxf(8.0, screen.x - size.x - 8.0))

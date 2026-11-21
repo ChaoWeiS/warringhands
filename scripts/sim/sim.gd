@@ -448,8 +448,9 @@ static func cost_of(btype: String) -> Array:
 
 ## Can `team` put a building of this type here (ground point, map units)?
 ## Needs open ground (no water, trees, other buildings) and no units in the way.
-## Can a building go here? Open ground, nobody standing there, and (for a
-## team) within BUILD_RANGE of one of its own buildings.
+## Can a building go here? Open ground, no enemy standing there (your own
+## hands just step aside, see _make_room), and (for a team) within
+## BUILD_RANGE of one of its own buildings.
 func can_place(btype: String, ground: Vector2, team: int = -1) -> bool:
 	var x: int = roundi(ground.x * SCALE)
 	var z: int = roundi(ground.y * SCALE)
@@ -470,11 +471,37 @@ func can_place(btype: String, ground: Vector2, team: int = -1) -> bool:
 	if grid != null and not grid.circle_is_open(x, z, radius + RADIUS):
 		return false
 	for u in units:
+		if team >= 0 and u.team == team:
+			continue  # they'll move out of the way
 		var dx: int = u.x - x
 		var dz: int = u.z - z
 		if dx * dx + dz * dz < (radius + RADIUS) * (radius + RADIUS):
 			return false
 	return true
+
+
+## Hands standing where a building has just been laid down step out of its
+## way (straight out from its middle, to the nearest open ground), and any
+## that were walking find a new way round it.
+func _make_room(b: Dictionary) -> void:
+	var grid = nav()
+	var clear: int = b.radius + RADIUS
+	for u in units:
+		var dx: int = u.x - b.x
+		var dz: int = u.z - b.z
+		if dx * dx + dz * dz >= clear * clear:
+			continue
+		var out := Vector2(dx, dz)
+		if out.length_squared() < 1.0:
+			out = Vector2(1, 0)
+		var to: Vector2 = Vector2(b.x, b.z) + out.normalized() * (clear + RADIUS)
+		var at := Vector2i(roundi(to.x), roundi(to.y))
+		if grid != null:
+			at = grid.cell_centre(grid.nearest_walkable(grid.cell_of(at.x, at.y)))
+		u.x = at.x
+		u.z = at.y
+		if u.moving:
+			_route(u, u.tx, u.tz)
 
 
 ## Within BUILD_RANGE of one of the team's buildings (sim units)?
@@ -949,7 +976,8 @@ func _apply_build(command: Dictionary) -> void:
 	var cost: Array = cost_of(command.btype)
 	for res in 3:
 		resources[command.team][res] -= cost[res]
-	_add_building(command.team, command.btype, Vector2i(command.x, command.z), false)
+	var b: Dictionary = _add_building(command.team, command.btype, Vector2i(command.x, command.z), false)
+	_make_room(b)
 
 
 func _apply_train(command: Dictionary) -> void:

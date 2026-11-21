@@ -6,6 +6,19 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-22-fixes",
+		"date": "22 Nov 2026",
+		"title": "Smoother building",
+		"items": [
+			"Your own hands no longer block a building spot: lay it down and they step out of the way.",
+			"The building panel stays on the side it opened on, instead of jumping across when \"(queued)\" appears.",
+			"Campaign: double tapping a hand lights up all of its kind, and the Group button lights up when a step needs all your hands.",
+			"Campaign: a factory counts wherever you build it (the circle is just the best spot).",
+			"Campaign: in the raid (chapter 4) the map isn't dimmed, and an arrow shows the Group button for picking a few fighters.",
+			"Campaign: arrows point at buildings from the side, so their health bars stay in view.",
+		],
+	},
+	{
 		"id": "2026-11-21-faster",
 		"date": "21 Nov 2026",
 		"title": "Faster start",

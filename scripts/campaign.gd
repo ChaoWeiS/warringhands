@@ -10,7 +10,8 @@ extends RefCounted
 ##   "next": a Next button (a tip to read).
 ## Optional: "enter" (a method run when the step starts), "point" (what the
 ## arrows point at, see tutorial.gd `_resolve`), "picture" (shown on the
-## card: "hq", "rps", "gather", "factories", "balance").
+## card: "hq", "rps", "gather", "factories", "balance"), "spotlight": false
+## (arrows only, no dimming: for steps where the player needs the whole map).
 ## The last step of every chapter has "end": true.
 ## A chapter plays on "map" (default: the small training island) and only
 ## shows the buttons it has taught so far ("tools": "minimap", "attack",
@@ -110,8 +111,8 @@ const CHAPTERS := [
 				"poll": "_new_paper_and_scissors", "point": ["building:mill", "building:forge"]},
 			{"text": "Your gatherers are also your army. A hand sent to fight stops gathering, and a hand that gathers isn't fighting.\nKeep a balance: too few gatherers and you can't afford new hands; too few fighters and you can't defend.",
 				"next": true, "picture": "balance"},
-			{"text": "Enemies are coming! Send just a few hands to stop them, and leave the rest gathering.",
-				"enter": "_wave_raid", "poll": "_enemies_beaten", "point": ["enemies"]},
+			{"text": "Enemies are coming! Keep a finger on the Group button (the arrow) and loop a few of your hands, then tap the enemies to send them. Leave the rest gathering.",
+				"enter": "_wave_raid", "poll": "_enemies_beaten", "point": ["ui:group", "enemies"], "spotlight": false},
 			{"text": "Now send your fighters back to work: select them and tap a resource, or tap your HQ and each goes to its best one.",
 				"on": ["gather", "harvest"]},
 			{"text": "Chapter complete!\nYou can grow your army and keep it fed.", "end": true},
@@ -129,7 +130,7 @@ const CHAPTERS := [
 				"on": ["repair"], "point": ["building:mill"]},
 			{"text": "Green numbers show the health coming back. Wait until it's whole.",
 				"poll": "_mill_repaired", "point": ["building:mill"]},
-			{"text": "One more thing: the hammer's HQ option makes another HQ anywhere on the island (150 of each resource). Use it as a forward base, or as a drop-off by far-away resources.",
+			{"text": "One more thing: HQs have no build limit, so you can put one anywhere (the hammer's HQ option, 150 of each resource). Place it by resources far away to gather them there and start another base.",
 				"next": true, "point": ["ui:build"]},
 			{"text": "Chapter complete!\nKeep your buildings standing and your base can grow anywhere.", "end": true},
 		],

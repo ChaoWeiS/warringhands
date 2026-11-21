@@ -77,5 +77,26 @@ func _run() -> void:
 	check("...with Group just under them", group.position.x < 60 and group.position.y >= orders.end.y and group.end.y <= screen.y)
 	check("the selected hands are a row along the bottom, beside the column",
 			chips.position.x >= group.end.x and chips.end.y > screen.y - 60 and chips.size.x > chips.size.y * 2.0)
+	# The building panel stays on the side it opened on, even when it grows
+	# (e.g. "(2 queued)" appears).
+	var hud: Control = game.hud
+	var bp: Control = hud.building_panel
+	var bounds := Rect2(Vector2.ZERO, screen)
+	bp.visible = true
+	bp.custom_minimum_size = Vector2(300, 120)
+	var target := Rect2(screen.x - 900, 400, 80, 80)
+	var pane := Rect2(0, 0, target.end.x + 14 + 400, screen.y)  # room on the right, but only just
+	hud.place_building_panel(target, pane, "[1]")
+	var first_x: float = bp.position.x
+	bp.custom_minimum_size = Vector2(500, 120)  # it grows past the pane's edge
+	hud.place_building_panel(target, pane, "[1]")
+	check("the panel doesn't flip sides when it grows", bp.position.x == first_x)
+	hud.place_building_panel(Rect2(screen.x - 300, 400, 80, 80), bounds, "[2]")
+	var right_edge: float = bp.position.x + bp.size.x
+	bp.custom_minimum_size = Vector2(760, 120)
+	hud.place_building_panel(Rect2(screen.x - 300, 400, 80, 80), bounds, "[2]")
+	check("on the left, it grows leftwards (its edge by the building stays put)",
+			is_equal_approx(bp.position.x + bp.size.x, right_edge))
+	bp.custom_minimum_size = Vector2.ZERO
 	print("FAILURES: ", failures)
 	quit(1 if failures > 0 else 0)

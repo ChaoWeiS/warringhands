@@ -67,6 +67,7 @@ var _step_time := 0.0         # seconds on this step (Skip shows after a while)
 var _marked: Array = []       # the step's designated spots (Vector2, map units)
 var _visited := {}            # unit id -> how many marked spots it has reached, in order
 var _queue_used := false
+var _quarry_done_for := 0.0  # seconds the Quarry has been finished
 var _leave_dialog: Control = null
 ## Action steps can only be skipped after this long (in case someone's stuck).
 const SKIP_AFTER := 60.0
@@ -592,7 +593,8 @@ func _resolve(what: String) -> Dictionary:
 		"building":
 			for b in sim.buildings:
 				if b.team == game.player_team and b.btype == parts[1]:
-					return {"world": _ground(b, 12.0), "ring": b.radius / float(sim.SCALE)}
+					# Pointed at from the side, so the arrow doesn't cover its health bar.
+					return {"world": _ground(b, 8.0), "ring": b.radius / float(sim.SCALE), "side": true}
 			return {}
 		"ui":
 			return _ui_target(parts)
@@ -660,7 +662,8 @@ func _draw_marks() -> void:
 ## The spotlight: dark everywhere except round the things the arrows point
 ## at (fades in and out).
 func _update_shade() -> void:
-	var want: float = DIM if not _holes.is_empty() and not free_play else 0.0
+	var lit: bool = step >= 0 and step < steps.size() and steps[step].get("spotlight", true)
+	var want: float = DIM if not _holes.is_empty() and not free_play and lit else 0.0
 	_dim = move_toward(_dim, want, get_process_delta_time() * 1.5)
 	var m: ShaderMaterial = _shade.material
 	var packed: Array = []
@@ -727,7 +730,14 @@ func _draw_targets() -> void:
 							HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, ARROW_FILL)
 				if t.get("ghost", false):
 					_marks.draw_circle(foot, maxf(8.0, _px(cam, t.ring)), Color(1, 1, 1, 0.25))
-				_arrow(p - Vector2(0, bounce), Vector2.DOWN, s)
+				if t.get("side", false):
+					# Light up its health bar too (it floats above the building).
+					var bar: Vector2 = cam.unproject_position(Vector3(t.world.x, t.world.y + 17.0, t.world.z)) + rect.position
+					_holes.append(Vector3(bar.x, bar.y, 70.0 * s))
+					var half: float = _px(cam, t.ring)
+					_arrow(p - Vector2(half + 8.0 * s + bounce, 0), Vector2.RIGHT, s)
+				else:
+					_arrow(p - Vector2(0, bounce), Vector2.DOWN, s)
 		if not shown and not leaves.is_empty() and not t.get("no_arrow", false):
 			# Off screen: an arrow at the edge of the first pane, pointing its way.
 			var leaf = leaves[0]
@@ -909,15 +919,12 @@ func _factory_spot(node: Dictionary, btype: String) -> Vector2:
 	return Vector2.INF
 
 
+## The lesson's factory has been laid down (anywhere: the circle is a
+## suggestion).
 func _has_factory_near(res: int) -> bool:
-	var node: Dictionary = _spots[res]
-	if node.is_empty():
-		return false
 	for b in sim.buildings:
 		if b.team == game.player_team and b.btype == FACTORY[res]:
-			var gap: float = sqrt(float(sim._dist2(b, node))) - b.radius - node.radius
-			if gap / sim.SCALE < NEAR_GAP:
-				return true
+			return true
 	return false
 
 
@@ -999,8 +1006,16 @@ func _stone_at_hq() -> bool:
 	return _delivered.get("stone_hq", 0) > 0
 
 
+## Stone dropped at the Quarry; or, if it was built far from the pile (so
+## the rocks still go to the HQ), a while after it's finished.
 func _stone_at_quarry() -> bool:
-	return _delivered.get("stone_quarry", 0) > 0
+	if _delivered.get("stone_quarry", 0) > 0:
+		return true
+	for b in sim.buildings:
+		if b.team == game.player_team and b.btype == "quarry" and b.progress >= sim.BUILDINGS.quarry.build:
+			_quarry_done_for += get_process_delta_time()
+			return _quarry_done_for > 15.0
+	return false
 
 
 func _quarry_near() -> bool:

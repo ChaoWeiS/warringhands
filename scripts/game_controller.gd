@@ -392,7 +392,7 @@ func _place_building_panel() -> void:
 	if not around.has_area() or not pane.intersects(around):
 		hud.place_building_panel(Rect2(), Rect2())
 		return
-	hud.place_building_panel(Rect2(around.position + leaf.rect.position, around.size), leaf.rect)
+	hud.place_building_panel(Rect2(around.position + leaf.rect.position, around.size), leaf.rect, str(selected_buildings))
 
 
 func _on_tapped(camera: Camera3D, point: Vector2) -> void:
