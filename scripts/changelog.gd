@@ -6,6 +6,19 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-21-campaign2",
+		"date": "21 Nov 2026",
+		"title": "A clearer campaign",
+		"items": [
+			"A spotlight: the screen dims except for what each step is about.",
+			"When a new step starts, the camera glides over to it if you've wandered off.",
+			"Moving, Hold and Queue lessons have marked circles to send your hands to (Queue: 1, then 2, then 3).",
+			"Finish a step to move on: Skip only appears if you've been stuck for a minute.",
+			"Menu asks before leaving the campaign, so you can't quit by accident.",
+			"Full screen on iPhone and iPad: if Safari can't do it, the button explains how to add the game to your home screen, which opens it full screen.",
+		],
+	},
+	{
 		"id": "2026-11-21-controls",
 		"date": "21 Nov 2026",
 		"title": "Easier controls",

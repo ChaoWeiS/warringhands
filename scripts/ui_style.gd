@@ -318,3 +318,94 @@ static func panel_box(color: Color = Color(1, 1, 1, 0.85)) -> StyleBoxFlat:
 	box.shadow_color = Color(0.3, 0.25, 0.4, 0.15)
 	box.shadow_size = 6
 	return box
+
+
+## A question over everything, with two answers ("Keep going" / "Leave"):
+## the first just closes it, the second runs `on_yes`. Returns the dialog.
+static func confirm(parent: Control, title: String, text: String, no_text: String, yes_text: String,
+		on_yes: Callable) -> Control:
+	var s: float = ui_scale()
+	var shade := ColorRect.new()
+	shade.color = Color(0.25, 0.2, 0.35, 0.35)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	shade.add_to_group("modal")
+	parent.add_child(shade)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", panel_box(Color(1, 1, 1, 0.96)))
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	shade.add_child(panel)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", roundi(18 * s))
+	panel.add_child(column)
+	var heading := label(title, roundi(44 * s))
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(heading)
+	var body := label(text, roundi(26 * s))
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size.x = 560 * s
+	column.add_child(body)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", roundi(16 * s))
+	column.add_child(row)
+	var no := button(Color("#e7e1f5"), Color("#d6cdef"), 30)
+	no.text = no_text
+	no.custom_minimum_size.x = 240 * s
+	no.pressed.connect(shade.queue_free)
+	row.add_child(no)
+	if yes_text != "":
+		var yes := button(Color("#fbe3ea"), Color("#f2c4d2"), 30)
+		yes.text = yes_text
+		yes.custom_minimum_size.x = 240 * s
+		yes.pressed.connect(func():
+			shade.queue_free()
+			on_yes.call())
+		row.add_child(yes)
+	return shade
+
+
+## On an iPhone or iPad (in a browser).
+static func is_apple_web() -> bool:
+	if not OS.has_feature("web"):
+		return false
+	if OS.has_feature("web_ios"):
+		return true
+	if not Engine.has_singleton("JavaScriptBridge"):
+		return false
+	# (iPads say they're Macs, but have touch.)
+	return bool(JavaScriptBridge.eval(
+			"/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)", true))
+
+
+## Playing from the home screen icon (already full screen).
+static func is_installed_app() -> bool:
+	if not OS.has_feature("web") or not Engine.has_singleton("JavaScriptBridge"):
+		return false
+	return bool(JavaScriptBridge.eval(
+			"window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches", true))
+
+
+## The full screen button. Apple's browsers mostly don't let a web game go
+## full screen (iPhone never does; iPad sometimes): there it tries Safari's
+## own way, and if that can't work, explains Add to Home Screen instead.
+static func toggle_fullscreen(parent: Control) -> void:
+	if is_apple_web():
+		var ok: bool = bool(JavaScriptBridge.eval("""(function () {
+			var d = document, c = d.querySelector('canvas') || d.documentElement;
+			if (d.fullscreenElement || d.webkitFullscreenElement) {
+				(d.exitFullscreen || d.webkitExitFullscreen).call(d); return true;
+			}
+			if (!(d.fullscreenEnabled || d.webkitFullscreenEnabled)) return false;
+			var go = c.requestFullscreen || c.webkitRequestFullscreen;
+			if (!go) return false;
+			try { var p = go.call(c); if (p && p.catch) p.catch(function () {}); return true; } catch (e) { return false; }
+		})()""", true))
+		if not ok:
+			confirm(parent, "Full screen", "Safari can't make a web game full screen. To play full screen: tap Share, then Add to Home Screen, and open the game from its new icon.", "Got it", "", func(): pass)
+		return
+	var full: bool = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)

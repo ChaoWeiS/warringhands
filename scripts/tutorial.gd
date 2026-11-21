@@ -59,6 +59,37 @@ var _pointed_units := {}     # kind -> unit id the arrow follows
 var _time := 0.0
 var _tools: Array = []       # the buttons this chapter shows
 var _cheer: Label
+var _shade: ColorRect         # darkens everything but what the step is about
+var _marks: Control           # arrows, rings and circles drawn over the shade
+var _dim := 0.0               # how dark the shade is now (fades in and out)
+var _holes: Array = []        # spotlight circles this frame: Vector3(x, y, radius)
+var _step_time := 0.0         # seconds on this step (Skip shows after a while)
+var _marked: Array = []       # the step's designated spots (Vector2, map units)
+var _visited := {}            # unit id -> how many marked spots it has reached, in order
+var _queue_used := false
+var _leave_dialog: Control = null
+## Action steps can only be skipped after this long (in case someone's stuck).
+const SKIP_AFTER := 60.0
+## How dark the spotlight shade gets.
+const DIM := 0.62
+const SPOTLIGHT := """
+shader_type canvas_item;
+uniform vec4 holes[8];
+uniform int count = 0;
+uniform float dim = 0.0;
+uniform vec2 area = vec2(1.0);
+void fragment() {
+	vec2 p = UV * area;
+	float a = dim;
+	for (int i = 0; i < 8; i++) {
+		if (i >= count) { break; }
+		float d = distance(p, holes[i].xy);
+		float r = holes[i].z;
+		a *= smoothstep(r * 0.8, r * 1.25, d);
+	}
+	COLOR = vec4(0.06, 0.03, 0.1, a);
+}
+"""
 
 
 func setup(game_controller: Node, simulation: Node, pane_layout: Control, hud_control: Control,
@@ -78,6 +109,20 @@ func setup(game_controller: Node, simulation: Node, pane_layout: Control, hud_co
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Layers, bottom to top: the spotlight shade, the arrows and circles, the card.
+	_shade = ColorRect.new()
+	_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var shader := Shader.new()
+	shader.code = SPOTLIGHT
+	_shade.material = ShaderMaterial.new()
+	_shade.material.shader = shader
+	add_child(_shade)
+	_marks = Control.new()
+	_marks.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_marks.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_marks.draw.connect(_draw_marks)
+	add_child(_marks)
 	_card = PanelContainer.new()
 	_card.add_theme_stylebox_override("panel", UI.panel_box(Color(1, 1, 1, 0.94)))
 	_card.anchor_left = 0.5
@@ -108,7 +153,7 @@ func _ready() -> void:
 	_next_chapter.pressed.connect(func(): next_chapter.emit(chapter + 1))
 	row.add_child(_next_chapter)
 	_quit = _card_button("Menu", 120)
-	_quit.pressed.connect(func(): finished.emit())
+	_quit.pressed.connect(_ask_leave)
 	row.add_child(_quit)
 	column.add_child(row)
 	# "Nice!" when a step is done.
@@ -198,6 +243,10 @@ func next_step() -> void:
 	_text.text = s.text
 	var end: bool = s.get("end", false)
 	_skip.text = "Keep playing" if end else ("Next" if s.get("next", false) else "Skip step")
+	_step_time = 0.0
+	_marked.clear()
+	_visited.clear()
+	_queue_used = false
 	_next_chapter.visible = end and chapter + 1 < Campaign.CHAPTERS.size()
 	if end:
 		_count.text = "Chapter %d  ·  %s" % [chapter + 1, title]
@@ -210,6 +259,8 @@ func next_step() -> void:
 		_kinds_at_start[kind] = _count_kind(kind)
 	if s.has("enter"):
 		call(s.enter)
+	_update_skip()
+	_bring_into_view.call_deferred()
 	# A little bounce so the new instruction gets noticed.
 	_card.pivot_offset = _card.size * 0.5
 	_card.scale = Vector2.ONE * 1.06
@@ -223,6 +274,8 @@ func _set_compact(on: bool) -> void:
 	_text.visible = not on
 	_picture_slot.visible = not on
 	_skip.visible = not on
+	if not on:
+		_update_skip()
 	_card.offset_left = 0
 	_card.offset_right = 0
 	_card.reset_size.call_deferred()
@@ -289,6 +342,8 @@ func _limit_tools() -> void:
 
 
 func _on_did(action: String) -> void:
+	if action == "queue":
+		_queue_used = true
 	if step < 0 or step >= steps.size() or free_play:
 		return
 	var s: Dictionary = steps[step]
@@ -308,8 +363,13 @@ func _on_delivered(team: int, res: int, _amount: int, building_id: int) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
-	queue_redraw()
+	_step_time += delta
+	_holes.clear()
+	_marks.queue_redraw()
 	_limit_tools()
+	_track_route()
+	if _skip.visible == false and not free_play and _needs_doing() and _step_time >= SKIP_AFTER:
+		_skip.visible = true
 	if step < 0 or step >= steps.size():
 		return
 	var s: Dictionary = steps[step]
@@ -493,6 +553,16 @@ func _resolve(what: String) -> Dictionary:
 				return {}
 			var p: Vector2 = _build_at[res]
 			return {"world": Vector3(p.x, sim.field.height_at(p) + 2.0, p.y), "ring": 9.0, "ghost": true}
+		"mark":
+			var i: int = int(parts[1])
+			if i >= _marked.size():
+				return {}
+			var p: Vector2 = _marked[i]
+			var done: bool = _furthest_visit() > i
+			if done:
+				return {}
+			return {"world": Vector3(p.x, sim.field.height_at(p) + 2.0, p.y), "ring": MARK_RADIUS, "ghost": true,
+					"label": str(i + 1) if _marked.size() > 1 else ""}
 		"building":
 			for b in sim.buildings:
 				if b.team == game.player_team and b.btype == parts[1]:
@@ -556,7 +626,30 @@ func _unit_to_point(kind: int) -> int:
 	return best
 
 
-func _draw() -> void:
+func _draw_marks() -> void:
+	_draw_targets()
+	_update_shade()
+
+
+## The spotlight: dark everywhere except round the things the arrows point
+## at (fades in and out).
+func _update_shade() -> void:
+	var want: float = DIM if not _holes.is_empty() and not free_play else 0.0
+	_dim = move_toward(_dim, want, get_process_delta_time() * 1.5)
+	var m: ShaderMaterial = _shade.material
+	var packed: Array = []
+	for i in mini(_holes.size(), 8):
+		var h: Vector3 = _holes[i]
+		packed.append(Vector4(h.x, h.y, h.z, 0))
+	while packed.size() < 8:
+		packed.append(Vector4.ZERO)
+	m.set_shader_parameter("holes", packed)
+	m.set_shader_parameter("count", mini(_holes.size(), 8))
+	m.set_shader_parameter("dim", _dim)
+	m.set_shader_parameter("area", _shade.size)
+
+
+func _draw_targets() -> void:
 	var s: float = UI.ui_scale()
 	var bounce: float = absf(sin(_time * 4.0)) * 14.0 * s
 	var me: Vector2 = get_global_rect().position
@@ -574,7 +667,8 @@ func _draw() -> void:
 				dir = Vector2(0, signf(dir.y))
 			var tip: Vector2 = c - dir * (absf(dir.x) * r.size.x + absf(dir.y) * r.size.y) * 0.5 - dir * 6 * s
 			_arrow(tip - dir * bounce, dir, s)
-			draw_rect(r.grow(6 * s), Color(ARROW_FILL, 0.9), false, 5 * s)
+			_marks.draw_rect(r.grow(6 * s), Color(ARROW_FILL, 0.9), false, 5 * s)
+			_holes.append(Vector3(c.x, c.y, maxf(r.size.x, r.size.y) * 0.75 + 18 * s))
 			continue
 		var shown := false
 		var leaves: Array = panes._leaves()
@@ -588,8 +682,17 @@ func _draw() -> void:
 				shown = true
 				var foot: Vector2 = cam.unproject_position(t.world - Vector3(0, t.world.y - sim.field.height_at(Vector2(t.world.x, t.world.z)), 0)) + rect.position
 				_ring(cam, t, rect, s)
+				_holes.append(Vector3(foot.x, foot.y, maxf(_px(cam, t.get("ring", 4.0)) * 1.6, 70.0 * s)))
+				if t.get("label", "") != "":
+					var font: Font = ThemeDB.fallback_font
+					var size_px := int(48 * s)
+					var w: float = font.get_string_size(t.label, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+					_marks.draw_string_outline(font, foot + Vector2(-w * 0.5, size_px * 0.35), t.label,
+							HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, int(10 * s), ARROW_INK)
+					_marks.draw_string(font, foot + Vector2(-w * 0.5, size_px * 0.35), t.label,
+							HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, ARROW_FILL)
 				if t.get("ghost", false):
-					draw_circle(foot, maxf(8.0, _px(cam, t.ring)), Color(1, 1, 1, 0.25))
+					_marks.draw_circle(foot, maxf(8.0, _px(cam, t.ring)), Color(1, 1, 1, 0.25))
 				_arrow(p - Vector2(0, bounce), Vector2.DOWN, s)
 		if not shown and not leaves.is_empty():
 			# Off screen: an arrow at the edge of the first pane, pointing its way.
@@ -617,8 +720,8 @@ func _ring(cam: Camera3D, t: Dictionary, rect: Rect2, s: float) -> void:
 	for k in 33:
 		var a: float = k * TAU / 32
 		pts.append(foot + Vector2(cos(a) * r, sin(a) * r * 0.62))
-	draw_polyline(pts, Color(ARROW_INK, 0.6), 7 * s, true)
-	draw_polyline(pts, ARROW_FILL, 4 * s, true)
+	_marks.draw_polyline(pts, Color(ARROW_INK, 0.6), 7 * s, true)
+	_marks.draw_polyline(pts, ARROW_FILL, 4 * s, true)
 
 
 ## Map units to screen pixels for this camera.
@@ -637,9 +740,9 @@ func _arrow(tip: Vector2, dir: Vector2, s: float) -> void:
 	var tail: Vector2 = tip - dir * length
 	var pts := PackedVector2Array([tip, base + n * half, base + n * shaft, tail + n * shaft,
 			tail - n * shaft, base - n * shaft, base - n * half])
-	draw_colored_polygon(pts, ARROW_FILL)
+	_marks.draw_colored_polygon(pts, ARROW_FILL)
 	pts.append(tip)
-	draw_polyline(pts, ARROW_INK, 4.5 * s, true)
+	_marks.draw_polyline(pts, ARROW_INK, 4.5 * s, true)
 
 
 # --- Chapter setups ----------------------------------------------------------------
@@ -883,6 +986,134 @@ func _battle_won() -> bool:
 
 func _tuck_card() -> void:
 	_set_compact(true)
+
+
+# --- Designated spots, skipping, leaving, the camera ----------------------------------
+
+## How close a hand must get to a marked spot (map units).
+const MARK_RADIUS := 6.0
+
+
+## One circle a little way out from your army, toward the middle of the
+## island: "send them there".
+func _mark_move_spot() -> void:
+	var c: Vector2 = _army_centre()
+	var out: Vector2 = (sim.field.get_center() - c).normalized()
+	_marked = [_open_near(c + out * 24.0)]
+
+
+## Three numbered circles for a queued route.
+func _mark_queue_spots() -> void:
+	var c: Vector2 = _army_centre()
+	var out: Vector2 = (sim.field.get_center() - c).normalized()
+	var side: Vector2 = out.orthogonal()
+	_marked = [_open_near(c + out * 20.0 + side * 20.0), _open_near(c + out * 40.0),
+			_open_near(c + out * 20.0 - side * 20.0)]
+
+
+func _army_centre() -> Vector2:
+	var sum := Vector2.ZERO
+	var n := 0
+	for u in sim.units:
+		if u.team == game.player_team:
+			sum += Vector2(u.x, u.z) / float(sim.SCALE)
+			n += 1
+	if n == 0:
+		var hq: Dictionary = sim.hq_of(game.player_team)
+		return Vector2(hq.x, hq.z) / float(sim.SCALE)
+	return sum / n
+
+
+## Keeps track of which marked spots each hand has reached, in order.
+func _track_route() -> void:
+	if _marked.is_empty():
+		return
+	for u in sim.units:
+		if u.team != game.player_team:
+			continue
+		var at: int = _visited.get(u.id, 0)
+		if at < _marked.size() and (Vector2(u.x, u.z) / float(sim.SCALE)).distance_to(_marked[at]) <= MARK_RADIUS:
+			_visited[u.id] = at + 1
+
+
+func _furthest_visit() -> int:
+	var best := 0
+	for id in _visited:
+		best = maxi(best, _visited[id])
+	return best
+
+
+## A hand got to the (first) circle.
+func _reached_mark() -> bool:
+	return _furthest_visit() >= 1
+
+
+## A hand went through all the circles, in order, using Queue.
+func _queue_route_done() -> bool:
+	return _queue_used and _furthest_visit() >= _marked.size()
+
+
+## This step needs the player to do something (not just read).
+func _needs_doing() -> bool:
+	if step < 0 or step >= steps.size():
+		return false
+	var s: Dictionary = steps[step]
+	return not s.get("next", false) and not s.get("end", false)
+
+
+## Skip only for reading (Next) at once; a step to do shows Skip only after
+## a while, in case someone is stuck.
+func _update_skip() -> void:
+	if free_play:
+		return
+	_skip.visible = not _needs_doing() or _step_time >= SKIP_AFTER
+
+
+## Leaving needs a second tap, so it can't happen by accident.
+func _ask_leave() -> void:
+	if is_instance_valid(_leave_dialog):
+		return
+	_leave_dialog = UI.confirm(self, "Leave the campaign?",
+			"You'll go back to the menu. Chapters you've finished stay done.",
+			"Keep going", "Leave", func(): finished.emit())
+
+
+## When a new step starts, the camera glides to show what it's about (in
+## case the player had wandered off).
+func _bring_into_view() -> void:
+	var points: Array = []
+	for t in _targets():
+		if t.has("world"):
+			points.append(Vector2(t.world.x, t.world.z))
+	var leaves: Array = panes._leaves()
+	if points.is_empty() or leaves.is_empty():
+		return
+	var leaf = leaves[0]
+	var cam: Camera3D = leaf.camera
+	var view: Rect2 = Rect2(Vector2.ZERO, leaf.rect.size).grow(-60.0 * UI.ui_scale())
+	view.position.y += leaf.rect.size.y * 0.22  # below the card
+	view.size.y -= leaf.rect.size.y * 0.22
+	var all_in := true
+	for p in points:
+		all_in = all_in and view.has_point(cam.unproject_position(Vector3(p.x, sim.field.height_at(p), p.y)))
+	if all_in:
+		return
+	var box := Rect2(points[0], Vector2.ZERO)
+	for p in points:
+		box = box.expand(p)
+	box = box.grow(25.0)
+	var px: Vector2 = leaf.rect.size
+	var upp: float = maxf(cam.units_per_pixel, maxf(box.size.x / px.x, box.size.y / (px.y * 0.62)))
+	upp = minf(upp, cam.max_units_per_pixel)
+	var c: Vector2 = box.get_center()
+	var goal := Vector3(c.x, 0, c.y - px.y * 0.14 * upp)
+	var from_target: Vector3 = cam.target
+	var from_upp: float = cam.units_per_pixel
+	var tw := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_method(func(k: float):
+		cam.target = from_target.lerp(goal, k)
+		cam.units_per_pixel = lerpf(from_upp, upp, k)
+		cam.refit(), 0.0, 1.0, 0.7)
 
 
 # --- Enemies ------------------------------------------------------------------------

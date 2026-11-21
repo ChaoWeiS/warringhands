@@ -357,7 +357,8 @@ func _build_fullscreen_button() -> void:
 	fullscreen_button.offset_right = -24
 	fullscreen_button.pressed.connect(toggle_fullscreen)
 	# Native apps are full screen already.
-	fullscreen_button.visible = not (OS.has_feature("android") or OS.has_feature("ios"))
+	# (Not in the phone apps, nor when opened from the home screen icon: already full.)
+	fullscreen_button.visible = not (OS.has_feature("android") or OS.has_feature("ios") or UI.is_installed_app())
 	add_child(fullscreen_button)
 	settings_button = UI.settings_button(self, 100, func(): preview_sfx.call())
 	if not fullscreen_button.visible:
@@ -426,8 +427,7 @@ func ask_surrender() -> void:
 
 
 func toggle_fullscreen() -> void:
-	var full: bool = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
-	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
+	UI.toggle_fullscreen(self)
 
 
 static func _small_hq_icon() -> Texture2D:

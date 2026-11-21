@@ -140,7 +140,7 @@ func _ready() -> void:
 		gear.offset_right = -24
 
 	# Full screen from the start (browsers only allow it from a tap).
-	if not (OS.has_feature("android") or OS.has_feature("ios")):
+	if not (OS.has_feature("android") or OS.has_feature("ios") or UI.is_installed_app()):
 		var full := UI.button(Color(1, 1, 1, 0.85), Color("#e7e1f5"))
 		full.icon = UI.fullscreen_icon()
 		full.custom_minimum_size = Vector2(72, 72) * UI.ui_scale()
@@ -149,9 +149,7 @@ func _ready() -> void:
 		full.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 		full.offset_top = 24
 		full.offset_right = -24
-		full.pressed.connect(func():
-			var on: bool = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
-			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if on else DisplayServer.WINDOW_MODE_FULLSCREEN))
+		full.pressed.connect(func(): UI.toggle_fullscreen(self))
 		add_child(full)
 
 	# Version, and an update button when the website has a newer one (the

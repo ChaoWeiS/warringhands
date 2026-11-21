@@ -113,6 +113,13 @@ func _run() -> void:
 	# --- 1. Getting around -----------------------------------------------------
 	await play(0)
 	check("chapter 1 opens by suggesting landscape", "landscape" in tut._text.text and tut._skip.text == "Next")
+	tut._quit.pressed.emit()
+	await frames(1)
+	var left := [false]
+	tut.finished.connect(func(): left[0] = true)
+	check("Menu asks first (no leaving by accident)", is_instance_valid(tut._leave_dialog) and not left[0])
+	tut._leave_dialog.queue_free()
+	await frames(1)
 	check("the lessons play on the small training island", sim.field.map_id == "training" and sim.field.island_radius < 200)
 	game._select(mine())
 	await frames(2)
@@ -127,7 +134,14 @@ func _run() -> void:
 	tut._skip.pressed.emit()
 	check("...then shows the HQ, with a picture and an arrow on it",
 			"HQ" in tut._text.text and tut._picture_slot.get_child_count() == 1 and pointing("hq"))
+	await frames(30)
+	check("...and a spotlight on it: the rest of the screen dims", tut._dim > 0.2 and tut._holes.size() >= 1)
 	tut._skip.pressed.emit()
+	await frames(1)
+	check("a step to do has no Skip at first (finish it to move on)", not tut._skip.visible)
+	tut._step_time = tut.SKIP_AFTER + 1.0
+	await frames(1)
+	check("...but Skip appears after a minute, in case someone's stuck", tut._skip.visible)
 	var cam: Camera3D = panes._leaves()[0].camera
 	cam.target += Vector3(20, 0, 0)
 	await frames(2)
@@ -141,8 +155,14 @@ func _run() -> void:
 			"Tap one" in tut._text.text and pointing("kind:0")
 			and Vector2(cam.target.x, cam.target.z).distance_to(Vector2(sim.hq_of(0).x, sim.hq_of(0).z) / 100.0) < 60)
 	game._select(mine())
-	for action in ["select", "lasso", "move", "select_kind"]:
+	for action in ["select", "lasso"]:
 		game.did.emit(action)
+	check("moving: a circle to send them to (not just anywhere)", tut._marked.size() == 1 and pointing("mark:0"))
+	game.did.emit("move")
+	check("...a move elsewhere doesn't count", "circle" in tut._text.text)
+	sim.command_move(mine(), Vector3(tut._marked[0].x, 0, tut._marked[0].y))
+	check("...getting there does", await until_past(tut.step, 600))
+	game.did.emit("select_kind")
 	game._unselect_all()
 	check("select, loop, move, double tap and unselect finish the chapter",
 			tut._is_end() and 0 in Campaign.done() and tut._next_chapter.visible)
@@ -183,7 +203,14 @@ func _run() -> void:
 	sim.command_gather(mine(0), tut._spots[0].id)
 	check("sending rocks to the stone pile moves on", await until_past(1, 100))
 	check("...and the stone reaching the HQ moves on", await until_past(2, 1500))
+	var cam3: Camera3D = panes._leaves()[0].camera
+	cam3.target += Vector3(150, 0, 90)  # the player wandered off
+	cam3.refit()
 	tut._skip.pressed.emit()
+	await create_timer(1.2).timeout
+	var spot0: Vector2 = tut._build_at[0]
+	check("a new step brings the camera back to what it's about",
+			panes._leaves()[0].rect.has_point(cam3.unproject_position(Vector3(spot0.x, 0, spot0.y))))
 	check("building a Quarry: arrows at the hammer and the spot beside the pile", pointing("ui:build:quarry") and pointing("spot:0"))
 	check("a Quarry beside the pile moves on", await build_beside(0))
 	check("stone dropped at the Quarry moves on", await until_past(5, 2500))
@@ -236,9 +263,20 @@ func _run() -> void:
 	await play(5)
 	game._select(mine())
 	await frames(2)
+	check("first, a circle to send your hands to", pointing("mark:0"))
+	sim.command_move(mine(), Vector3(tut._marked[0].x, 0, tut._marked[0].y))
+	check("...getting there moves on to Hold", await until_past(tut.step, 600))
 	check("Hold, with an arrow at its button", pointing("ui:hold"))
 	game.did.emit("hold")
+	check("Queue: three numbered circles to go through in order", tut._marked.size() == 3
+			and tut._resolve("mark:1").get("label", "") == "2")
+	var route: Array = tut._marked.duplicate()
+	var queue_step: int = tut.step
+	sim.command_move(mine(), Vector3(route[0].x, 0, route[0].y))
+	sim.command_move(mine(), Vector3(route[1].x, 0, route[1].y), true)
+	sim.command_move(mine(), Vector3(route[2].x, 0, route[2].y), true)
 	game.did.emit("queue")
+	check("walking the route, 1 then 2 then 3, moves on", await until_past(queue_step, 1500))
 	panes._split_leaf(panes._leaves()[0], true, 0.5)
 	await frames(2)
 	check("splitting moves on to merging", "merge" in tut._text.text)
