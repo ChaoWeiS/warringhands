@@ -19,6 +19,7 @@ const ENTRIES := [
 			"Campaign chapter 6 lays out each lesson step by step: select your hands, send them far, press Hold on the way. For Queue, the circles appear (well apart) while you hold the button, and the spotlight steps aside.",
 			"Arrows at buttons you keep pressed (Group, Queue) say Hold.",
 			"Campaign chapter 4: no dimming while you train hands, so the building's menu is clear to use.",
+			"Campaign chapter 5 ends by building a second HQ: the HQ option lights up in the hammer's menu, then an arrow shows a spot by far-away resources (there's a new stone pile in the middle of Training Island).",
 		],
 	},
 	{

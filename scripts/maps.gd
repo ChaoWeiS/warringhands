@@ -82,7 +82,7 @@ const TRAINING := {
 	"lakes": [],
 	"forests": [[Vector2(-55, 105), 13.0, 41]],
 	"plateaus": [],
-	"stones": [Vector2(-110, -47)],
+	"stones": [Vector2(-110, -47), Vector2(-14, 102)],  # (the second: far from both bases, for a new HQ)
 	"woods": [Vector2(-112, 48)],
 	"metals": [Vector2(-155, 22)],
 	"hq": Vector2i(-115, 0),

@@ -68,6 +68,8 @@ var _marked: Array = []       # the step's designated spots (Vector2, map units)
 var _visited := {}            # unit id -> how many marked spots it has reached, in order
 var _queue_used := false
 var _quarry_done_for := 0.0  # seconds the Quarry has been finished
+var _far_hq := Vector2.INF     # a spot for a second HQ, by far-away resources
+var _was_placing_hq := false
 var _leave_dialog: Control = null
 ## Action steps can only be skipped after this long (in case someone's stuck).
 const SKIP_AFTER := 60.0
@@ -367,6 +369,11 @@ func _on_delivered(team: int, res: int, _amount: int, building_id: int) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	# Picking HQ to place: the camera goes to show where it could go.
+	var placing_hq: bool = hud.armed_build() == "hq"
+	if placing_hq and not _was_placing_hq and _far_hq != Vector2.INF and not free_play:
+		_bring_into_view()
+	_was_placing_hq = placing_hq
 	# Some steps say what to do next while Group is held.
 	if step >= 0 and step < steps.size() and steps[step].has("holding_text") and not free_play:
 		var want: String = steps[step].holding_text if _holding() else steps[step].text
@@ -595,6 +602,11 @@ func _resolve(what: String) -> Dictionary:
 					reach = maxf(reach, centre.distance_to(Vector2(u.x, u.z) / float(sim.SCALE)))
 			return {"world": Vector3(centre.x, sim.field.height_at(centre) + 2.0, centre.y),
 					"ring": reach + 5.0, "loop": true, "no_arrow": true}
+		"hqspot":
+			# Only once HQ is picked (placing it): the far-away spot.
+			if hud.armed_build() != "hq" or _far_hq == Vector2.INF:
+				return {}
+			return {"world": Vector3(_far_hq.x, sim.field.height_at(_far_hq) + 2.0, _far_hq.y), "ring": 12.0, "ghost": true}
 		"mark":
 			var i: int = int(parts[1])
 			if i >= _marked.size():
@@ -1113,6 +1125,43 @@ func _mark_far_spot() -> void:
 	var c: Vector2 = _army_centre()
 	var out: Vector2 = (sim.field.get_center() - c).normalized()
 	_marked = [_open_near(c + out * 95.0)]
+
+
+## Where a second HQ could go: by resources far from your base (and not
+## next to the enemy's), to show an HQ needs no building nearby.
+func _plan_far_hq() -> void:
+	var mine: Dictionary = sim.hq_of(game.player_team)
+	var theirs: Dictionary = sim.hq_of(1 - game.player_team)
+	if mine.is_empty():
+		return
+	var home := Vector2(mine.x, mine.z) / float(sim.SCALE)
+	var enemy := Vector2.INF if theirs.is_empty() else Vector2(theirs.x, theirs.z) / float(sim.SCALE)
+	var best := -1.0
+	for n in sim.nodes:
+		if n.tree:
+			continue
+		var p := Vector2(n.x, n.z) / float(sim.SCALE)
+		var far: float = p.distance_to(home)
+		if far < 70.0 or (enemy != Vector2.INF and p.distance_to(enemy) < 60.0):
+			continue
+		var at: Vector2 = Vector2.INF
+		for k in 16:
+			var q: Vector2 = p + Vector2.from_angle(k * TAU / 16.0 + (home - p).angle()) * (n.radius / float(sim.SCALE) + 20.0)
+			if sim.can_place("hq", q, game.player_team):
+				at = q
+				break
+		if at != Vector2.INF and far > best:
+			best = far
+			_far_hq = at
+
+
+## A second HQ has been laid down (anywhere).
+func _second_hq() -> bool:
+	var n := 0
+	for b in sim.buildings:
+		if b.team == game.player_team and b.btype == "hq":
+			n += 1
+	return n >= 2
 
 
 ## Most of your hands are selected.

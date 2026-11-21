@@ -275,8 +275,23 @@ func _run() -> void:
 	sim.command_repair(0, mill.id)
 	game.did.emit("repair")
 	check("repairing it: wait until it's whole", await until_past(2, 3000) and mill.hp == mill.max_hp)
-	tut._skip.pressed.emit()
-	check("chapter 5 done", tut._is_end())
+	var hud5: Control = game.hud
+	check("the extra-HQ step: the hammer pointed at, a far spot picked out", pointing("ui:build:hq")
+			and tut._resolve("ui:build:hq").ui == hud5._build_toggle and tut._far_hq != Vector2.INF)
+	hud5._build_toggle.button_pressed = true
+	await frames(30)
+	check("...menu open: the HQ option is the one lit up", tut._resolve("ui:build:hq").ui == hud5._build_options.hq
+			and tut._holes.size() >= 1)
+	hud5._build_options.hq.pressed.emit()
+	await create_timer(1.2).timeout
+	var far_hq: Vector2 = tut._far_hq
+	var home5 := Vector2(sim.hq_of(0).x, sim.hq_of(0).z) / 100.0
+	check("...HQ picked: an arrow at a spot by far-away resources, and the camera goes there",
+			pointing("hqspot") and far_hq.distance_to(home5) > 70.0
+			and panes._leaves()[0].rect.has_point(panes._leaves()[0].camera.unproject_position(Vector3(far_hq.x, 0, far_hq.y))))
+	hud5.clear_build()
+	sim.command_build(0, "hq", far_hq)
+	check("building the second HQ finishes chapter 5", await until_past(3, 100) and tut._is_end())
 
 	# --- 6. Battle tricks -----------------------------------------------------------
 	await play(5)
