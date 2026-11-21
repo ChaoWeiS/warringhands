@@ -155,8 +155,18 @@ func _run() -> void:
 			"Tap one" in tut._text.text and pointing("kind:0")
 			and Vector2(cam.target.x, cam.target.z).distance_to(Vector2(sim.hq_of(0).x, sim.hq_of(0).z) / 100.0) < 60)
 	game._select(mine())
-	for action in ["select", "lasso"]:
-		game.did.emit(action)
+	game.did.emit("select")
+	await frames(30)
+	check("the Group step lights up the Group button AND your hands (with a dashed loop to copy)",
+			pointing("ui:group") and pointing("army") and tut._holes.size() >= 2)
+	panes.grouping = true
+	await frames(1)
+	check("...holding Group, the card says what to do next", "Keep holding Group" in tut._text.text)
+	panes.grouping = false
+	await frames(1)
+	check("Back to Menu sits at the bottom left of the card", tut._quit.text == "Back to Menu"
+			and tut._quit.get_index() == 0 and tut._quit.get_global_rect().position.x < tut._skip.get_global_rect().position.x)
+	game.did.emit("lasso")
 	check("moving: a circle to send them to (not just anywhere)", tut._marked.size() == 1 and pointing("mark:0"))
 	game.did.emit("move")
 	check("...a move elsewhere doesn't count", "circle" in tut._text.text)

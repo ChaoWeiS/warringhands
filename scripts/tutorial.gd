@@ -142,9 +142,15 @@ func _ready() -> void:
 	_text.custom_minimum_size = Vector2(660, 0)
 	_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(_text)
+	# Back to Menu on the left (out of the way), Skip / Next on the right.
 	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_END
 	row.add_theme_constant_override("separation", 12)
+	_quit = _card_button("Back to Menu", 200)
+	_quit.pressed.connect(_ask_leave)
+	row.add_child(_quit)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(gap)
 	_skip = _card_button("Skip step", 150)
 	_skip.pressed.connect(_on_skip)
 	row.add_child(_skip)
@@ -152,9 +158,6 @@ func _ready() -> void:
 	_next_chapter.visible = false
 	_next_chapter.pressed.connect(func(): next_chapter.emit(chapter + 1))
 	row.add_child(_next_chapter)
-	_quit = _card_button("Menu", 120)
-	_quit.pressed.connect(_ask_leave)
-	row.add_child(_quit)
 	column.add_child(row)
 	# "Nice!" when a step is done.
 	_cheer = UI.label("", 64)
@@ -363,6 +366,11 @@ func _on_delivered(team: int, res: int, _amount: int, building_id: int) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	# Some steps say what to do next while Group is held.
+	if step >= 0 and step < steps.size() and steps[step].has("holding_text") and not free_play:
+		var want: String = steps[step].holding_text if panes.grouping else steps[step].text
+		if _text.text != want:
+			_text.text = want
 	_step_time += delta
 	_holes.clear()
 	_marks.queue_redraw()
@@ -553,6 +561,15 @@ func _resolve(what: String) -> Dictionary:
 				return {}
 			var p: Vector2 = _build_at[res]
 			return {"world": Vector3(p.x, sim.field.height_at(p) + 2.0, p.y), "ring": 9.0, "ghost": true}
+		"army":
+			# All your hands, with a dashed loop round them: "draw it like this".
+			var centre: Vector2 = _army_centre()
+			var reach := 0.0
+			for u in sim.units:
+				if u.team == game.player_team:
+					reach = maxf(reach, centre.distance_to(Vector2(u.x, u.z) / float(sim.SCALE)))
+			return {"world": Vector3(centre.x, sim.field.height_at(centre) + 2.0, centre.y),
+					"ring": reach + 5.0, "loop": true, "no_arrow": true}
 		"mark":
 			var i: int = int(parts[1])
 			if i >= _marked.size():
@@ -681,6 +698,10 @@ func _draw_targets() -> void:
 			if inner.has_point(p):
 				shown = true
 				var foot: Vector2 = cam.unproject_position(t.world - Vector3(0, t.world.y - sim.field.height_at(Vector2(t.world.x, t.world.z)), 0)) + rect.position
+				if t.get("loop", false):
+					_dashed_loop(foot, _px(cam, t.ring), s)
+					_holes.append(Vector3(foot.x, foot.y, maxf(_px(cam, t.ring) * 1.35, 90.0 * s)))
+					continue
 				_ring(cam, t, rect, s)
 				_holes.append(Vector3(foot.x, foot.y, maxf(_px(cam, t.get("ring", 4.0)) * 1.6, 70.0 * s)))
 				if t.get("label", "") != "":
@@ -694,7 +715,7 @@ func _draw_targets() -> void:
 				if t.get("ghost", false):
 					_marks.draw_circle(foot, maxf(8.0, _px(cam, t.ring)), Color(1, 1, 1, 0.25))
 				_arrow(p - Vector2(0, bounce), Vector2.DOWN, s)
-		if not shown and not leaves.is_empty():
+		if not shown and not leaves.is_empty() and not t.get("no_arrow", false):
 			# Off screen: an arrow at the edge of the first pane, pointing its way.
 			var leaf = leaves[0]
 			var rect: Rect2 = leaf.rect
@@ -709,6 +730,22 @@ func _draw_targets() -> void:
 			if absf(dir.y) > 0.001:
 				k = minf(k, (inner.size.y * 0.5) / absf(dir.y))
 			_arrow(c + dir * (k - bounce), dir, s)
+
+
+## A dashed loop that slowly goes round, showing where to draw one.
+func _dashed_loop(centre: Vector2, radius: float, s: float) -> void:
+	var r: float = maxf(radius, 30.0 * s)
+	var dashes := 28
+	var turn: float = _time * 0.6
+	for k in dashes:
+		var a0: float = turn + k * TAU / dashes
+		var a1: float = a0 + TAU / dashes * 0.55
+		var pts := PackedVector2Array()
+		for j in 5:
+			var a: float = lerpf(a0, a1, j / 4.0)
+			pts.append(centre + Vector2(cos(a) * r, sin(a) * r * 0.62))
+		_marks.draw_polyline(pts, Color(ARROW_INK, 0.7), 8 * s, true)
+		_marks.draw_polyline(pts, ARROW_FILL, 5 * s, true)
 
 
 func _ring(cam: Camera3D, t: Dictionary, rect: Rect2, s: float) -> void:
