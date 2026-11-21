@@ -16,6 +16,8 @@ const ENTRIES := [
 			"Campaign: a factory counts wherever you build it (the circle is just the best spot).",
 			"Campaign: in the raid (chapter 4) the map isn't dimmed, and an arrow shows the Group button for picking a few fighters.",
 			"Campaign: arrows point at buildings from the side, so their health bars stay in view.",
+			"Campaign chapter 6 lays out each lesson step by step: select your hands, send them far, press Hold on the way. For Queue, the circles appear (well apart) while you hold the button, and the spotlight steps aside.",
+			"Arrows at buttons you keep pressed (Group, Queue) say Hold.",
 		],
 	},
 	{

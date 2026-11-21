@@ -252,7 +252,7 @@ func _run() -> void:
 	check("a new paper and scissors move on", await until_past(2, 300))
 	tut._skip.pressed.emit()
 	check("a raid comes (marching, not waiting)", tut._enemies.size() == 3 and not sim.get_unit(tut._enemies[0]).hold)
-	await frames(40)
+	await create_timer(1.0).timeout  # the shade fades out
 	check("...no spotlight here (you need to see your hands to loop them), and an arrow at the Group button",
 			tut._dim < 0.05 and pointing("ui:group"))
 	var raid: Dictionary = sim.get_unit(tut._enemies[0])
@@ -278,22 +278,46 @@ func _run() -> void:
 
 	# --- 6. Battle tricks -----------------------------------------------------------
 	await play(5)
+	await frames(30)
+	check("chapter 6 lays out all three moves, starting with selecting: Group (labelled Hold) and your hands lit",
+			"1. Select" in tut._text.text and "3. While" in tut._text.text and pointing("ui:group") and pointing("army")
+			and tut._resolve("ui:group").get("label", "") == "Hold")
 	game._select(mine())
 	await frames(2)
-	check("first, a circle to send your hands to", pointing("mark:0"))
-	sim.command_move(mine(), Vector3(tut._marked[0].x, 0, tut._marked[0].y))
-	check("...getting there moves on to Hold", await until_past(tut.step, 600))
-	check("Hold, with an arrow at its button", pointing("ui:hold"))
+	check("selecting your hands moves on to the far circle", pointing("mark:0") and "Now: 2" in tut._text.text)
+	var far: Vector2 = tut._marked[0]
+	check("...which is a long walk away", far.distance_to(tut._army_centre()) > 60.0)
+	sim.command_move(mine(), Vector3(far.x, 0, far.y))
+	game.did.emit("move")
+	check("sending them moves on to Hold (while they walk)", "Now: 3" in tut._text.text and pointing("ui:hold"))
 	game.did.emit("hold")
-	check("Queue: three numbered circles to go through in order", tut._marked.size() == 3
-			and tut._resolve("mark:1").get("label", "") == "2")
+	sim.command_hold(mine())
+	sim.step_ticks(3)
+	game._select([])
+	await frames(2)
+	check("Queue: hands first (nothing selected: Group and your hands are pointed at, not Queue)",
+			pointing("army") and not pointing("ui:queue") and not pointing("mark:0"))
+	game._select(mine())
+	await frames(2)
+	check("...hands selected: the Queue button, labelled Hold, and no circles yet",
+			pointing("ui:queue") and tut._resolve("ui:queue").get("label", "") == "Hold" and not pointing("mark:0"))
+	game.bar._set_queue(true)
+	await create_timer(1.0).timeout
+	check("holding Queue: the three circles appear, the spotlight goes, the card says what to do",
+			pointing("mark:0") and pointing("mark:2") and not pointing("ui:queue") and tut._dim < 0.05
+			and "Keep holding Queue" in tut._text.text)
 	var route: Array = tut._marked.duplicate()
+	check("...and they're well apart", route[0].distance_to(route[2]) > 60.0)
+	game.bar._set_queue(false)
+	await create_timer(1.0).timeout
+	check("letting go too soon: the circles hide and the spotlight is back on the button",
+			pointing("ui:queue") and not pointing("mark:0") and tut._dim > 0.2)
 	var queue_step: int = tut.step
 	sim.command_move(mine(), Vector3(route[0].x, 0, route[0].y))
 	sim.command_move(mine(), Vector3(route[1].x, 0, route[1].y), true)
 	sim.command_move(mine(), Vector3(route[2].x, 0, route[2].y), true)
 	game.did.emit("queue")
-	check("walking the route, 1 then 2 then 3, moves on", await until_past(queue_step, 1500))
+	check("walking the route, 1 then 2 then 3, moves on", await until_past(queue_step, 3000))
 	panes._split_leaf(panes._leaves()[0], true, 0.5)
 	await frames(2)
 	check("splitting moves on to merging", "merge" in tut._text.text)

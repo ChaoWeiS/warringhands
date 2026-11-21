@@ -369,7 +369,7 @@ func _process(delta: float) -> void:
 	_time += delta
 	# Some steps say what to do next while Group is held.
 	if step >= 0 and step < steps.size() and steps[step].has("holding_text") and not free_play:
-		var want: String = steps[step].holding_text if panes.grouping else steps[step].text
+		var want: String = steps[step].holding_text if _holding() else steps[step].text
 		if _text.text != want:
 			_text.text = want
 	_step_time += delta
@@ -535,6 +535,21 @@ func _targets() -> Array:
 ##   "ui:attack", "ui:hold", "ui:queue", "ui:train", "ui:resources", "ui:minimap".
 func _resolve(what: String) -> Dictionary:
 	var parts: PackedStringArray = what.split(":")
+	if step >= 0 and step < steps.size() and steps[step].get("poll", "") == "_queue_route_done":
+		# First get hands selected; then the Queue button; the circles only
+		# while it's held (or once the route has started).
+		var picked: bool = not game.selection.is_empty()
+		var started: bool = _furthest_visit() > 0
+		match what:
+			"ui:group", "army":
+				if picked or started:
+					return {}
+			"ui:queue":
+				if not picked or game.bar.queue_held or started:
+					return {}
+			_:
+				if what.begins_with("mark:") and not (game.bar.queue_held or started):
+					return {}
 	match parts[0]:
 		"hq":
 			var hq: Dictionary = sim.hq_of(game.player_team)
@@ -603,6 +618,7 @@ func _resolve(what: String) -> Dictionary:
 
 func _ui_target(parts: PackedStringArray) -> Dictionary:
 	var c: Control = null
+	var hold_label := false  # a button to keep pressed, not tap
 	match parts[1]:
 		"build":
 			c = hud._build_toggle
@@ -616,18 +632,20 @@ func _ui_target(parts: PackedStringArray) -> Dictionary:
 			c = game.bar.actions.get_child(1)
 		"queue":
 			c = game.bar.queue_button
+			hold_label = true
 		"train":
 			c = hud._train_button
 		"resources":
 			c = hud.resource_bar
 		"group":
 			c = hud.group_button
+			hold_label = true
 		"minimap":
 			var leaves: Array = panes._leaves()
 			c = game.minimap.map_of(leaves[0]) if not leaves.is_empty() else null
 	if c == null or not c.is_visible_in_tree():
 		return {}
-	return {"ui": c}
+	return {"ui": c, "label": "Hold" if hold_label else ""}
 
 
 func _ground(e: Dictionary, lift: float) -> Vector3:
@@ -662,7 +680,13 @@ func _draw_marks() -> void:
 ## The spotlight: dark everywhere except round the things the arrows point
 ## at (fades in and out).
 func _update_shade() -> void:
-	var lit: bool = step >= 0 and step < steps.size() and steps[step].get("spotlight", true)
+	var lit := true
+	if step >= 0 and step < steps.size():
+		var mode: Variant = steps[step].get("spotlight", true)
+		if mode is bool:
+			lit = mode
+		elif _holding():
+			lit = false  # "unless_holding": while a button is held the map is all theirs
 	var want: float = DIM if not _holes.is_empty() and not free_play and lit else 0.0
 	_dim = move_toward(_dim, want, get_process_delta_time() * 1.5)
 	var m: ShaderMaterial = _shade.material
@@ -696,6 +720,14 @@ func _draw_targets() -> void:
 				dir = Vector2(0, signf(dir.y))
 			var tip: Vector2 = c - dir * (absf(dir.x) * r.size.x + absf(dir.y) * r.size.y) * 0.5 - dir * 6 * s
 			_arrow(tip - dir * bounce, dir, s)
+			if t.get("label", "") != "":
+				# "Hold" by the arrow's tail: keep this one pressed.
+				var font: Font = ThemeDB.fallback_font
+				var size_px := int(30 * s)
+				var w: float = font.get_string_size(t.label, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+				var at: Vector2 = tip - dir * (bounce + 150.0 * s) + Vector2(-w * 0.5, size_px * 0.35)
+				_marks.draw_string_outline(font, at, t.label, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, int(10 * s), ARROW_INK)
+				_marks.draw_string(font, at, t.label, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, ARROW_FILL)
 			_marks.draw_rect(r.grow(6 * s), Color(ARROW_FILL, 0.9), false, 5 * s)
 			_holes.append(Vector3(c.x, c.y, maxf(r.size.x, r.size.y) * 0.75 + 18 * s))
 			continue
@@ -1067,13 +1099,34 @@ func _mark_move_spot() -> void:
 	_marked = [_open_near(c + out * 24.0)]
 
 
-## Three numbered circles for a queued route.
+## Three numbered circles for a queued route, well apart.
 func _mark_queue_spots() -> void:
 	var c: Vector2 = _army_centre()
 	var out: Vector2 = (sim.field.get_center() - c).normalized()
 	var side: Vector2 = out.orthogonal()
-	_marked = [_open_near(c + out * 20.0 + side * 20.0), _open_near(c + out * 40.0),
-			_open_near(c + out * 20.0 - side * 20.0)]
+	_marked = [_open_near(c + out * 30.0 + side * 45.0), _open_near(c + out * 75.0),
+			_open_near(c + out * 30.0 - side * 45.0)]
+
+
+## One circle a long walk away (time to press Hold on the way).
+func _mark_far_spot() -> void:
+	var c: Vector2 = _army_centre()
+	var out: Vector2 = (sim.field.get_center() - c).normalized()
+	_marked = [_open_near(c + out * 95.0)]
+
+
+## Most of your hands are selected.
+func _hands_selected() -> bool:
+	var mine := 0
+	for u in sim.units:
+		if u.team == game.player_team:
+			mine += 1
+	return mine > 0 and game.selection.size() * 2 >= mine
+
+
+## Group or Queue is being held down.
+func _holding() -> bool:
+	return panes.grouping or game.bar.queue_held
 
 
 func _army_centre() -> Vector2:
