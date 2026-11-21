@@ -62,6 +62,9 @@ func _fetch_pack() -> void:
 	add_child(http)
 	http.download_file = saved
 	http.download_chunk_size = 1 << 20  # (default 64 KB a frame: slow for a few MB)
+	# The browser already undoes the server's compression (GitHub Pages
+	# gzips it); asking Godot to as well fails ("decompress failed").
+	http.accept_gzip = false
 	http.request_completed.connect(func(result: int, code: int, _h, _b):
 		http.queue_free()
 		_fetching = false
