@@ -74,14 +74,14 @@ const SKIP_AFTER := 60.0
 const DIM := 0.62
 const SPOTLIGHT := """
 shader_type canvas_item;
-uniform vec4 holes[8];
+uniform vec4 holes[24];
 uniform int count = 0;
 uniform float dim = 0.0;
 uniform vec2 area = vec2(1.0);
 void fragment() {
 	vec2 p = UV * area;
 	float a = dim;
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 24; i++) {
 		if (i >= count) { break; }
 		float d = distance(p, holes[i].xy);
 		float r = holes[i].z;
@@ -548,8 +548,17 @@ func _resolve(what: String) -> Dictionary:
 					n += 1
 			return {} if n == 0 else {"world": middle / n + Vector3(0, 6, 0), "ring": 10.0}
 		"kind":
-			var id: int = _unit_to_point(int(parts[1]))
-			return {} if id < 0 else {"world": _ground(sim.get_unit(id), 5.5), "ring": 4.0}
+			# The arrow on one of them; the spotlight on all of that kind
+			# (a double tap picks them all).
+			var kind: int = int(parts[1])
+			var id: int = _unit_to_point(kind)
+			if id < 0:
+				return {}
+			var lit: Array = []
+			for u in sim.units:
+				if u.team == game.player_team and u.kind == kind:
+					lit.append(Vector2(u.x, u.z) / float(sim.SCALE))
+			return {"world": _ground(sim.get_unit(id), 5.5), "ring": 4.0, "lit": lit}
 		"node":
 			var node: Dictionary = _spots[int(parts[1])]
 			if node.is_empty() or sim.get_node_by_id(node.id).is_empty():
@@ -655,13 +664,13 @@ func _update_shade() -> void:
 	_dim = move_toward(_dim, want, get_process_delta_time() * 1.5)
 	var m: ShaderMaterial = _shade.material
 	var packed: Array = []
-	for i in mini(_holes.size(), 8):
+	for i in mini(_holes.size(), 24):
 		var h: Vector3 = _holes[i]
 		packed.append(Vector4(h.x, h.y, h.z, 0))
-	while packed.size() < 8:
+	while packed.size() < 24:
 		packed.append(Vector4.ZERO)
 	m.set_shader_parameter("holes", packed)
-	m.set_shader_parameter("count", mini(_holes.size(), 8))
+	m.set_shader_parameter("count", mini(_holes.size(), 24))
 	m.set_shader_parameter("dim", _dim)
 	m.set_shader_parameter("area", _shade.size)
 
@@ -704,6 +713,10 @@ func _draw_targets() -> void:
 					continue
 				_ring(cam, t, rect, s)
 				_holes.append(Vector3(foot.x, foot.y, maxf(_px(cam, t.get("ring", 4.0)) * 1.6, 70.0 * s)))
+				for q in t.get("lit", []):
+					var at: Vector2 = cam.unproject_position(Vector3(q.x, sim.field.height_at(q), q.y)) + rect.position
+					if at.distance_to(foot) > 4.0:
+						_holes.append(Vector3(at.x, at.y, maxf(_px(cam, 4.0) * 1.8, 48.0 * s)))
 				if t.get("label", "") != "":
 					var font: Font = ThemeDB.fallback_font
 					var size_px := int(48 * s)

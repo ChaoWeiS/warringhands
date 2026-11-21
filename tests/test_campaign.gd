@@ -181,6 +181,9 @@ func _run() -> void:
 	await play(1)
 	check("chapter 2 shows the rock-paper-scissors circle", tut._picture_slot.get_child_count() == 1)
 	tut._skip.pressed.emit()
+	await frames(30)
+	check("the spotlight shines on all your rocks (a double tap picks them all), not just one",
+			tut._holes.size() >= mine(0).size() + 1)
 	check("enemy scissors arrive (three, waiting) and the arrows point at your rocks and them",
 			tut._enemies.size() == 3 and tut._enemies.all(func(id): return sim.get_unit(id).kind == 2)
 			and pointing("kind:0") and pointing("enemies"))
@@ -197,7 +200,8 @@ func _run() -> void:
 		check("beating them with the right hand moves on (step %d)" % at, await until_past(at, 1500))
 	game._select(mine())
 	await frames(2)
-	check("the mixed group points at the sword button", tut._enemies.size() == 6 and pointing("ui:attack"))
+	check("the mixed group points at the sword button, and the Group button to select them all",
+			tut._enemies.size() == 6 and pointing("ui:attack") and pointing("ui:group"))
 	var e: Dictionary = sim.get_unit(tut._enemies[0])
 	sim.command_attack_move(mine(), Vector3(e.x / 100.0, 0, e.z / 100.0))
 	check("...and beating it finishes the chapter", await until_past(tut.step, 3000) and tut._is_end())

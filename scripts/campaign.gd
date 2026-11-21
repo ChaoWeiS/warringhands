@@ -63,7 +63,7 @@ const CHAPTERS := [
 			{"text": "Enemy rocks! Paper wraps rock: send your papers.",
 				"enter": "_wave_rocks", "poll": "_enemies_beaten", "point": ["kind:1", "enemies"]},
 			{"text": "A mixed group. Select all your hands (hold Group and loop them), tap the sword button, then tap near the enemies: your hands fight everything they meet on the way.",
-				"enter": "_wave_mixed", "poll": "_enemies_beaten", "point": ["ui:attack", "enemies", "army"]},
+				"enter": "_wave_mixed", "poll": "_enemies_beaten", "point": ["ui:group", "ui:attack", "enemies", "army"]},
 			{"text": "Chapter complete!\nSend the right hand to each fight and you win with fewer losses.", "end": true},
 		],
 	},
