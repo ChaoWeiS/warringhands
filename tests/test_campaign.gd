@@ -244,6 +244,8 @@ func _run() -> void:
 	check("chapter 4 starts with a finished Quarry, Paper Mill and Forge, everyone gathering",
 			factories.has("quarry") and factories.has("mill") and factories.has("forge")
 			and sim.units.filter(func(u): return u.team == 0 and u.job == "gather").size() == 12)
+	await create_timer(1.0).timeout
+	check("training: no spotlight (the building's menu stays clear to tap)", tut._dim < 0.05 and pointing("building:quarry"))
 	sim.command_train(0, factories.quarry.id)
 	game.did.emit("train")
 	check("training a rock: wait for it to walk out", await until_past(1, 300))
