@@ -21,6 +21,7 @@ const TEXT_COLOR := Color("#4a4560")
 
 var _kind_buttons: Array = []
 var _attack: Button
+var _attack_on: Label
 ## Held down: orders are added to the units' plans instead of replacing them.
 var queue_held := false
 var queue_button: Button
@@ -41,10 +42,23 @@ func _ready() -> void:
 		_kind_buttons.append(button)
 	actions.add_theme_constant_override("separation", roundi(12 * UI.ui_scale()))
 	_attack = UI.icon_button("attack")
-	_attack.tooltip_text = "Attack"
+	_attack.tooltip_text = "Attack mode (on: moves fight on the way)"
 	_attack.toggle_mode = true
-	_attack.toggled.connect(func(on): attack_toggled.emit(on))
+	_attack.toggled.connect(func(on):
+		set_attack_armed(on)
+		attack_toggled.emit(on))
 	actions.add_child(_attack)
+	# "ON" badge on the sword while attack mode is on.
+	_attack_on = UI.label("ON", 20)
+	_attack_on.add_theme_color_override("font_color", Color.WHITE)
+	_attack_on.add_theme_color_override("font_outline_color", Color("#b8243a"))
+	_attack_on.add_theme_constant_override("outline_size", 10)
+	_attack_on.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_attack_on.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_attack_on.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_attack_on.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_attack_on.visible = false
+	_attack.add_child(_attack_on)
 	var hold := UI.icon_button("hold")
 	hold.tooltip_text = "Hold"
 	hold.pressed.connect(func(): hold_pressed.emit())
@@ -73,8 +87,6 @@ func show_counts(counts: Array) -> void:
 	actions.visible = visible
 	if not visible and queue_held:
 		_set_queue(false)
-	if not visible:
-		set_attack_armed(false)
 
 
 func _set_queue(on: bool) -> void:
@@ -88,11 +100,15 @@ func is_attack_armed() -> bool:
 	return _attack.button_pressed
 
 
-## Turns attack mode on or off (without re-announcing it).
+## Turns attack mode on or off (without re-announcing it). It's a switch:
+## it stays on, for every move, until tapped again. On, the button is
+## bigger, glows red and says ON.
 func set_attack_armed(on: bool) -> void:
 	_attack.set_pressed_no_signal(on)
 	_attack.pivot_offset = _attack.size * 0.5
 	_attack.scale = Vector2.ONE * (1.12 if on else 1.0)
+	_attack.modulate = Color(1.15, 0.9, 0.9) if on else Color.WHITE
+	_attack_on.visible = on
 
 
 ## First idle frame of the unit type, cropped to the hand.

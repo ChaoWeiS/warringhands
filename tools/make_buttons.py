@@ -231,6 +231,31 @@ def queue_path() -> Image.Image:
     return img.resize((SIZE, SIZE), Image.LANCZOS)
 
 
+def fullscreen_corners() -> Image.Image:
+    """Full screen: four chunky rounded corner brackets, blue-grey like the gear."""
+    k = 4
+    big = SIZE * k
+    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (92, 37, 28, 255)
+    fill = (176, 183, 214, 255)
+    c = SIZE / 2
+    span, arm, w = 40, 26, 14  # corner distance from centre, arm length, thickness
+    shapes = []
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x0, y0 = c + sx * span, c + sy * span
+            shapes.append([(x0 - sx * arm, y0), (x0, y0), (x0, y0 - sy * arm)])
+    # All the dark outlines first, then the fills on top (no seams).
+    for width, colour in [(w + 9, outline), (w, fill)]:
+        for pts in shapes:
+            d.line([(x * k, y * k) for x, y in pts], fill=colour, width=width * k, joint="curve")
+            for x, y in pts:
+                r = width * k / 2
+                d.ellipse([x * k - r, y * k - r, x * k + r, y * k + r], fill=colour)
+    return img.resize((SIZE, SIZE), Image.LANCZOS)
+
+
 def group_lasso() -> Image.Image:
     """Group select: a dashed lasso loop round three little hands' dots."""
     k = 4
@@ -269,3 +294,4 @@ if __name__ == "__main__":
     save(white_flag(), "assets/env/button_surrender.png")
     save(queue_path(), "assets/env/button_queue.png")
     save(group_lasso(), "assets/env/button_group.png")
+    save(fullscreen_corners(), "assets/env/button_fullscreen.png")

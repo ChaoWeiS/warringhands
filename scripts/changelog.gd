@@ -11,6 +11,9 @@ const ENTRIES := [
 		"title": "Attacks carry on",
 		"items": [
 			"Hands sent to attack an enemy that falls before they get there no longer stop in their tracks: they carry on to where it was and fight whoever they meet.",
+			"The sword is now an Attack mode switch: on (it shows ON), every move fights whatever it meets on the way; tap it again and your hands just walk.",
+			"Campaign: after winning the final battle, only the Victory screen's buttons show.",
+			"The full screen button matches the Settings button, and no longer disappears after going full screen and back to the menu.",
 		],
 	},
 	{

@@ -63,7 +63,7 @@ const CHAPTERS := [
 				"enter": "_wave_papers", "poll": "_enemies_beaten", "point": ["kind:2", "enemies"]},
 			{"text": "Enemy rocks! Paper wraps rock: send your papers.",
 				"enter": "_wave_rocks", "poll": "_enemies_beaten", "point": ["kind:1", "enemies"]},
-			{"text": "A mixed group. Select all your hands (hold Group and loop them), tap the sword button, then tap near the enemies: your hands fight everything they meet on the way.",
+			{"text": "A mixed group. Select all your hands (hold Group and loop them), then switch on Attack mode with the sword (it shows ON), and tap near the enemies: your hands fight everything they meet on the way. Tap the sword again to switch it off (then your hands just walk).",
 				"enter": "_wave_mixed", "poll": "_enemies_beaten", "point": ["ui:group", "ui:attack", "enemies", "army"]},
 			{"text": "Chapter complete!\nSend the right hand to each fight and you win with fewer losses.", "end": true},
 		],

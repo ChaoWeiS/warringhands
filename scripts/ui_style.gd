@@ -158,23 +158,6 @@ static func kind_icon(kind: int) -> AtlasTexture:
 	return icon
 
 
-## Four corner brackets: the "full screen" sign.
-static func fullscreen_icon() -> ImageTexture:
-	var n := 40
-	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
-	var c := TEXT_COLOR
-	var arm := 13
-	var w := 4
-	for corner in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
-		var x0: int = 2 if corner.x == 0 else n - 2 - arm
-		var y0: int = 2 if corner.y == 0 else n - 2 - arm
-		var ex: int = 2 if corner.x == 0 else n - 2 - w   # vertical stroke x
-		var ey: int = 2 if corner.y == 0 else n - 2 - w   # horizontal stroke y
-		img.fill_rect(Rect2i(x0, ey, arm, w), c)
-		img.fill_rect(Rect2i(ex, y0, w, arm), c)
-	return ImageTexture.create_from_image(img)
-
-
 ## Round icon buttons (assets/env/button_*.png).
 const BUTTON_ICONS := {
 	"build": preload("res://assets/env/button_build.png"),
@@ -182,6 +165,7 @@ const BUTTON_ICONS := {
 	"hold": preload("res://assets/env/button_hold.png"),
 	"queue": preload("res://assets/env/button_queue.png"),
 	"group": preload("res://assets/env/button_group.png"),
+	"fullscreen": preload("res://assets/env/button_fullscreen.png"),
 	"settings": preload("res://assets/env/button_settings.png"),
 	"surrender": preload("res://assets/env/button_surrender.png"),
 }
@@ -381,12 +365,31 @@ static func is_apple_web() -> bool:
 			"/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)", true))
 
 
-## Playing from the home screen icon (already full screen).
+## Playing from the home screen icon (already full screen). Not the same as
+## a browser tab made full screen with the button: then the button has to
+## stay, to get back out.
 static func is_installed_app() -> bool:
 	if not OS.has_feature("web") or not Engine.has_singleton("JavaScriptBridge"):
 		return false
 	return bool(JavaScriptBridge.eval(
-			"window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches", true))
+			"window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches"
+			+ " || (window.matchMedia('(display-mode: fullscreen)').matches && !document.fullscreenElement && !document.webkitFullscreenElement)", true))
+
+
+## The full screen button (same look as Settings: the plaque with corners).
+static func fullscreen_button(parent: Control, top: float) -> Button:
+	var b := icon_button("fullscreen")
+	var size: float = 72.0 * ui_scale()
+	b.custom_minimum_size = Vector2(size, size)
+	b.anchor_left = 1.0
+	b.anchor_right = 1.0
+	b.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	b.offset_top = top
+	b.offset_right = -24
+	b.tooltip_text = "Full screen"
+	b.pressed.connect(func(): toggle_fullscreen(parent))
+	parent.add_child(b)
+	return b
 
 
 ## The full screen button. Apple's browsers mostly don't let a web game go

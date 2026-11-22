@@ -259,6 +259,10 @@ func next_step() -> void:
 		Campaign.mark_done(chapter)
 		if not Campaign.CHAPTERS[chapter].get("enemies", false):
 			_victory_banner()  # (a real battle has its own Victory)
+		else:
+			# A real battle won: its own Victory screen has the buttons, so
+			# the card goes (no second "Back to Menu").
+			_card.visible = false
 	_show_picture(s.get("picture", ""))
 	_pointed_units.clear()
 	for kind in 3:

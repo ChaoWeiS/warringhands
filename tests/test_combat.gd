@@ -301,7 +301,16 @@ func _run() -> void:
 	game._on_tapped(cam0, leaf0.rect.size * 0.5)
 	var queued: Array = sim._pending.values()[0] if not sim._pending.is_empty() else []
 	check("then tapping the ground gives an attack-move", queued.size() == 1 and queued[0].type == "attack_move")
-	check("...and attack mode switches off", not bar.is_attack_armed())
+	check("...and attack mode stays on (it's a switch) for the next move", bar.is_attack_armed())
+	sim._pending.clear()
+	game._on_tapped(cam0, leaf0.rect.size * 0.5 + Vector2(40, 0))
+	queued = sim._pending.values()[0] if not sim._pending.is_empty() else []
+	check("...so the next ground tap fights on the way too", queued.size() == 1 and queued[0].type == "attack_move")
+	bar._attack.button_pressed = false  # tap the sword again
+	sim._pending.clear()
+	game._on_tapped(cam0, leaf0.rect.size * 0.5 + Vector2(-40, 0))
+	queued = sim._pending.values()[0] if not sim._pending.is_empty() else []
+	check("switched off, a ground tap is a plain move", not bar.is_attack_armed() and queued.size() == 1 and queued[0].type == "move")
 	sim._pending.clear()
 	var enemy_id: int = sim.units.filter(func(u): return u.team == 1).front().id
 	var enemy_screen: Vector2 = cam0.unproject_position(view.world_position(enemy_id))

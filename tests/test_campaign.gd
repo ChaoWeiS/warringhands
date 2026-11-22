@@ -351,6 +351,7 @@ func _run() -> void:
 	check("the card tucks away during the battle", tut.free_play and not tut._text.visible)
 	sim.winner = 0
 	await frames(2)
+	check("winning: the card goes (the Victory screen has its own buttons)", not tut._card.visible)
 	check("winning completes the campaign", tut._is_end() and "Campaign complete" in tut._text.text
 			and not tut._next_chapter.visible and 6 in Campaign.done())
 

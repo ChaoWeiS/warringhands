@@ -357,19 +357,9 @@ func _build_resource_bar() -> void:
 ## Full screen on / off (top right, under the resource counter). In a
 ## browser this hides the address bar; browsers only allow it from a tap.
 func _build_fullscreen_button() -> void:
-	fullscreen_button = UI.button(Color(1, 1, 1, 0.85), Color("#e7e1f5"))
-	fullscreen_button.icon = UI.fullscreen_icon()
-	fullscreen_button.custom_minimum_size = Vector2(72, 72) * UI.ui_scale()
-	fullscreen_button.anchor_left = 1.0
-	fullscreen_button.anchor_right = 1.0
-	fullscreen_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	fullscreen_button.offset_top = 100
-	fullscreen_button.offset_right = -24
-	fullscreen_button.pressed.connect(toggle_fullscreen)
-	# Native apps are full screen already.
+	fullscreen_button = UI.fullscreen_button(self, 100)
 	# (Not in the phone apps, nor when opened from the home screen icon: already full.)
 	fullscreen_button.visible = not (OS.has_feature("android") or OS.has_feature("ios") or UI.is_installed_app())
-	add_child(fullscreen_button)
 	settings_button = UI.settings_button(self, 100, func(): preview_sfx.call())
 	if not fullscreen_button.visible:
 		settings_button.offset_right = -24

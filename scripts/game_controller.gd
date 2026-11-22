@@ -128,10 +128,12 @@ func _ready() -> void:
 	for control in hud.blockers():
 		panes.register_blocker(control)
 	bar.filter_pressed.connect(_on_filter)
+	bar.attack_toggled.connect(func(on: bool):
+		hud.toast("Attack mode ON: your hands fight anything on the way" if on else "Attack mode off: your hands just walk")
+		did.emit("attack_mode" if on else "move_mode"))
 	bar.hold_pressed.connect(func():
 		if not selection.is_empty():
 			sim.command_hold(selection)
-			bar.set_attack_armed(false)
 			did.emit("hold"))
 	hud.train_pressed.connect(func(id):
 		sim.command_train(player_team, id)
@@ -415,7 +417,7 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 	if foe != -1:
 		_order_attack(foe)
 		return
-	if id != -1 and not bar.is_attack_armed():
+	if id != -1:
 		if double and (selection.has(id) or id == _tapped_off):
 			_select_same_kind_in_pane(camera, sim.get_unit(id).kind)
 			did.emit("select_kind")
@@ -433,7 +435,7 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 		_tapped_off = id if not selection.has(id) and _tapped_off == id else -1
 		return
 	var own_building := _building_at(camera, point, ground, true)
-	if own_building != 0 and not bar.is_attack_armed():
+	if own_building != 0:
 		var b: Dictionary = sim.get_entity(own_building)
 		if double and b.hp < b.max_hp:
 			# Double tap a damaged building: units nearby come to fix it.
@@ -462,17 +464,17 @@ func _on_tapped(camera: Camera3D, point: Vector2) -> void:
 	if ground == null:
 		return
 	var node := _resource_at(camera, point)
-	if node != 0 and not bar.is_attack_armed():
+	if node != 0:
 		sim.command_gather(selection, node, _queueing())
 		_did_order("gather")
 		view.show_move_marker(ground)
 		return
+	# Attack mode (the sword, a switch): moves fight whatever they meet on
+	# the way. Off: hands just walk there.
 	if bar.is_attack_armed():
 		sim.command_attack_move(selection, ground, _queueing())
 		_did_order("attack_move")
 		view.show_move_marker(ground, true)
-		if not _queueing():
-			bar.set_attack_armed(false)  # (queueing: keep it for the next stop)
 	else:
 		sim.command_move(selection, ground, _queueing())
 		_did_order("move")
@@ -483,8 +485,6 @@ func _order_attack(target: int) -> void:
 	sim.command_attack(selection, target, _queueing())
 	_did_order("attack")
 	view.show_attack_marker(target)
-	if not _queueing():
-		bar.set_attack_armed(false)
 
 
 ## An order was given (for the voices and the tutorial; "queue" too when
