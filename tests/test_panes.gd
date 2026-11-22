@@ -203,6 +203,13 @@ func _run() -> void:
 	leaves[3].camera.pan_by_screen(Vector2(-200, -160))
 	leaves[3].camera.zoom_at(6.0, leaves[3].rect.size * 0.5)
 	await shot("4_grid")
+	# Four is the most: no tabs left to cut with, and a cut can't happen.
+	check("at 4 panes there are no cut tabs", panes._leaves().all(func(l): return panes._tabs(l).is_empty()))
+	var r0: Rect2 = panes._leaves()[0].rect
+	swipe(Vector2(r0.position.x + 30, r0.get_center().y), Vector2(r0.end.x - 20, r0.get_center().y))
+	check("...and swiping in from the edge makes no fifth pane", panes.pane_count() == 4)
+	check("smooth edges are off with this many panes (saves graphics memory)",
+			panes._leaves().all(func(l): return l.camera.get_viewport().msaa_3d == Viewport.MSAA_DISABLED))
 
 	print("FAILURES: ", failures)
 	quit(1 if failures > 0 else 0)

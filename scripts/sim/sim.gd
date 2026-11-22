@@ -62,6 +62,9 @@ const SPACING := 1000
 const RADIUS := 320
 ## Overlap passes per tick (more = firmer, a little slower).
 const PUSH_PASSES := 8
+## From this many hands on, fewer push passes per tick (down to MIN_PUSH_PASSES).
+const CROWD := 110
+const MIN_PUSH_PASSES := 3
 ## Idle units of the same side closer than this slowly drift apart until
 ## each has its own space (formations are spaced wider, so they don't move).
 const COMFORT := 860
@@ -158,6 +161,10 @@ var combat_enabled: bool = true
 ## heading to dest, fighting on the way. focus = target was picked by the
 ## player (chase it anywhere). chasing = current path leads to the target.
 var units: Array = []
+## Units by SIGHT-sized cells, while _fight runs (else empty).
+var _sight_buckets: Dictionary = {}
+## Set whenever a push actually moves someone (or stops a walker).
+var _nudged := false
 ## Every building: {id, team, btype, x, z, radius, hp, max_hp, progress,
 ## queue (kinds), train}. progress < build time = still under construction.
 var buildings: Array = []
@@ -625,9 +632,14 @@ func _step() -> void:
 	for u in units:
 		if u.moving:
 			_move(u)
-	for pass_index in PUSH_PASSES:
+	# Fewer passes in a big crowd (it still settles over a few ticks), and
+	# none once nobody needs pushing.
+	for pass_index in push_passes(units.size()):
+		_nudged = false
 		_separate()
 		_push_out_of_buildings()
+		if not _nudged:
+			break
 	_spread_idle()
 	_push_out_of_buildings()  # buildings always win over fanning out
 	_check_stuck()
@@ -854,6 +866,7 @@ func _route(u: Dictionary, tx: int, tz: int) -> void:
 ## (so neither side gets a free first hit just for having a lower id).
 func _fight() -> void:
 	var hits: Array = []  # [attacker, target, damage]
+	_sight_buckets = _team_buckets(SIGHT)  # who's near whom, for finding enemies
 	for u in units:
 		if u.ordered:
 			if u.moving:
@@ -905,6 +918,7 @@ func _fight() -> void:
 			_route(u, target.x, target.z)
 			u.chasing = true
 			u.repath = tick + REPATH_TICKS
+	_sight_buckets = {}
 	for hit in hits:
 		var attacker: Dictionary = hit[0]
 		var victim: Dictionary = hit[1]
@@ -947,13 +961,33 @@ func _fight() -> void:
 func _nearest_enemy(u: Dictionary, reach: int) -> Dictionary:
 	var best: Dictionary = {}
 	var best_d2: int = reach * reach + 1
-	for other in units:
-		if other.team == u.team:
-			continue
-		var d2: int = _dist2(u, other)
-		if d2 < best_d2:
-			best = other
-			best_d2 = d2
+	if _sight_buckets.is_empty() or reach > SIGHT:
+		for other in units:
+			if other.team == u.team:
+				continue
+			var d2: int = _dist2(u, other)
+			if d2 < best_d2:
+				best = other
+				best_d2 = d2
+	else:
+		# Only the cells around it (made once per tick in _fight). Ties go to
+		# the earlier unit in the list, exactly as a full scan would.
+		var best_i: int = -1
+		var cx: int = u.x / SIGHT
+		var cz: int = u.z / SIGHT
+		for team in _sight_buckets:
+			if team == u.team:
+				continue
+			var cells: Dictionary = _sight_buckets[team]
+			for oy in range(-1, 2):
+				for ox in range(-1, 2):
+					for j in cells.get(_cell_key(cx + ox, cz + oy), EMPTY):
+						var other: Dictionary = units[j]
+						var d2: int = _dist2(u, other)
+						if d2 < best_d2 or (d2 == best_d2 and j < best_i):
+							best = other
+							best_d2 = d2
+							best_i = j
 	if not best.is_empty():
 		return best
 	for b in buildings:
@@ -1334,6 +1368,7 @@ func _push_out_of_buildings() -> void:
 				d = 1
 			var push: int = clear - d
 			if not _nudge(u, dx * push / d, dz * push / d):
+				_nudged = true
 				u.x = b.x + dx * clear / d
 				u.z = b.z + dz * clear / d
 
@@ -1448,31 +1483,83 @@ func _move(u: Dictionary) -> void:
 func _separate() -> void:
 	var min_dist: int = RADIUS * 2
 	var buckets := _buckets(min_dist)
-	var n: int = units.size()
-	for i in n:
-		var a: Dictionary = units[i]
-		var cell := Vector2i(a.x / min_dist, a.z / min_dist)
-		for oy in range(-1, 2):
-			for ox in range(-1, 2):
-				for j in buckets.get(cell + Vector2i(ox, oy), []):
-					if j <= i:
-						continue  # each pair once
-					_push_apart(a, units[j], min_dist)
+	# Cell by cell: pairs inside the cell, then with the cells ahead of it
+	# (right, and the row below), so each pair is looked at once.
+	for key in buckets:
+		var here: Array = buckets[key]
+		var count: int = here.size()
+		for a_i in count:
+			var a: Dictionary = units[here[a_i]]
+			for b_i in range(a_i + 1, count):
+				_push_if_close(a, units[here[b_i]], min_dist)
+		for step in FORWARD_CELLS:
+			var there: Array = buckets.get(key + step, EMPTY)
+			if there.is_empty():
+				continue
+			for i in here:
+				var a: Dictionary = units[i]
+				for j in there:
+					_push_if_close(a, units[j], min_dist)
+	# (Buckets from before the pushes: close enough to find who's near a
+	# spot; the check itself uses where everyone is now.)
 	for u in units:
 		if u.moving and u.path.size() == 1:
-			_stop_if_spot_taken(u, min_dist)
+			_stop_if_spot_taken(u, min_dist, buckets)
 
 
-## Unit indexes grouped by square cells of `size`, for nearby lookups.
+## Unit indexes grouped by square cells of `size`, for nearby lookups (keyed
+## by _cell_key; each cell's indexes in ascending order).
 func _buckets(size: int) -> Dictionary:
 	var buckets := {}
 	for i in units.size():
 		var u: Dictionary = units[i]
-		var cell := Vector2i(u.x / size, u.z / size)
-		if not buckets.has(cell):
-			buckets[cell] = []
-		buckets[cell].append(i)
+		var key: int = _cell_key(u.x / size, u.z / size)
+		var list: Array = buckets.get(key, EMPTY)
+		if list.is_empty():
+			list = []
+			buckets[key] = list
+		list.append(i)
 	return buckets
+
+
+## Like _buckets, but one set per team: {team: {cell key: [unit indexes]}}.
+func _team_buckets(size: int) -> Dictionary:
+	var by_team := {}
+	for i in units.size():
+		var u: Dictionary = units[i]
+		var buckets: Dictionary = by_team.get(u.team, {})
+		if buckets.is_empty():
+			by_team[u.team] = buckets
+		var key: int = _cell_key(u.x / size, u.z / size)
+		var list: Array = buckets.get(key, EMPTY)
+		if list.is_empty():
+			list = []
+			buckets[key] = list
+		list.append(i)
+	return by_team
+
+
+## One whole number for a bucket cell (cheaper to look up than a Vector2i).
+static func _cell_key(cx: int, cz: int) -> int:
+	return (cx + 1) * 8192 + (cz + 1)
+
+
+const EMPTY: Array = []
+
+
+## Neighbouring cells "ahead" of a cell, as _cell_key offsets.
+const FORWARD_CELLS: Array[int] = [8192, -8192 + 1, 1, 8192 + 1]  # (+1,0) (-1,+1) (0,+1) (+1,+1)
+
+
+## The cheap part of _push_apart inline (most pairs aren't touching).
+func _push_if_close(a: Dictionary, b: Dictionary, min_dist: int) -> void:
+	var dx: int = b.x - a.x
+	if dx >= min_dist or dx <= -min_dist:
+		return
+	var dz: int = b.z - a.z
+	if dz >= min_dist or dz <= -min_dist:
+		return
+	_push_apart(a, b, min_dist)
 
 
 func _push_apart(a: Dictionary, b: Dictionary, min_dist: int) -> void:
@@ -1547,6 +1634,13 @@ func _sidestep(walker: Dictionary, idle: Dictionary, away: Vector2i) -> Vector2i
 
 ## Nudges `u`; if it can't move there (blocked ground), pushes `other` the
 ## opposite way instead, so the overlap still gets resolved.
+## How many times to push hands apart each tick, for this many hands.
+static func push_passes(count: int) -> int:
+	if count <= CROWD:
+		return PUSH_PASSES
+	return clampi(PUSH_PASSES * CROWD / count, MIN_PUSH_PASSES, PUSH_PASSES)
+
+
 func _nudge_or_other(u: Dictionary, other: Dictionary, dx: int, dz: int) -> void:
 	if not _nudge(u, dx, dz):
 		_nudge(other, -dx, -dz)
@@ -1559,11 +1653,12 @@ func _nudge(u: Dictionary, dx: int, dz: int) -> bool:
 		return true
 	var nx: int = u.x + dx
 	var nz: int = u.z + dz
-	var grid = nav()
-	if grid != null and not grid.is_walkable_cell(grid.cell_of(nx, nz)):
+	var grid = _nav if _nav != null else nav()
+	if grid != null and grid.size > 0 and not grid.walkable_at(nx, nz):
 		return false
 	u.x = nx
 	u.z = nz
+	_nudged = true
 	return true
 
 
@@ -1576,10 +1671,11 @@ func _spread_idle() -> void:
 		var a: Dictionary = units[i]
 		if a.moving:
 			continue
-		var cell := Vector2i(a.x / COMFORT, a.z / COMFORT)
+		var cx: int = a.x / COMFORT
+		var cz: int = a.z / COMFORT
 		for oy in range(-1, 2):
 			for ox in range(-1, 2):
-				for j in buckets.get(cell + Vector2i(ox, oy), []):
+				for j in buckets.get(_cell_key(cx + ox, cz + oy), EMPTY):
 					if j <= i:
 						continue
 					var b: Dictionary = units[j]
@@ -1621,12 +1717,21 @@ func _check_stuck() -> void:
 			u.stuck = 0
 
 
-func _stop_if_spot_taken(u: Dictionary, min_dist: int) -> void:
+func _stop_if_spot_taken(u: Dictionary, min_dist: int, buckets: Dictionary) -> void:
 	var dx: int = u.tx - u.x
 	var dz: int = u.tz - u.z
 	if dx * dx + dz * dz > min_dist * min_dist:
 		return  # not yet up against the spot
-	for other in units:
+	# Only hands near the spot can be on it (two cells round it, as they
+	# may have been pushed a little since the buckets were made).
+	var nearby: Array = []
+	var cx: int = u.tx / min_dist
+	var cz: int = u.tz / min_dist
+	for oy in range(-2, 3):
+		for ox in range(-2, 3):
+			for j in buckets.get(_cell_key(cx + ox, cz + oy), EMPTY):
+				nearby.append(units[j])
+	for other in nearby:
 		if other.id == u.id or other.moving:
 			continue
 		var ox: int = other.x - u.tx
@@ -1634,6 +1739,7 @@ func _stop_if_spot_taken(u: Dictionary, min_dist: int) -> void:
 		if ox * ox + oz * oz < min_dist * min_dist:
 			u.moving = false
 			u.path.clear()
+			_nudged = true
 			return
 
 
@@ -1641,11 +1747,13 @@ func _stop_if_spot_taken(u: Dictionary, min_dist: int) -> void:
 static func _isqrt(n: int) -> int:
 	if n <= 0:
 		return 0
-	var x: int = n
-	var y: int = (x + 1) / 2
-	while y < x:
-		x = y
-		y = (x + n / x) / 2
+	# A float guess, then corrected to the exact whole-number root, so every
+	# machine gets the same answer.
+	var x: int = int(sqrt(float(n)))
+	while x * x > n:
+		x -= 1
+	while (x + 1) * (x + 1) <= n:
+		x += 1
 	return x
 
 

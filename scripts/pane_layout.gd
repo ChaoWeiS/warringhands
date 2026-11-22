@@ -50,7 +50,11 @@ var cutting := true:
 @export var world_path: NodePath
 ## Smallest a pane can be (width or height). Smaller panes snap shut.
 @export var min_pane_size: float = 240.0
-@export var max_panes: int = 8
+## Most panes at once. Each pane draws the whole world again, so many of
+## them ran phones and tablets out of graphics memory (and crashed the game).
+@export var max_panes: int = 4
+## Smoothed edges (MSAA) only while there are at most this many panes.
+@export var smooth_up_to: int = 2
 @export var divider_width: float = 12.0
 ## How far either side of a divider still counts as grabbing it.
 @export var divider_grab: float = 40.0
@@ -587,7 +591,10 @@ func _relayout() -> void:
 	if _root == null:
 		return
 	_layout(_root, Rect2(Vector2.ZERO, size))
-	for leaf in _leaves():
+	var leaves := _leaves()
+	var msaa := Viewport.MSAA_2X if leaves.size() <= smooth_up_to else Viewport.MSAA_DISABLED
+	for leaf in leaves:
+		leaf.camera.get_viewport().msaa_3d = msaa
 		leaf.camera.call_deferred("refit")
 	queue_redraw()
 	_overlay.queue_redraw()
@@ -665,8 +672,8 @@ func _divider_at(p: Vector2) -> PaneNode:
 
 ## Each tab as [side, draw rect, touch rect] (none while cutting is off).
 func _tabs(leaf: PaneNode) -> Array:
-	if not cutting:
-		return []
+	if not cutting or pane_count() >= max_panes:
+		return []  # no tabs to cut with once there are as many panes as allowed
 	var r: Rect2 = leaf.rect
 	var c: Vector2 = r.get_center()
 	var long := tab_length

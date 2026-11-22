@@ -110,6 +110,13 @@ func is_walkable_cell(cell: Vector2i) -> bool:
 	return _walk[cell.y * size + cell.x] == 1
 
 
+## is_walkable_cell(cell_of(x, z)) in one quick step (called very often).
+func walkable_at(x: int, z: int) -> bool:
+	var cx: int = clampi(x / SIM_CELL, 0, size - 1)
+	var cz: int = clampi(z / SIM_CELL, 0, size - 1)
+	return _walk[cz * size + cx] == 1
+
+
 ## Cell containing a position in sim units.
 func cell_of(x: int, z: int) -> Vector2i:
 	return Vector2i(clampi(x / SIM_CELL, 0, size - 1), clampi(z / SIM_CELL, 0, size - 1))

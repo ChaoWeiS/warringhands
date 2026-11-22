@@ -6,6 +6,16 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-22-big-battles",
+		"date": "22 Nov 2026",
+		"title": "Big battles, no lag",
+		"items": [
+			"Games with hundreds of hands run much smoother: hands now only look nearby for enemies and for who to make room for, so a 300-hand battle takes about a quarter of the work it did.",
+			"The screen can be cut into at most 4 panes (the cutting tabs hide at 4). Lots of panes could run a phone or tablet out of graphics memory and crash the game.",
+			"With 3 or more panes, edges are drawn a little less smoothly, to keep things quick.",
+		],
+	},
+	{
 		"id": "2026-11-22-attack",
 		"date": "22 Nov 2026",
 		"title": "Attacks carry on",
