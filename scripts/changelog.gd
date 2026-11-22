@@ -6,6 +6,14 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-22-attack",
+		"date": "22 Nov 2026",
+		"title": "Attacks carry on",
+		"items": [
+			"Hands sent to attack an enemy that falls before they get there no longer stop in their tracks: they carry on to where it was and fight whoever they meet.",
+		],
+	},
+	{
 		"id": "2026-11-22-fixes",
 		"date": "22 Nov 2026",
 		"title": "Smoother building",

@@ -819,12 +819,17 @@ func _apply_attack(command: Dictionary) -> void:
 		return
 	var ids: Array = command.ids.duplicate()
 	ids.sort()
+	var enemy: Dictionary = _by_id[command.target]
 	for id in ids:
 		var u: Dictionary = _by_id.get(id, {})
-		if u.is_empty() or u.team == _by_id[command.target].team:
+		if u.is_empty() or u.team == enemy.team:
 			continue
 		u.ordered = false
-		u.attack_move = false
+		# Heading for the target, fighting on the way: if it dies first, they
+		# carry on to where it was (taking on anyone they meet), not stop.
+		u.attack_move = true
+		u.dest_x = enemy.x
+		u.dest_z = enemy.z
 		u.job = ""
 		u.focus = true
 		u.chasing = false
@@ -861,6 +866,9 @@ func _fight() -> void:
 		var target: Dictionary = _by_id.get(u.target, {})
 		if not target.is_empty() and not u.focus and _dist2(u, target) > LEASH * LEASH:
 			target = {}
+		if not target.is_empty() and u.focus and u.attack_move:
+			u.dest_x = target.x  # follow the player's target (where to go if it falls)
+			u.dest_z = target.z
 		if target.is_empty():
 			u.focus = false
 			target = _nearest_enemy(u, SIGHT)
