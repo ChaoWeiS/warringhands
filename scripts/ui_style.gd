@@ -23,6 +23,27 @@ const BUILDING_NAMES := {"hq": "HQ", "quarry": "Quarry", "mill": "Paper Mill", "
 
 
 
+## Playing with a mouse (and keyboard) rather than touch: decides which
+## instructions the tutorial shows. Starts from whether there's a touch
+## screen, then follows whatever was used last.
+static var mouse_mode := not DisplayServer.is_touchscreen_available()
+
+
+## Keeps mouse_mode up to date (a real mouse vs a finger).
+static func note_input(event: InputEvent) -> void:
+	var emulated: bool = event.device == InputEvent.DEVICE_ID_EMULATION
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		if not emulated:  # (a mouse click also arrives as a pretend touch)
+			mouse_mode = false
+	elif event is InputEventMouseButton or event is InputEventMouseMotion:
+		if not emulated:  # (a finger also arrives as a pretend mouse)
+			if event is InputEventMouseMotion and event.relative.length() < 2.0:
+				return  # a nudge, not someone using a mouse
+			mouse_mode = true
+	elif event is InputEventKey and event.pressed:
+		mouse_mode = true
+
+
 ## Tests can pretend to be a phone (1) or not (0); -1 = detect.
 static var phone_override := -1
 static var _phone_cache := -1

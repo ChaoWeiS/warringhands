@@ -495,6 +495,26 @@ func _did_order(action: String) -> void:
 		did.emit("queue")
 
 
+func _input(event: InputEvent) -> void:
+	UI.note_input(event)
+
+
+## Keyboard: A switches Attack mode, H is Hold (Shift, held, is Queue).
+func _unhandled_key_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo or key.ctrl_pressed or key.meta_pressed or key.alt_pressed:
+		return
+	match key.physical_keycode:
+		KEY_A:
+			if bar._attack.is_visible_in_tree():
+				bar.toggle_attack()
+				get_viewport().set_input_as_handled()
+		KEY_H:
+			if bar.hold_button.is_visible_in_tree():
+				bar.hold_pressed.emit()
+				get_viewport().set_input_as_handled()
+
+
 ## Orders given now go after what the units are doing (the Queue button is
 ## held, or Shift on a keyboard).
 func _queueing() -> bool:

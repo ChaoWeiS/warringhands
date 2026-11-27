@@ -25,6 +25,8 @@ var _attack_on: Label
 ## Held down: orders are added to the units' plans instead of replacing them.
 var queue_held := false
 var queue_button: Button
+var hold_button: Button
+var _key_badges: Array = []
 ## Attack, Hold and Queue, stacked (placed on screen by the HUD, on the
 ## left under the screen-cutting tab).
 var actions := VBoxContainer.new()
@@ -42,7 +44,7 @@ func _ready() -> void:
 		_kind_buttons.append(button)
 	actions.add_theme_constant_override("separation", roundi(12 * UI.ui_scale()))
 	_attack = UI.icon_button("attack")
-	_attack.tooltip_text = "Attack mode (on: moves fight on the way)"
+	_attack.tooltip_text = "Attack mode (A) - on: moves fight on the way"
 	_attack.toggle_mode = true
 	_attack.toggled.connect(func(on):
 		set_attack_armed(on)
@@ -60,19 +62,53 @@ func _ready() -> void:
 	_attack_on.visible = false
 	_attack.add_child(_attack_on)
 	var hold := UI.icon_button("hold")
-	hold.tooltip_text = "Hold"
+	hold.tooltip_text = "Hold (H)"
 	hold.pressed.connect(func(): hold_pressed.emit())
+	hold_button = hold
 	actions.add_child(hold)
 	# Queue: hold it down (with one finger) while giving orders with another.
 	queue_button = UI.icon_button("queue")
-	queue_button.tooltip_text = "Queue (hold, or Shift)"
+	queue_button.tooltip_text = "Queue (hold it, or hold Shift)"
 	queue_button.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
 	queue_button.button_down.connect(func(): _set_queue(true))
 	queue_button.button_up.connect(func(): _set_queue(false))
 	actions.add_child(queue_button)
+	# Keyboard keys for each, shown when playing with a mouse.
+	for pair in [[_attack, "A"], [hold, "H"], [queue_button, "Shift"]]:
+		var key := _key_badge(pair[1])
+		pair[0].add_child(key)
+		_key_badges.append(key)
 	add_sibling.call_deferred(actions)
 	visible = false
 	actions.visible = false
+
+
+func _process(_delta: float) -> void:
+	for key in _key_badges:
+		key.visible = UI.mouse_mode
+
+
+## A small key cap (like "A") in the top left corner of a button.
+func _key_badge(text: String) -> Label:
+	var key := UI.label(text, 18)
+	key.add_theme_color_override("font_color", TEXT_COLOR)
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(1, 1, 1, 0.92)
+	box.border_color = TEXT_COLOR
+	box.set_border_width_all(2)
+	box.set_corner_radius_all(6)
+	box.content_margin_left = 6
+	box.content_margin_right = 6
+	key.add_theme_stylebox_override("normal", box)
+	key.position = Vector2(-6, -6)
+	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	key.visible = false
+	return key
+
+
+## Attack mode on or off from the keyboard (A), as if the sword was tapped.
+func toggle_attack() -> void:
+	_attack.button_pressed = not _attack.button_pressed
 
 
 ## counts = [rocks, papers, scissors] selected.

@@ -6,6 +6,15 @@ extends RefCounted
 
 const ENTRIES := [
 	{
+		"id": "2026-11-27-pc",
+		"date": "27 Nov 2026",
+		"title": "Playing on a computer",
+		"items": [
+			"With a mouse, the campaign explains the mouse controls: left click to pick and give orders, drag a loop with the left button to select a group, hold the right button to move the camera, right click to unselect. Touch a screen and it switches back to the touch instructions.",
+			"Keyboard shortcuts: A switches Attack mode on and off, H is Hold, and holding Shift queues orders. When you're using a mouse, the buttons show their keys.",
+		],
+	},
+	{
 		"id": "2026-11-22-big-battles",
 		"date": "22 Nov 2026",
 		"title": "Big battles, no lag",

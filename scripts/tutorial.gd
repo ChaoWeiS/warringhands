@@ -246,7 +246,7 @@ func next_step() -> void:
 	_set_compact(false)
 	var title: String = Campaign.CHAPTERS[chapter].title
 	_count.text = "Chapter %d  ·  %s  ·  %d of %d" % [chapter + 1, title, mini(step + 1, steps.size() - 1), steps.size() - 1]
-	_text.text = s.text
+	_text.text = _step_text(s)
 	var end: bool = s.get("end", false)
 	_skip.text = "Keep playing" if end else ("Next" if s.get("next", false) else "Skip step")
 	_step_time = 0.0
@@ -378,9 +378,10 @@ func _process(delta: float) -> void:
 	if placing_hq and not _was_placing_hq and _far_hq != Vector2.INF and not free_play:
 		_bring_into_view()
 	_was_placing_hq = placing_hq
-	# Some steps say what to do next while Group is held.
-	if step >= 0 and step < steps.size() and steps[step].has("holding_text") and not free_play:
-		var want: String = steps[step].holding_text if _holding() else steps[step].text
+	# The words follow how they're playing (mouse or touch), and some steps
+	# say what to do next while Group or Queue is held.
+	if step >= 0 and step < steps.size() and not free_play:
+		var want: String = _step_text(steps[step])
 		if _text.text != want:
 			_text.text = want
 	_step_time += delta
@@ -531,7 +532,7 @@ func _targets() -> Array:
 	if step < 0 or step >= steps.size() or free_play:
 		return []
 	var out: Array = []
-	for what in steps[step].get("point", []):
+	for what in _field(steps[step], "point", []):
 		var t: Dictionary = _resolve(what)
 		if not t.is_empty():
 			out.append(t)
@@ -556,10 +557,10 @@ func _resolve(what: String) -> Dictionary:
 				if picked or started:
 					return {}
 			"ui:queue":
-				if not picked or game.bar.queue_held or started:
+				if not picked or game._queueing() or started:
 					return {}
 			_:
-				if what.begins_with("mark:") and not (game.bar.queue_held or started):
+				if what.begins_with("mark:") and not (game._queueing() or started):
 					return {}
 	match parts[0]:
 		"hq":
@@ -1177,9 +1178,23 @@ func _hands_selected() -> bool:
 	return mine > 0 and game.selection.size() * 2 >= mine
 
 
-## Group or Queue is being held down.
+## Group or Queue is being held down (or Shift, for Queue).
 func _holding() -> bool:
-	return panes.grouping or game.bar.queue_held
+	return panes.grouping or game._queueing()
+
+
+## A step's value for `key`, or its "pc_" version when playing with a mouse.
+static func _field(s: Dictionary, key: String, default: Variant = null) -> Variant:
+	if UI.mouse_mode and s.has("pc_" + key):
+		return s["pc_" + key]
+	return s.get(key, default)
+
+
+## What a step's card says right now.
+func _step_text(s: Dictionary) -> String:
+	if s.has("holding_text") and _holding():
+		return _field(s, "holding_text")
+	return _field(s, "text", "")
 
 
 func _army_centre() -> Vector2:
